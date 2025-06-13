@@ -1,0 +1,56 @@
+Brevid: {brevid}
+
+Text:
+"""{text}"""
+
+Rules for the JSON fields:
+- description: a brief status/occupation for people (e.g. “Abbot”, “Priest”) or a type for places (e.g. “Monastery”, “City”)
+- gender: “Male”, “Female”, or “N/A” if not a person
+- language: ISO-639-3 code of the text’s language (e.g. “lat” for Latin, “non” for Old Norse)
+
+Example
+-------
+< Olauer;Person Name;1;{brevid} >
+
+===JSON===
+{{
+  "entities": [
+    {{
+      "name": "Olauer",
+      "type": "Person Name",
+      "order": 1,
+      "brevid": "{brevid}",
+      "description": "Abbot",
+      "gender": "Male",
+      "language": "non"
+    }}
+  ]
+}}
+-------
+
+Task
+----
+1) Markup all PROPER NOUNS in the text above, wrapping each occurrence exactly as:
+   < name;type;order;brevid >
+   (one space before '<' and one space after '>')
+2) Then on a new line output exactly:
+
+===JSON===
+{{
+  "entities": [
+    {{
+      "name": "...",
+      "type": "...",
+      "order": X,
+      "brevid": "{brevid}",
+      "description": "...",
+      "gender": "...",
+      "language": "..."
+    }},
+    ...
+  ]
+}}
+
+IMPORTANT:  
+- Do **not** include any extra commentary—only the annotated text, then the JSON block.  
+- Ensure every entity has **description**, **gender**, and **language** filled per the rules above.  

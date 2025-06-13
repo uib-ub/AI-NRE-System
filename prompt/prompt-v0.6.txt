@@ -1,0 +1,67 @@
+Bindnr: {bindnr}
+Brevid: {brevid}
+
+Original record line including the value of "bindnr", the value of "brevid", and a medieval "text":
+"{bindnr}";"{brevid}";"{text}"
+
+Rules for metadata fields:
+- description: a short status/occupation (for people) or a descriptor (for places)  
+- gender: "Male", "Female", or "N/A"  
+- language: ISO-639-3 code (e.g. "lat" for Latin, "non" for Old Norse)
+
+Tasks:
+
+Task 1 (Annotated Record):
+First, reproduce the ENTIRE record line exactly, but in the third quoted field (the medieval text), wrap each PROPER NOUN occurrence as:
+
+< name;type;order;brevid >
+
+—with exactly one space before `<` and one space after `>`. Inside the brackets:
+1. `name` = the exact proper noun itself 
+2. `type` = e.g. Person Name, Place Name, etc.,
+3. `order` = 1,2,3… in the order they appear in this medieval text  
+4. `brevid` = the number from the value of 'Brevid'
+
+Then, you MUST replace all PROPER NOUNS in the medieval text with the corresponding wrapped format expression, 
+and give the FULL MODIFIED text as the final output by using this single annotated record line:
+“{bindnr}”;”{brevid}”;”<…FULL MODIFIED text…>”;
+
+Task 2 (Metadata JSON):
+On the very next line print exactly:
+
+===JSON===
+{{
+  "entities": [
+    {{
+      "name": "...",
+      "type": "...",
+      "order": X,
+      "brevid": "{brevid}",
+      "description": "...",
+      "gender": "...",
+      "language": "..."
+    }},
+    …
+  ]
+}}
+
+IMPORTANT for Task 2:
+- No extra commentary, no code fences, no additional quotes around the JSON.
+- The only Python placeholders are {bindnr}, {brevid}, and {text}; all {{…}} remain literal.
+
+Example output for Task 2:
+
+===JSON===
+{{
+   "entities": [
+     {{
+        "name": "Olauer",
+        "type": "Person Name",
+        "order": 1,
+        "brevid": "601",
+        "description": "Abbot",
+        "gender": "Male",
+        "language": "non"
+     }}
+   ]
+}}
