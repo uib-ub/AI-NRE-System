@@ -1,12 +1,14 @@
 import json
 import logging
 
-from typing import Any, List, Tuple
+from typing import List, Tuple
 from prompts import PromptBuilder
+from llm_clients import Client
 
-def process_record(record: dict, llm_client: Any, prompt_builder: PromptBuilder) -> Tuple[List[str], List[str]]: 
+
+def process_record(record: dict, llm_client: Client, prompt_builder: PromptBuilder) -> Tuple[List[str], List[str]]:
     """
-    Send one record to the LLM, parse results and return 
+    Send one record to the LLM, parse results and return
     annotated text plus metadata rows.
 
     Args:
@@ -24,7 +26,6 @@ def process_record(record: dict, llm_client: Any, prompt_builder: PromptBuilder)
     prompt = prompt_builder.build(brevid, text)
     # DEBUG: prompt
     logging.debug("--- Prompt ---\n%s", prompt)
-    # logging.debug(prompt)
 
     # Call LLM
     try:
@@ -42,7 +43,7 @@ def process_record(record: dict, llm_client: Any, prompt_builder: PromptBuilder)
         annotated_text, json_text = raw_data, '{"entities":[]}'
 
     annotated_text = annotated_text.strip()
-    try: 
+    try:
         entities = json.loads(json_text).get("entities", [])
     except Exception as e:
         logging.error("JSON decode error for Brevid %s: %s", brevid, e, exc_info=True)
@@ -52,12 +53,11 @@ def process_record(record: dict, llm_client: Any, prompt_builder: PromptBuilder)
     logging.debug("--- annotated text ---\n%s", annotated_text)
     logging.debug("--- entities ---\n%s", entities)
 
-    annotated_record = []
-    annotated_record.append(";".join([
+    annotated_record = [";".join([
         bindnr,
         brevid,
         annotated_text
-    ]))
+    ])]
     # INFO: annotated record
     logging.info("--- annotated record ---\n%s", annotated_record)
 

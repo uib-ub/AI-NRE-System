@@ -3,7 +3,21 @@ import tiktoken
 import requests
 import logging
 
-class ClaudeClient:
+from abc import ABC, abstractmethod
+
+class Client(ABC):
+    """
+    Abstract base class for LLM clients
+    """
+    @abstractmethod
+    def call(self, prompt: str) -> str:
+        """
+        Call the LLM with the given prompt and return the response.
+        """
+        pass
+
+
+class ClaudeClient(Client):
     """
     Client for interacting wit Anthropic Claude API
     """
@@ -39,7 +53,7 @@ class ClaudeClient:
             logging.error("Claude API call failed: %s", e, exc_info=True)
             return "Claude API call failed"
 
-class OllamaClient:
+class OllamaClient(Client):
     """
     Client for interacting with Ollama via OpenWebUI API
     """
