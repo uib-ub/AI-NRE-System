@@ -3,13 +3,13 @@ import time
 import logging
 from tqdm import tqdm
 
-from llm_clients import ClaudeClient, OllamaClient
+# from llm_clients import ClaudeClient, OllamaClient
 from config import Config, ConfigError
 from prompts import PromptBuilder
 from io_utils import stream_csv_records, write_metadata_output, write_text_output, CSVReader, OutputWriter
 from processing import process_record
 
-# from llm_clients import create_llm_client
+from llm_clients import create_llm_client
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -34,22 +34,22 @@ def main(args):
     all_metadata= []
 
     # Initialize LLM client
-    # llm_client = create_llm_client(args.model)
+    llm_client = create_llm_client(args.model)
 
-    match args.model:
-        case "claude":
-            llm_client = ClaudeClient(
-                api_key=Config.ANTHROPIC_API_KEY,
-                model=Config.CLAUDE_MODEL
-            )
-        case "ollama":
-            llm_client = OllamaClient(
-                endpoint=Config.OPENWEBUI_ENDPOINT,
-                token=Config.OPENWEBUI_TOKEN,
-                model=Config.OLLAMA_MODEL
-            )
-        case _:
-            raise SystemExit("Please select LLM model by input option --model")
+    # match args.model:
+    #    case "claude":
+    #        llm_client = ClaudeClient(
+    #            api_key=Config.ANTHROPIC_API_KEY,
+    #            model=Config.CLAUDE_MODEL
+    #        )
+    #    case "ollama":
+    #        llm_client = OllamaClient(
+    #            endpoint=Config.OPENWEBUI_ENDPOINT,
+    #            token=Config.OPENWEBUI_TOKEN,
+    #            model=Config.OLLAMA_MODEL
+    #        )
+    #    case _:
+    #        raise SystemExit("Please select LLM model by input option --model")
 
     # Initialize Prompt Builder
     prompt_builder = PromptBuilder(args.prompt_template)
