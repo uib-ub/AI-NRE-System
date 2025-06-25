@@ -99,12 +99,6 @@ class RecordProcessor:
         """
         self.llm_client = llm_client
         self.prompt_builder = prompt_builder
-        self.stats = {
-            'processed': 0,
-            'successful': 0,
-            'failed': 0,
-            'total_processing_time': 0.0
-        }
 
     def process_record(self, record: Dict[str, str]) -> Tuple[List[str], List[str]]:
         """
@@ -158,7 +152,8 @@ class RecordProcessor:
             logging.error("Error during LLM call for Brevid %s: %s", brevid, e, exc_info=True)
             return [], []
 
-    def _validate_record(self, record: Dict[str, str]) -> None:
+    @staticmethod
+    def _validate_record(record: Dict[str, str]) -> None:
         """Validate that the record contains required fields.
 
         Args:
@@ -256,7 +251,8 @@ class RecordProcessor:
         except Exception as e:
             raise LLMResponseError(f"Failed to parse LLM response: {e}") from e
 
-    def _parse_entities_json(self, json_text: str, brevid: str) -> List[EntityRecord]:
+    @staticmethod
+    def _parse_entities_json(json_text: str, brevid: str) -> List[EntityRecord]:
         """Parse the JSON entities section of the LLM response.
 
         Args:
@@ -296,7 +292,8 @@ class RecordProcessor:
         except Exception as e:
             raise LLMResponseError(f"Failed to parse entities JSON for Brevid {brevid}: {e}") from e
 
-    def _build_annotated_record(self, bindnr: str, brevid: str, annotated_text: str) -> List[str]:
+    @staticmethod
+    def _build_annotated_record(bindnr: str, brevid: str, annotated_text: str) -> List[str]:
         """Build annotated text records for output.
 
         Args:
@@ -309,7 +306,8 @@ class RecordProcessor:
         """
         return [";".join([bindnr, brevid, annotated_text])]
 
-    def _build_metadata_record(self, entities: List[EntityRecord], brevid: str) -> List[str]:
+    @staticmethod
+    def _build_metadata_record(entities: List[EntityRecord], brevid: str) -> List[str]:
         """Build metadata records from entities.
 
         Args:
