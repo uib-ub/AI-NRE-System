@@ -14,7 +14,7 @@ from typing import List, Tuple
 from tqdm import tqdm
 
 from config import Config, ConfigError
-from prompts import PromptBuilder, PromptError
+from prompts import GenericPromptBuilder, PromptError
 from io_utils import CSVReader, OutputWriter, IOError
 from processing import RecordProcessor, ValidationError, ProcessingError
 from llm_clients import create_llm_client, Client, LLMClientError
@@ -66,21 +66,21 @@ class MedievalTextProcessor:
         except LLMClientError as e:
             raise ApplicationError(f"Failed to initialize LLM client '{self.args.model}': {e}") from e
 
-    def _initialize_prompt_builder(self) -> PromptBuilder:
+    def _initialize_prompt_builder(self) -> GenericPromptBuilder:
         """Initialize the prompt builder with template file.
 
         Returns:
-            Configured PromptBuilder instance.
+            Configured GenericPromptBuilder instance.
 
         Raises:
             ApplicationError: If prompt builder initialization fails.
         """
         try:
-            prompt_builder = PromptBuilder(self.args.prompt_template)
+            prompt_builder = GenericPromptBuilder(self.args.prompt_template)
             logging.info("Prompt builder initialized with template: %s", self.args.prompt_template)
             return prompt_builder
         except PromptError as e:
-            raise ApplicationError(f"Failed to initialize PromptBuilder: {e}") from e
+            raise ApplicationError(f"Failed to initialize GenericPromptBuilder: {e}") from e
 
     def _initialize_csv_reader(self) -> CSVReader:
         """Initialize the CSV reader for input file.
@@ -235,6 +235,11 @@ def validate_arguments(args: argparse.Namespace) -> None:
     if args.prompt_template and not Path(args.prompt_template).exists():
         raise ValueError(f"Prompt template file does not exist: {args.prompt_template}")
 
+    # Check batch template if batch processing is enabled
+    if args.use_batch:
+        if args.batch_template and not Path(args.batch_template).exists():
+            raise ValueError(f"Batch template file does not exist: {args.batch_template}")
+
     logging.info("Command line arguments validated successfully")
 
 
@@ -306,6 +311,11 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Path to the prompt template file"
     )
     parser.add_argument(
+        "--batch_template",
+        default=Config.BATCH_TEMPLATE_FILE,
+        help="Path to the batch template file"
+    )
+    parser.add_argument(
         "--input",
         default=Config.INPUT_FILE,
         help="Path to the input file"
@@ -319,6 +329,20 @@ def create_argument_parser() -> argparse.ArgumentParser:
         "--output_table",
         default=Config.OUTPUT_TABLE_FILE,
         help="Path for metadata table output"
+    )
+
+    # Batch processing options
+    parser.add_argument(
+        "--use-batch",
+        action="store_true",
+        help="Enable batch processing for better performance"
+    )
+
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=5,
+        help="Number of records to process in each batch (default: 5)"
     )
 
     # Logging

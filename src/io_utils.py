@@ -6,7 +6,6 @@ and write annotated text and metadata outputs.
 
 import csv
 import logging
-from itertools import starmap
 from pathlib import Path
 from typing import List, Dict, Generator, Union
 

@@ -10,7 +10,7 @@ import logging
 
 from dataclasses import dataclass
 from typing import List, Tuple, Dict
-from prompts import PromptBuilder, PromptError
+from prompts import GenericPromptBuilder, PromptError
 from llm_clients import Client
 
 class ProcessingError(Exception):
@@ -86,19 +86,20 @@ class EntityRecord:
         except (ValueError, TypeError) as e:
             raise ValidationError(f"Invalid entity data: {e}") from e
 
-
 class RecordProcessor:
     """Handles processing of individual CSV records through LLM services."""
 
-    def __init__(self, llm_client: Client, prompt_builder: PromptBuilder) -> None:
+    def __init__(self, llm_client: Client, prompt_builder: GenericPromptBuilder) -> None:
         """Initialize the RecordProcessor with LLM client and prompt builder.
 
         Args:
             llm_client: Instance of LLM client (ClaudeClient or OllamaClient)
-            prompt_builder: Instance of PromptBuilder
+            prompt_builder: Instance of SinglePromptBuilder
         """
         self.llm_client = llm_client
         self.prompt_builder = prompt_builder
+
+        # TODO: Initialize batch prompt builder
 
     def process_record(self, record: Dict[str, str]) -> Tuple[List[str], List[str]]:
         """
@@ -113,14 +114,13 @@ class RecordProcessor:
         # Extract required fields from the record
         bindnr = record["Bindnr"]
         brevid = record["Brevid"]
-        text = record["Tekst"]
 
         try:
             # Validate required fields
             self._validate_record(record)
 
             # Build prompt
-            prompt = self._build_prompt(brevid, text)
+            prompt = self._build_prompt(record)
             # DEBUG: prompt
             logging.debug("--- Prompt ---\n%s", prompt)
 
@@ -152,6 +152,10 @@ class RecordProcessor:
             logging.error("Error during LLM call for Brevid %s: %s", brevid, e, exc_info=True)
             return [], []
 
+    # TODO: process_batch: Process multiple records in a single LLM call.
+    # TODO: _parse_batch_response: Parse batch LLM response into individual record results.
+    # TODO: _process_records_individually: Fallback method to process records individually.
+
     @staticmethod
     def _validate_record(record: Dict[str, str]) -> None:
         """Validate that the record contains required fields.
@@ -175,13 +179,11 @@ class RecordProcessor:
         if not record["Tekst"].strip():
             raise ValidationError("Tekst cannot be empty")
 
-    def _build_prompt(self, brevid: str, text: str) -> str:
+    def _build_prompt(self, record: Dict[str, str]) -> str:
         """Build prompt using the prompt builder.
 
         Args:
-            brevid: The Brevid identifier.
-            text: The medieval text.
-
+            record: Dict with keys "Brevid" and "Tekst"
         Returns:
             Formatted prompt string.
 
@@ -189,17 +191,16 @@ class RecordProcessor:
             ProcessingError: If prompt building fails.
         """
         try:
-            prompt = self.prompt_builder.build(brevid, text)
-            logging.debug("Built prompt for Brevid %s (length: %d)", brevid, len(prompt))
+            prompt = self.prompt_builder.build(record)
             return prompt
         except (PromptError, ValueError) as e:
             raise ProcessingError(f"Failed to build prompt: {e}") from e
 
-    def _call_llm(self, brevid: str, prompt: str) -> str:
+    def _call_llm(self, identifier: str, prompt: str) -> str:
         """Call the LLM service with the prompt.
 
         Args:
-            brevid: The Brevid identifier for logging.
+            identifier: Identifier for logging (brevid or batch_id).
             prompt: The prompt to send.
 
         Returns:
@@ -209,16 +210,16 @@ class RecordProcessor:
             ProcessingError: If LLM call fails.
         """
         try:
-            logging.debug("Calling LLM for Brevid %s", brevid)
+            logging.debug("Calling LLM for %s", identifier)
             raw_response = self.llm_client.call(prompt)
 
             if not raw_response or raw_response.strip() in ["Claude API call failed", "Ollama API call failed"]:
                 raise ProcessingError("LLM returned error response")
 
-            logging.debug("Received LLM response for Brevid %s (length: %d)", brevid, len(raw_response))
+            logging.debug("Received LLM response for %s (length: %d)", identifier, len(raw_response))
             return raw_response
         except Exception as e:
-            raise ProcessingError(f"Error during LLM call for Brevid {brevid}: {e}") from e
+            raise ProcessingError(f"Error during LLM call for {identifier}: {e}") from e
 
     def _parse_llm_response(self, brevid: str, raw_response: str) -> Tuple[str, List[EntityRecord]]:
         """Parse the raw LLM response into annotated text and entities.
@@ -236,7 +237,7 @@ class RecordProcessor:
         try:
             # Split response into annotated text and JSON structure
             if "===JSON===" in raw_response:
-                annotated_text, json_text = raw_response.split("===JSON===")
+                annotated_text, json_text = raw_response.split("===JSON===", 1)
             else:
                 logging.warning("No JSON marker found in response for Brevid %s", brevid)
                 annotated_text, json_text = raw_response, '{"entities":[]}'
@@ -260,7 +261,6 @@ class RecordProcessor:
             brevid: The Brevid identifier for logging.
 
         Returns:
-            # List of entity dictionaries.
             List of EntityRecord objects.
 
         Raises:
