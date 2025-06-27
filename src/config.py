@@ -36,6 +36,7 @@ class Config:
         OUTPUT_TEXT_FILE: Path to the output text file for annotated records.
         OUTPUT_TABLE_FILE: Path to the output table file for metadata.
         PROMPT_TEMPLATE_FILE: Path to the prompt template file.
+        BATCH_TEMPLATE_FILE: Path to the batch processing template file.
         CACHE_DIR: Directory for caching LLM responses, defaults to ".cache_llm".
     """
 
@@ -54,6 +55,7 @@ class Config:
     OUTPUT_TEXT_FILE: Optional[str] = os.getenv("OUTPUT_TEXT_FILE")
     OUTPUT_TABLE_FILE: Optional[str] = os.getenv("OUTPUT_TABLE_FILE")
     PROMPT_TEMPLATE_FILE: Optional[str] = os.getenv("PROMPT_TEMPLATE_FILE")
+    BATCH_TEMPLATE_FILE: Optional[str] = os.getenv("BATCH_TEMPLATE_FILE")
 
     # CACHE_DIR has a default value
     CACHE_DIR: Path = Path(os.getenv("CACHE_DIR", ".cache_llm"))
@@ -127,6 +129,14 @@ class Config:
             if not prompt_path.exists():
                 raise ConfigError(
                     f'Prompt template file does not exist: {cls.PROMPT_TEMPLATE_FILE}'
+                )
+
+        # Validate batch template file if specified
+        if cls.BATCH_TEMPLATE_FILE:
+            batch_path = Path(cls.BATCH_TEMPLATE_FILE)
+            if not batch_path.exists():
+                raise ConfigError(
+                    f'Batch template file does not exist: {cls.BATCH_TEMPLATE_FILE}'
                 )
 
     @classmethod

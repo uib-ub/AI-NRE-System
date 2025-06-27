@@ -9,12 +9,12 @@ import time
 import logging
 import sys
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 
 from tqdm import tqdm
 
 from config import Config, ConfigError
-from prompts import PromptBuilder, PromptError
+from prompts import PromptBuilder, GenericPromptBuilder, PromptError
 from io_utils import CSVReader, OutputWriter, IOError
 from processing import RecordProcessor, ValidationError, ProcessingError
 from llm_clients import create_llm_client, Client, LLMClientError
@@ -66,18 +66,27 @@ class MedievalTextProcessor:
         except LLMClientError as e:
             raise ApplicationError(f"Failed to initialize LLM client '{self.args.model}': {e}") from e
 
+    # TODO: modify this method to handle batch processing
     def _initialize_prompt_builder(self) -> PromptBuilder:
         """Initialize the prompt builder with template file.
 
         Returns:
-            Configured PromptBuilder instance.
+            Configured PromptBuilder instance that can handle both single and batch processing.
 
         Raises:
             ApplicationError: If prompt builder initialization fails.
         """
         try:
-            prompt_builder = PromptBuilder(self.args.prompt_template)
-            logging.info("Prompt builder initialized with template: %s", self.args.prompt_template)
+            # Determine which template to use based on whether batch processing is enabled
+            if self.args.use_batch:
+                template_file = self.args.batch_template or Config.BATCH_TEMPLATE_FILE
+                logging.info("Using batch prompt template: %s", template_file)
+            else:
+                template_file = self.args.prompt_template or Config.PROMPT_TEMPLATE_FILE
+                logging.info("Using single prompt template: %s", template_file)
+
+            prompt_builder = GenericPromptBuilder(template_file)
+            logging.info("Prompt builder initialized with template: %s", template_file)
             return prompt_builder
         except PromptError as e:
             raise ApplicationError(f"Failed to initialize PromptBuilder: {e}") from e
@@ -99,8 +108,9 @@ class MedievalTextProcessor:
         except IOError as e:
             raise ApplicationError(f"Failed to initialize CSV reader: {e}") from e
 
+    # TODO: modify this method to handle batch processing
     def process_all_records(self) -> Tuple[List[str], List[str]]:
-        """Process all records from the input CSV file.
+        """Process all records from the input CSV file using streaming approach.
 
         Returns:
             Tuple of (all_annotations, all_metadata).
@@ -108,48 +118,217 @@ class MedievalTextProcessor:
         Raises:
             ApplicationError: If critical processing error occurs.
         """
-        all_annotations: List[str] = []
-        all_metadata: List[str] = []
-
         try:
             logging.info("Starting to process records from: %s", self.reader.file_path)
-            # Process each record with progress bar
 
-            for record in tqdm(self.reader.stream_records(), desc="Processing Records"):
-                try:
-                    brevid = record.get("Brevid", "unknown")
-                    logging.info("Processing Record with Brevid: %s", brevid)
-                    logging.debug("Record data: %s", record)  # DEBUG: print each record
+            batch_size = self.args.batch_size if self.args.use_batch else 1
 
-                    # Process the record
-                    annotated_record, metadata_record = self.processor.process_record(record)
-
-                    # Collect results
-                    all_annotations.extend(annotated_record)
-                    all_metadata.extend(metadata_record)
-
-                    logging.debug("Successfully processed Brevid %s: %d annotations, %d metadata",
-                                 brevid, len(annotated_record), len(metadata_record))
-
-                except ValidationError as e:
-                    brevid = record.get("Brevid", "unknown")
-                    logging.error("Validation error for Brevid %s: %s", brevid, e)
-                except ProcessingError as e:
-                    brevid = record.get("Brevid", "unknown")
-                    logging.error("Processing error for Brevid %s: %s", brevid, e)
-                except Exception as e:
-                    brevid = record.get("Brevid", "unknown")
-                    logging.error("error processing record with Brevid %s: %s", brevid, e, exc_info=True)
-
-                # Rate limiting
-                time.sleep(0.2)
-
+            # Process records with unified streaming approach
+            all_annotations, all_metadata = self._process_records_streaming(batch_size)
             logging.info("Completed processing all records")
-
             return all_annotations, all_metadata
 
         except Exception as e:
             raise ApplicationError(f"Critical error during file processing: {e}") from e
+
+    def _process_records_streaming(self, batch_size: int) -> Tuple[List[str], List[str]]:
+        """Process records using streaming approach with configurable batch size.
+
+        Args:
+            batch_size: Number of records to process together (1 = individual processing)
+
+        Returns:
+            Tuple of (all_annotations, all_metadata).
+        """
+        all_annotations: List[str] = []
+        all_metadata: List[str] = []
+
+        batch_records = [] # a batch of records to process together
+        batch_count = 0 # counter for the number of batches processed
+
+        processing_mode = "batch" if batch_size > 1 else "individual"
+
+        logging.info("Using %s processing (batch_size=%d)", processing_mode, batch_size)
+
+        for record in tqdm(self.reader.stream_records(), desc=f"Processing Records ({processing_mode} mode)"):
+            batch_records.append(record)
+
+            # Process when batch is full or for individual processing (batch_size=1)
+            if len(batch_records) >= batch_size:
+                batch_count += 1
+
+                try:
+                    # Process the batch/record
+                    if batch_size == 1:
+                        # Individual processing
+                        record = batch_records[0]
+                        brevid = record.get("Brevid", "unknown")
+                        logging.info("Processing Record with Brevid: %s", brevid)
+                        logging.debug("Record data: %s", record)
+
+                        annotated_records, metadata_records = self.processor.process_record(record)
+                    else:
+                        # Batch processing
+                        logging.info("Processing batch %d with %d records", batch_count, len(batch_records))
+                        annotated_records, metadata_records = self.processor.process_batch(batch_records)
+
+                    # Collect results
+                    all_annotations.extend(annotated_records)
+                    all_metadata.extend(metadata_records)
+
+                    logging.debug("Successfully processed %s: %d annotations, %d metadata",
+                              f"Brevid {brevid}" if batch_size == 1 else f"batch {batch_count}",
+                              len(annotated_records), len(metadata_records))
+
+                except Exception as e:
+                    if batch_size == 1:
+                        # Individual processing error
+                        brevid = batch_records[0].get("Brevid", "unknown")
+                        logging.error("Error processing Brevid %s: %s", brevid, e)
+                        self._handle_individual_error(batch_records[0], e)
+                    else:
+                        # Batch processing error - fallback to individual processing
+                        logging.error("Error processing batch %d: %s", batch_count, e)
+                        logging.info("Falling back to individual processing for batch %d", batch_count)
+
+                        # Process each record in the failed batch individually
+                        for record in batch_records:
+                            annotated_record, metadata_record = self._fallback_to_individual_processing(record)
+                            all_annotations.extend(annotated_record)
+                            all_metadata.extend(metadata_record)
+
+                # Clear batch records after processing
+                batch_records = []
+                time.sleep(0.2)
+
+        # Process any remaining records in the final partial batch
+        if batch_records:
+            batch_count += 1
+
+            # Use a separate tqdm for final batch processing
+            with tqdm(total=len(batch_records), desc=f"Final {processing_mode} batch") as final_pbar:
+                try:
+                    if batch_size == 1:
+                        # This shouldn't happen since we process immediately, but we still handle it
+                        for record in batch_records:
+                            annotated_records, metadata_records = self.processor.process_record(record)
+                            all_annotations.extend(annotated_records)
+                            all_metadata.extend(metadata_records)
+
+                            final_pbar.set_description(f"Final record: {brevid}")
+                            final_pbar.update(1)
+                    else:
+                        # Process the final batch
+                        logging.info("Processing final batch %d with %d records", batch_count, len(batch_records))
+                        annotated_records, metadata_records = self.processor.process_batch(batch_records)
+                        all_annotations.extend(annotated_records)
+                        all_metadata.extend(metadata_records)
+
+                        final_pbar.set_description(f"Final batch ({len(batch_records)} records)")
+                        final_pbar.update(len(batch_records))
+
+                        logging.debug("Successfully processed final batch: %d annotations, %d metadata",
+                                      len(annotated_records), len(metadata_records))
+                except Exception as e:
+                    logging.error("Error processing final batch: %s", e)
+                    # Fallback to individual processing for remaining records
+                    final_pbar.set_description("Final batch fallback")
+                    for record in batch_records:
+                        annotated_record, metadata_record = self._fallback_to_individual_processing(record)
+                        all_annotations.extend(annotated_record)
+                        all_metadata.extend(metadata_record)
+                        final_pbar.update(1)
+
+        return all_annotations, all_metadata
+
+    def _fallback_to_individual_processing(self, record: Dict[str, str]) -> Tuple[List[str], List[str]]:
+        """Fallback to individual processing when doing a batch of records.
+
+        Args:
+            record: record that failed to process in a batch processing.
+
+        Returns:
+            Tuple of (annotated_record, metadata_record) for the individual record.
+        """
+        logging.info("Falling back to individual processing for record", record)
+
+        annotated_record, metadata_record = [], []
+
+        try:
+            annotated_record, metadata_record = self.processor.process_record(record)
+        except Exception as e:
+            brevid = record.get("Brevid", "unknown")
+            logging.error("Error in fallback processing for Brevid %s: %s", brevid, e)
+            self._handle_individual_error(record, e)
+
+        return annotated_record, metadata_record
+
+    def _handle_individual_error(self, record: Dict[str, str], error: Exception) -> None:
+        """Handle errors that occur during individual record processing.
+
+        Args:
+            record: The record that failed to process.
+            error: The exception that occurred.
+        """
+        brevid = record.get("Brevid", "unknown")
+        if isinstance(error, ValidationError):
+            logging.error("Validation error for Brevid %s: %s", brevid, error)
+        elif isinstance(error, ProcessingError):
+            logging.error("Processing error for Brevid %s: %s", brevid, error)
+        else:
+            logging.error("Unexpected error processing Brevid %s: %s", brevid, error, exc_info=True)
+
+    # def process_all_records(self) -> Tuple[List[str], List[str]]:
+    #     """Process all records from the input CSV file using streaming approach.
+
+    #     Returns:
+    #         Tuple of (all_annotations, all_metadata).
+
+    #     Raises:
+    #         ApplicationError: If critical processing error occurs.
+    #     """
+    #     all_annotations: List[str] = []
+    #     all_metadata: List[str] = []
+
+    #     try:
+    #         logging.info("Starting to process records from: %s", self.reader.file_path)
+    #         # Process each record with progress bar
+
+    #         for record in tqdm(self.reader.stream_records(), desc="Processing Records"):
+    #             try:
+    #                 brevid = record.get("Brevid", "unknown")
+    #                 logging.info("Processing Record with Brevid: %s", brevid)
+    #                 logging.debug("Record data: %s", record)  # DEBUG: print each record
+
+    #                 # Process the record
+    #                 annotated_record, metadata_record = self.processor.process_record(record)
+
+    #                 # Collect results
+    #                 all_annotations.extend(annotated_record)
+    #                 all_metadata.extend(metadata_record)
+
+    #                 logging.debug("Successfully processed Brevid %s: %d annotations, %d metadata",
+    #                              brevid, len(annotated_record), len(metadata_record))
+
+    #             except ValidationError as e:
+    #                 brevid = record.get("Brevid", "unknown")
+    #                 logging.error("Validation error for Brevid %s: %s", brevid, e)
+    #             except ProcessingError as e:
+    #                 brevid = record.get("Brevid", "unknown")
+    #                 logging.error("Processing error for Brevid %s: %s", brevid, e)
+    #             except Exception as e:
+    #                 brevid = record.get("Brevid", "unknown")
+    #                 logging.error("error processing record with Brevid %s: %s", brevid, e, exc_info=True)
+
+    #             # Rate limiting
+    #             time.sleep(0.2)
+
+    #         logging.info("Completed processing all records")
+
+    #         return all_annotations, all_metadata
+
+    #     except Exception as e:
+    #         raise ApplicationError(f"Critical error during file processing: {e}") from e
 
     def write_output(self, annotations: List[str], metadata: List[str]) -> None:
         """Write processed data to output files.
@@ -235,6 +414,11 @@ def validate_arguments(args: argparse.Namespace) -> None:
     if args.prompt_template and not Path(args.prompt_template).exists():
         raise ValueError(f"Prompt template file does not exist: {args.prompt_template}")
 
+    # Check batch template if batch processing is enabled
+    if args.use_batch:
+        if args.batch_template and not Path(args.batch_template).exists():
+            raise ValueError(f"Batch template file does not exist: {args.batch_template}")
+
     logging.info("Command line arguments validated successfully")
 
 
@@ -301,9 +485,14 @@ def create_argument_parser() -> argparse.ArgumentParser:
 
     # File paths
     parser.add_argument(
-        "--prompt_template",
+        "--prompt-template",
         default=Config.PROMPT_TEMPLATE_FILE,
         help="Path to the prompt template file"
+    )
+    parser.add_argument(
+        "--batch-template",
+        default=Config.BATCH_TEMPLATE_FILE,
+        help="Path to the batch template file"
     )
     parser.add_argument(
         "--input",
@@ -311,14 +500,28 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Path to the input file"
     )
     parser.add_argument(
-        "--output_text",
+        "--output-text",
         default=Config.OUTPUT_TEXT_FILE,
         help="Path for annotated text output"
     )
     parser.add_argument(
-        "--output_table",
+        "--output-table",
         default=Config.OUTPUT_TABLE_FILE,
         help="Path for metadata table output"
+    )
+
+    # Batch processing options
+    parser.add_argument(
+        "--use-batch",
+        action="store_true",
+        help="Enable batch processing for better performance"
+    )
+
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=5,
+        help="Number of records to process in each batch (default: 5)"
     )
 
     # Logging
