@@ -54,7 +54,7 @@ class ClaudeClient(Client):
     def __init__(self,
         api_key: str,
         model: str,
-        max_tokens: int = 3500,
+        max_tokens: int = 20000,
         temperature: float = 0.0,
     ) -> None:
         """Initialize Claude client.

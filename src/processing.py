@@ -10,7 +10,7 @@ import logging
 
 from dataclasses import dataclass
 from typing import List, Tuple, Dict
-from prompts import GenericPromptBuilder, PromptError
+from prompts import PromptBuilder, PromptError
 from llm_clients import Client
 
 class ProcessingError(Exception):
@@ -89,7 +89,7 @@ class EntityRecord:
 class RecordProcessor:
     """Handles processing of individual CSV records through LLM services."""
 
-    def __init__(self, llm_client: Client, prompt_builder: GenericPromptBuilder) -> None:
+    def __init__(self, llm_client: Client, prompt_builder: PromptBuilder) -> None:
         """Initialize the RecordProcessor with LLM client and prompt builder.
 
         Args:
@@ -98,8 +98,6 @@ class RecordProcessor:
         """
         self.llm_client = llm_client
         self.prompt_builder = prompt_builder
-
-        # TODO: Initialize batch prompt builder
 
     def process_record(self, record: Dict[str, str]) -> Tuple[List[str], List[str]]:
         """
@@ -119,15 +117,13 @@ class RecordProcessor:
             # Validate required fields
             self._validate_record(record)
 
-            # Build prompt
-            prompt = self._build_prompt(record)
-            # DEBUG: prompt
+            # prompt = self._build_prompt(record)
+            # Build prompt using the prompt builder (single record)
+            prompt = self.prompt_builder.build(record)
             logging.debug("--- Prompt ---\n%s", prompt)
 
             # Call LLM
             raw_response = self._call_llm(brevid, prompt)
-            # raw_data = self.llm_client.call(prompt)
-            # DEBUG: raw data
             logging.debug("--- RAW RESPONSE for Brevid %s ---\n%s", brevid, raw_response)
 
             # Parse response
@@ -139,11 +135,9 @@ class RecordProcessor:
 
             # Build output records
             annotated_record = self._build_annotated_record(bindnr, brevid, annotated_text)
-            # INFO: annotated record
-            logging.info("--- annotated record ---\n%s", annotated_record)
-
             metadata_record = self._build_metadata_record(entities, brevid)
-            # INFO: metadata
+
+            logging.info("--- annotated record ---\n%s", annotated_record)
             logging.info("--- metadata ---\n%s", metadata_record)
 
             return annotated_record, metadata_record
@@ -153,7 +147,123 @@ class RecordProcessor:
             return [], []
 
     # TODO: process_batch: Process multiple records in a single LLM call.
+    def process_batch(self, records: List[Dict[str, str]]) -> Tuple[List[str], List[str]]:
+        """Process multiple records in a single LLM call.
+
+        Args:
+            records: List of record dictionaries to process.
+
+        Returns:
+            Tuple of (all_annotated_records, all_metadata_records).
+        """
+
+        if not records:
+            return [], []
+
+        try:
+            # Validate all records
+            for record in records:
+                self._validate_record(record)
+
+            # Build batch prompt using the prompt builder (list of records)
+            batch_prompt = self.prompt_builder.build(records)
+            logging.debug("--- Prompt ---\n%s", batch_prompt)
+
+            # Call LLM with batch prompt
+            brevids = [record['Brevid'] for record in records]
+            batch_id = f"BATCH-{'-'.join(brevids[:3])}..." if len(brevids) > 3 else f"BATCH-{'-'.join(brevids)}"
+
+            raw_response = self._call_llm(batch_id, batch_prompt)
+            logging.debug("Received batch response (length: %d)", len(raw_response))
+            logging.debug("--- RAW RESPONSE for batch %s ---\n%s", batch_id, raw_response)
+
+            # Parse batch response
+            annotated_records, metadata_records = self._parse_batch_response(records, raw_response)
+
+            logging.info("Successfully processed batch of %d records: %d annotations, %d metadata",
+                         len(records), len(annotated_records), len(metadata_records))
+
+            return annotated_records, metadata_records
+
+        except Exception as e:
+            logging.error("Error during batch processing: %s", e, exc_info=True)
+            raise  # Let the caller handle fallback
+
     # TODO: _parse_batch_response: Parse batch LLM response into individual record results.
+    def _parse_batch_response(self, records: List[Dict[str, str]],
+                              raw_response: str) -> Tuple[List[str], List[str]]:
+        """Parse batch LLM response into individual record results.
+
+        Args:
+            records: Original records list for reference.
+            raw_response: Raw response string from LLM.
+
+        Returns:
+            Tuple of (annotated_records, metadata_records).
+        """
+        all_annotated_records = []
+        all_metadata_records = []
+
+        try:
+            # Split response by RECORD markers
+            record_sections = raw_response.split('RECORD ')[1:]  # Skip empty first element
+
+            if len(record_sections) != len(records):
+                logging.warning("Expected %d record sections, found %d. Processing available sections.",
+                                len(records), len(record_sections))
+
+            # Process each record section
+            for i, section in enumerate(record_sections):
+                logging.debug("record index %d, section: %s", i, section)
+
+                if i >= len(records):
+                    break
+
+                try:
+                    record = records[i]
+                    bindnr = record["Bindnr"]
+                    brevid = record["Brevid"]
+
+                    logging.debug("Processing record %d: Bindnr=%s, Brevid=%s", i, bindnr, brevid)
+                    # Extract result content (after "RESULT:")
+                    if 'RESULT:' in section:
+                        logging.debug("Found RESULT marker in section for Brevid %s and record index %d", brevid, i)
+                        result_content = section.split('RESULT:', 1)[1]
+                    else:
+                        logging.warning("No RESULT marker found in section for Brevid %s and record index %d", brevid, i)
+                        result_content = section
+
+                    # Parse as single record response
+                    annotated_text, entities = self._parse_llm_response(brevid, result_content)
+
+                    # Build output records
+                    annotated_record = self._build_annotated_record(bindnr, brevid, annotated_text)
+                    metadata_record = self._build_metadata_record(entities, brevid)
+
+                    logging.info("--- annotated record ---\n%s", annotated_record)
+                    logging.info("--- metadata ---\n%s", metadata_record)
+
+                    all_annotated_records.extend(annotated_record)
+                    all_metadata_records.extend(metadata_record)
+
+                except Exception as e:
+                    logging.error("Error parsing record %d in batch: %s", i + 1, e)
+                    # Add empty record to maintain order
+                    record = records[i]
+                    empty_record = f"{record['Bindnr']};{record['Brevid']};{record['Tekst']}"
+                    all_annotated_records.append(empty_record)
+
+            return all_annotated_records, all_metadata_records
+
+        except Exception as e:
+            logging.error("Error parsing batch response: %s", e)
+            # Return original records as fallback
+            fallback_records = []
+            for record in records:
+                fallback_record = f"{record['Bindnr']};{record['Brevid']};{record['Tekst']}"
+                fallback_records.append(fallback_record)
+            return fallback_records, []
+
     # TODO: _process_records_individually: Fallback method to process records individually.
 
     @staticmethod
@@ -179,22 +289,22 @@ class RecordProcessor:
         if not record["Tekst"].strip():
             raise ValidationError("Tekst cannot be empty")
 
-    def _build_prompt(self, record: Dict[str, str]) -> str:
-        """Build prompt using the prompt builder.
+    # def _build_prompt(self, record: Dict[str, str]) -> str:
+    #     """Build prompt using the prompt builder.
 
-        Args:
-            record: Dict with keys "Brevid" and "Tekst"
-        Returns:
-            Formatted prompt string.
+    #     Args:
+    #         record: Dict with keys "Brevid" and "Tekst"
+    #     Returns:
+    #         Formatted prompt string.
 
-        Raises:
-            ProcessingError: If prompt building fails.
-        """
-        try:
-            prompt = self.prompt_builder.build(record)
-            return prompt
-        except (PromptError, ValueError) as e:
-            raise ProcessingError(f"Failed to build prompt: {e}") from e
+    #     Raises:
+    #         ProcessingError: If prompt building fails.
+    #     """
+    #     try:
+    #         prompt = self.prompt_builder.build(record)
+    #         return prompt
+    #     except (PromptError, ValueError) as e:
+    #         raise ProcessingError(f"Failed to build prompt: {e}") from e
 
     def _call_llm(self, identifier: str, prompt: str) -> str:
         """Call the LLM service with the prompt.
@@ -286,7 +396,6 @@ class RecordProcessor:
                     continue
             # TODO: DEBUG: log entities
             logging.info("Parsed %d valid entities for Brevid %s", len(entities), brevid)
-
             return entities
 
         except Exception as e:

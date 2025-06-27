@@ -1,0 +1,54 @@
+STRICT OUTPUT FORMAT ENFORCEMENT:
+- DO NOT add any explanations, comments, or extra sentences
+- DO NOT write “here is the result” or similar phrasing
+- DO NOT include headings, summaries, or notes
+- DO NOT truncate any part of the output
+
+ONLY return output in the EXACT format shown below
+
+---
+
+Process the following {num_records} medieval text records in a single batch.
+
+{batch_content}
+
+For each record above:
+1. Markup all PROPER NOUNS by wrapping as: < name;type;order;brevid >
+   - `name` is the proper noun itself,
+   - `type` is the type of proper noun, such as Person Name, Place Name, etc.,
+   - `order` is the order of occurrence of the proper noun in the text,
+   - `brevid` is the number from the value of field 'Brevid'.
+2. Provide metadata with:
+   - `description`: status/occupation for people, type for places
+   - `gender`: "Male", "Female", or "N/A" (if not a person)
+   - `language`: ISO 639-3 code (e.g. "lat" for Latin, "non" for Old Norse)
+
+RESPONSE FORMAT — STRICTLY FOLLOW THIS:
+
+RECORD 1 RESULT:
+[Full annotated text for record 1 with proper nouns wrapped]
+
+===JSON===
+{{
+  "entities": [
+    {{
+      "name": "...",
+      "type": "...",
+      "order": X,
+      "brevid": "...",
+      "description": "...",
+      "gender": "...",
+      "language": "..."
+    }}
+  ]
+}}
+
+RECORD 2 RESULT:
+[Full annotated text for record 2 with proper nouns wrapped]
+
+===JSON===
+{{
+  "entities": [...]
+}}
+
+[Continue this pattern for all {num_records} records with no skipped text or commentary.]
