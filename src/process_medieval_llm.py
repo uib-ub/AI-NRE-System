@@ -141,7 +141,7 @@ class MedievalTextProcessor:
         all_annotations: List[str] = []
         all_metadata: List[str] = []
 
-        batch_records = [] # a batch of records to process together
+        batch_records: List[Dict[str, str]] = [] # a batch of records to process together
         batch_count = 0 # counter for the number of batches processed
 
         processing_mode = "batch" if batch_size > 1 else "individual"
@@ -155,45 +155,14 @@ class MedievalTextProcessor:
             if len(batch_records) >= batch_size:
                 batch_count += 1
 
-                try:
-                    # Process the batch/record
-                    if batch_size == 1:
-                        # Individual processing
-                        record = batch_records[0]
-                        brevid = record.get("Brevid", "unknown")
-                        logging.info('Processing Record with Brevid: %s', brevid)
-                        logging.debug('Record data: %s', record)
+                annotated_records, metadata_records = self._process_batch(batch_records, batch_count, batch_size)
+                # Collect results
+                all_annotations.extend(annotated_records)
+                all_metadata.extend(metadata_records)
 
-                        annotated_records, metadata_records = self.processor.process_record(record)
-                    else:
-                        # Batch processing
-                        logging.info('Processing batch %d with %d records', batch_count, len(batch_records))
-                        annotated_records, metadata_records = self.processor.process_batch(batch_records)
-
-                    # Collect results
-                    all_annotations.extend(annotated_records)
-                    all_metadata.extend(metadata_records)
-
-                    logging.debug('Successfully processed %s: %d annotations, %d metadata',
-                              f'Brevid {brevid}' if batch_size == 1 else f'batch {batch_count}',
-                              len(annotated_records), len(metadata_records))
-
-                except Exception as e:
-                    if batch_size == 1:
-                        # Individual processing error
-                        brevid = batch_records[0].get("Brevid", "unknown")
-                        logging.error('Error processing Brevid %s: %s', brevid, e)
-                        self._handle_individual_error(batch_records[0], e)
-                    else:
-                        # Batch processing error - fallback to individual processing
-                        logging.error('Error processing batch %d: %s', batch_count, e)
-                        logging.info('Falling back to individual processing for batch %d', batch_count)
-
-                        # Process each record in the failed batch individually
-                        for record in batch_records:
-                            annotated_record, metadata_record = self._fallback_to_individual_processing(record)
-                            all_annotations.extend(annotated_record)
-                            all_metadata.extend(metadata_record)
+                logging.debug('Successfully processed %s: %d annotations, %d metadata',
+                            f'Brevid {brevid}' if batch_size == 1 else f'batch {batch_count}',
+                            len(annotated_records), len(metadata_records))
 
                 # Clear batch records after processing
                 batch_records = []
@@ -202,42 +171,134 @@ class MedievalTextProcessor:
         # Process any remaining records in the final partial batch
         if batch_records:
             batch_count += 1
-
-            # Use a separate tqdm for final batch processing
-            with tqdm(total=len(batch_records), desc=f'Final {processing_mode} batch') as final_pbar:
-                try:
-                    if batch_size == 1:
-                        # This shouldn't happen since we process immediately, but we still handle it
-                        for record in batch_records:
-                            annotated_records, metadata_records = self.processor.process_record(record)
-                            all_annotations.extend(annotated_records)
-                            all_metadata.extend(metadata_records)
-
-                            final_pbar.set_description(f'Final record: {brevid}')
-                            final_pbar.update(1)
-                    else:
-                        # Process the final batch
-                        logging.info('Processing final batch %d with %d records', batch_count, len(batch_records))
-                        annotated_records, metadata_records = self.processor.process_batch(batch_records)
-                        all_annotations.extend(annotated_records)
-                        all_metadata.extend(metadata_records)
-
-                        final_pbar.set_description(f'Final batch ({len(batch_records)} records)')
-                        final_pbar.update(len(batch_records))
-
-                        logging.debug('Successfully processed final batch: %d annotations, %d metadata',
-                                      len(annotated_records), len(metadata_records))
-                except Exception as e:
-                    logging.error('Error processing final batch: %s', e)
-                    # Fallback to individual processing for remaining records
-                    final_pbar.set_description('Final batch fallback')
-                    for record in batch_records:
-                        annotated_record, metadata_record = self._fallback_to_individual_processing(record)
-                        all_annotations.extend(annotated_record)
-                        all_metadata.extend(metadata_record)
-                        final_pbar.update(1)
+            annotations, metadata = self._process_final_batch(batch_records, batch_count, batch_size, processing_mode)
+            all_annotations.extend(annotations)
+            all_metadata.extend(metadata)
 
         return all_annotations, all_metadata
+
+    def _process_batch(
+        self,
+        batch_records: List[Dict[str, str]],
+        batch_count: int,
+        batch_size: int
+    ) -> Tuple[List[str], List[str]]:
+        """Process a batch of records, handling both individual and batch modes.
+
+        Args:
+            batch_records: The list of records to process.
+            batch_count: The current batch number.
+            batch_size: The size of the batch.
+
+        Returns:
+            A tuple containing a list of annotation strings and a list of metadata strings.
+
+        Raises:
+            Any exception raised by the underlying processor will be handled by _handle_batch_exception.
+        """
+        try:
+            # Process the batch/record
+            if batch_size == 1:
+                # Individual processing
+                individual_record = batch_records[0]
+                brevid = record.get("Brevid", "unknown")
+                logging.info('Processing Record with Brevid: %s', brevid)
+                logging.debug('Individual record data: %s', individual_record)
+                return self.processor.process_record(individual_record)
+            else:
+                # Batch processing
+                logging.info('Processing batch %d with %d records', batch_count, len(batch_records))
+                return self.processor.process_batch(batch_records)
+        except Exception as e:
+            return self._handle_batch_exception(batch_records, batch_count, batch_size, e)
+
+    def _handle_batch_exception(
+        self,
+        batch_records: List[Dict[str, str]],
+        batch_count: int,
+        batch_size: int,
+        error: Exception
+    ) -> Tuple[List[str], List[str]]:
+        """Handle exceptions during batch processing, with fallback to individual processing if needed.
+
+        Args:
+            batch_records: The list of records in the batch.
+            batch_count: The current batch number.
+            batch_size: The size of the batch.
+            error: The exception that was raised.
+
+        Returns:
+            A tuple containing a list of annotation strings and a list of metadata strings.
+        """
+        if batch_size == 1:
+            # Individual processing error
+            brevid = batch_records[0].get("Brevid", "unknown")
+            logging.error('Error processing Brevid %s: %s', brevid, error)
+            self._handle_individual_error(batch_records[0], error)
+            return [], []
+        else:
+            # Batch processing error - fallback to individual processing
+            logging.error('Error processing batch %d: %s', batch_count, e)
+            logging.info('Falling back to individual processing for batch %d', batch_count)
+            annotations: List[str] = []
+            metadata: List[str] = []
+            # Process each record in the failed batch individually
+            for record in batch_records:
+                annotated_record, metadata_record = self._fallback_to_individual_processing(record)
+                annotations.extend(annotated_record)
+                metadata.extend(metadata_record)
+            return annotations, metadata
+
+    def _process_final_batch(
+        self,
+        batch_records: List[Dict[str, str]],
+        batch_count: int,
+        batch_size: int,
+        processing_mode: str
+    ) -> Tuple[List[str], List[str]]:
+        """Process the final (possibly partial) batch of records.
+
+        Args:
+            batch_records: The list of records in the final batch.
+            batch_count: The current batch number.
+            batch_size: The size of the batch.
+            processing_mode: The processing mode ("batch" or "individual").
+
+        Returns:
+            A tuple containing a list of annotation strings and a list of metadata strings.
+        """
+        annotations: List[str] = []
+        metadata: List[str] = []
+        with tqdm(total=len(batch_records), desc=f'Final {processing_mode} batch') as final_pbar:
+            try:
+                if batch_size == 1:
+                    # This shouldn't happen since we process immediately, but we still handle it
+                    for record in batch_records:
+                        annotated_records, metadata_records = self.processor.process_record(record)
+                        annotations.extend(annotated_records)
+                        metadata.extend(metadata_records)
+                        final_pbar.set_description(f'Final record: {brevid}')
+                        final_pbar.update(1)
+                else:
+                    # Process the final batch
+                    logging.info('Processing final batch %d with %d records', batch_count, len(batch_records))
+                    annotated_records, metadata_records = self.processor.process_batch(batch_records)
+                    annotations.extend(annotated_records)
+                    metadata.extend(metadata_records)
+                    final_pbar.set_description(f'Final batch ({len(batch_records)} records)')
+                    final_pbar.update(len(batch_records))
+                    logging.debug('Successfully processed final batch: %d annotations, %d metadata',
+                                  len(annotated_records), len(metadata_records))
+            except Exception as e:
+                logging.error('Error processing final batch: %s', e)
+                # Fallback to individual processing for remaining records
+                final_pbar.set_description('Final batch fallback')
+                for record in batch_records:
+                    annotated_record, metadata_record = self._fallback_to_individual_processing(record)
+                    annotations.extend(annotated_record)
+                    metadata.extend(metadata_record)
+                    final_pbar.update(1)
+        return annotations, metadata
 
     def _fallback_to_individual_processing(self, record: Dict[str, str]) -> Tuple[List[str], List[str]]:
         """Fallback to individual processing when doing a batch of records.
