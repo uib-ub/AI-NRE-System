@@ -161,7 +161,7 @@ class OutputWriter:
         """
 
         if not annotations:
-            raise ValueError("Annotations list cannot empty.")
+            raise ValueError('Annotations list cannot empty.')
 
         # Ensure output directory exists
         output_path = self._ensure_output_directory(file_path)
@@ -201,7 +201,7 @@ class OutputWriter:
         """
 
         if not metadata:
-            raise ValueError("Metadata list cannot be empty.")
+            raise ValueError('Metadata list cannot be empty.')
 
         # Ensure output directory exists
         output_path = self._ensure_output_directory(file_path)
@@ -236,7 +236,7 @@ def stream_csv_records(file_path: str, delimiter: str = ";"):
             for record_row in reader:
                 yield record_row
     except Exception as e:
-        logging.error("Error reading CSV file %s: %s", file_path, e, exc_info=True)
+        logging.error('Error reading CSV file %s: %s', file_path, e, exc_info=True)
         raise
 
 def write_text_output(file_path: str, header: str, annotations: List[str]):
@@ -252,7 +252,7 @@ def write_text_output(file_path: str, header: str, annotations: List[str]):
             txt.write(header + "\n")
             txt.write("\n".join(annotations))
     except Exception as e:
-        logging.error("Error writing text output to %s: %s", file_path, e, exc_info=True)
+        logging.error('Error writing text output to %s: %s', file_path, e, exc_info=True)
         raise
 
 def write_metadata_output(file_path: str, header: str, metadata: List[str]):
@@ -268,5 +268,5 @@ def write_metadata_output(file_path: str, header: str, metadata: List[str]):
             tbl.write(header + "\n")
             tbl.write("\n".join(metadata))
     except Exception as e:
-        logging.error("Error writing metadata output to %s: %s", file_path, e, exc_info=True)
+        logging.error('Error writing metadata output to %s: %s', file_path, e, exc_info=True)
         raise e
