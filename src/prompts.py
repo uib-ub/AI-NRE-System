@@ -1,3 +1,10 @@
+"""Module for building prompts from templates.
+
+This module provides an abstract base class `PromptBuilder` for creating
+prompts from templates, and a concrete implementation `GenericPromptBuilder`
+to handle both single and batch prompts for medieval text annotation tasks.
+"""
+
 import logging
 from pathlib import Path
 from typing import Optional, Dict, List, Union
