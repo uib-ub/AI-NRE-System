@@ -11,7 +11,7 @@ import logging
 import json
 
 from abc import abstractmethod, ABC
-from config import Config
+from ai_ner_system.config import Config
 
 class LLMClientError(Exception):
     """Custom exception for LLM client errors."""
@@ -70,10 +70,10 @@ class ClaudeClient(Client):
             LLMClientError: If client initialization fails.
         """
         if not api_key:
-            raise ValueError("API key must be provided for ClaudeClient.")
+            raise ValueError('API key must be provided for ClaudeClient.')
 
         if not model:
-            raise ValueError("Model must be provided for ClaudeClient.")
+            raise ValueError('Model must be provided for ClaudeClient.')
 
         super().__init__(model)
 
@@ -88,7 +88,7 @@ class ClaudeClient(Client):
         except Exception as e:
             raise LLMClientError(f'Failed to initialize Claude client: {e}') from e
 
-        logging.info("Claude Client initialized with model=%s", model)
+        logging.info('Claude Client initialized with model=%s', model)
 
     def _count_tokens(self, text: str) -> int:
         """Count tokens in the given text.
@@ -125,10 +125,6 @@ class ClaudeClient(Client):
             token_count = self._count_tokens(prompt)
             logging.info('Prompt Token Count: %d ', token_count)
 
-            # enc = tiktoken.get_encoding("cl100k_base")
-            # prompt_token_count = len(enc.encode(prompt))
-            # logging.info("Prompt Token Count: %d ", prompt_token_count)
-
             system_message = (
                 'You are an expert for understanding and analyzing medieval texts and manuscripts, '
                 'and you can markup all PROPER NOUNS in all kinds of medieval texts'
@@ -148,9 +144,6 @@ class ClaudeClient(Client):
                 top_p=1.0,
                 stream=False
             )
-            # DEBUG:
-            # print("--- Claude Response Text ---")
-            # print(response.content[0].text)
 
             if not response.content or not response.content[0].text:
                 logging.error('Empty response received from Claude API')
@@ -194,22 +187,22 @@ class OllamaClient(Client):
         """
 
         if not endpoint:
-            raise ValueError("Endpoint must be provided for OllamaClient.")
+            raise ValueError('Endpoint must be provided for OllamaClient.')
 
         if not token:
-            raise ValueError("Token must be provided for OllamaClient.")
+            raise ValueError('Token must be provided for OllamaClient.')
 
         if not model:
-            raise ValueError("Model must be provided for OllamaClient.")
+            raise ValueError('Model must be provided for OllamaClient.')
 
         super().__init__(model)
 
-        self.endpoint = endpoint # .rstrip('/')
+        self.endpoint = endpoint
         self.token = token
         self.timeout = timeout
         self.temperature = temperature
 
-        logging.info("Ollama Client initialized with model=%s",  model)
+        logging.info('Ollama Client initialized with model=%s',  model)
 
     def call(self, prompt: str) -> str:
         """Call Ollama API with the given prompt.
@@ -224,7 +217,7 @@ class OllamaClient(Client):
             ValueError: If the prompt is empty.
         """
         if not prompt.strip():
-            raise ValueError("Prompt must not be empty for OllamaClient.")
+            raise ValueError('Prompt must not be empty for OllamaClient.')
 
         try:
             logging.info('Sending prompt to Ollama (length: %d)', len(prompt))
@@ -256,10 +249,6 @@ class OllamaClient(Client):
                 timeout=self.timeout
             )
             response.raise_for_status()
-            # DEBUG: response
-            # print(response.json())
-            # response_data = response.json()
-            # response_text = response_data.get('response', '')
 
             response_text = response.json().get("response", "")
 
@@ -272,16 +261,16 @@ class OllamaClient(Client):
             return response_text
 
         except requests.exceptions.Timeout as e:
-            logging.error("Ollama API call timed out after %ds: %s", self.timeout, e, exc_info=True)
-            return "Ollama API call timed out"
+            logging.error('llama API call timed out after %ds: %s', self.timeout, e, exc_info=True)
+            return 'Ollama API call timed out'
         except requests.exceptions.RequestException as e:
-            logging.error("Ollama API request failed: %s", e, exc_info=True)
-            return "Ollama API request failed"
+            logging.error('Ollama API request failed: %s', e, exc_info=True)
+            return 'Ollama API request failed'
         except json.JSONDecodeError as e:
             logging.error('Invalid JSON response from Ollama API: %s', e, exc_info=True)
             return 'Ollama API call failed'
         except Exception as e:
-            logging.error("Ollama API call failed: %s", e, exc_info=True)
+            logging.error('Ollama API call failed: %s', e, exc_info=True)
             return "Ollama API call failed"
 
 def create_llm_client(client_type: str, **kwargs) -> Client:
@@ -313,7 +302,7 @@ def create_llm_client(client_type: str, **kwargs) -> Client:
                     model=Config.OLLAMA_MODEL
                 )
             case _:
-                raise LLMClientError(f"Unsupported client type: {client_type}")
+                raise LLMClientError(f'Unsupported client type: {client_type}')
     except (ValueError, LLMClientError):
         raise
     except Exception as e:

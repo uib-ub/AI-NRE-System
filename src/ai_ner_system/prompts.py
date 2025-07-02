@@ -1,3 +1,10 @@
+"""Module for building prompts from templates.
+
+This module provides an abstract base class `PromptBuilder` for creating
+prompts from templates, and a concrete implementation `GenericPromptBuilder`
+to handle both single and batch prompts for medieval text annotation tasks.
+"""
+
 import logging
 from pathlib import Path
 from typing import Optional, Dict, List, Union
@@ -12,12 +19,15 @@ class PromptBuilder(ABC):
 
     This class defines the interface for building prompts from templates.
     Subclasses must implement the `build` method to create a formatted prompt.
-
-    Attributes:
-        prompt_template_file (str): Path to the prompt template file.
     """
 
-    def __init__(self, template_file: str):
+    def __init__(self, template_file: str) -> None:
+        """Initialize the PromptBuilder with a template file.
+
+        Args:
+            template_file: Path to the template file.
+        """
+
         self.template_file = template_file
         self.template: Optional[str] = None
         self._load_template()
@@ -50,7 +60,6 @@ class PromptBuilder(ABC):
     @abstractmethod
     def build(self, data: Union[Dict[str, str], List[Dict[str, str]]]) -> str:
         """Build a formatted prompt from the template."""
-        pass
 
 class GenericPromptBuilder(PromptBuilder):
     """GenericPromptBuilder is responsible for constructing a prompt from a template file.
@@ -60,16 +69,30 @@ class GenericPromptBuilder(PromptBuilder):
     text annotation tasks.
     """
 
-    def __init__(self, prompt_template_file: str):
+    def __init__(self, prompt_template_file: str) -> None:
+        """Initialize the GenericPromptBuilder with a template file.
+        Args:
+            prompt_template_file: Path to the prompt template file.
+        """
         super().__init__(prompt_template_file)
 
     def build(self, data: Union[Dict[str, str], List[Dict[str, str]]]) -> str:
+        """Build a formatted prompt from the template with provided data.
+        Args:
+            data: Either a single record dictionary with keys "Brevid" and "Tekst",
+                  or a list of such dictionaries.
+        Returns:
+            Formatted prompt string based on the template and provided data.
+        Raises:
+            TypeError: If data is not a dict or list of dicts.
+        """
+
         if isinstance(data, dict):
             return self._build_simple_prompt(data)
         elif isinstance(data, list):
             return self._build_batch_prompt(data)
         else:
-            raise TypeError(f"Expected Dict[str, str] or List[Dict[str, str]], got {type(data)}")
+            raise TypeError(f'Expected Dict[str, str] or List[Dict[str, str]], got {type(data)}')
 
     def _build_batch_prompt(self, records: List[Dict[str, str]]) -> str:
         """Build a formatted prompt from the template with a batch of records.
@@ -84,11 +107,12 @@ class GenericPromptBuilder(PromptBuilder):
             ValueError: If records list is empty or contains invalid records.
             PromptError: If template is not loaded or formatting fails.
         """
+
         if not self.template:
             raise PromptError('Batch prompt template is not loaded')
 
         if not records:
-            raise ValueError("Records list cannot be empty")
+            raise ValueError('Records list cannot be empty')
 
         # Validate all records first
         for i, record in enumerate(records):
@@ -96,7 +120,7 @@ class GenericPromptBuilder(PromptBuilder):
             text = record.get('Tekst', '').strip()
 
             if not brevid or not text:
-                raise ValueError(f"Record {i + 1}: Brevid and Tekst must be non-empty")
+                raise ValueError(f'Record {i + 1}: Brevid and Tekst must be non-empty')
 
         # Build individual record sections
         record_sections = []
@@ -111,7 +135,7 @@ Text: \"\"\"{text}\"\"\"""")
         # Create batch content
         batch_content = "\n\n".join(record_sections)
 
-        logging.info("Batch content:\n%s", batch_content)
+        logging.info('Batch content:\n%s', batch_content)
 
         try:
             # Format the template with actual data
@@ -120,12 +144,12 @@ Text: \"\"\"{text}\"\"\"""")
                 batch_content=batch_content
             )
 
-            logging.info("Built batch prompt for %d records (total length: %d)",
+            logging.info('Built batch prompt for %d records (total length: %d)',
                          len(records), len(batch_prompt))
             return batch_prompt
 
         except (KeyError, ValueError) as e:
-            raise PromptError(f"Failed to format batch prompt template: {e}") from e
+            raise PromptError(f'Failed to format batch prompt template: {e}') from e
 
     def _build_simple_prompt(self, record: Dict[str, str]) -> str:
         """Build a formatted prompt from the template with a single record.

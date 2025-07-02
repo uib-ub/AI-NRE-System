@@ -195,5 +195,8 @@ cython_debug/
 .cursorindexingignore
 
 # Others
-examples
 .DS_Store
+.idea
+.cache_llm
+examples
+output

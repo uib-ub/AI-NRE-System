@@ -15,10 +15,8 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-
 class ConfigError(Exception):
     """Custom exception for configuration-related errors."""
-
 
 class Config:
     """Configuration class for LLM processing application.
@@ -73,7 +71,7 @@ class Config:
             cls.CACHE_DIR.mkdir(parents=True, exist_ok=True)
             logging.info('Cache directory initialized: %s', cls.CACHE_DIR)
         except OSError as e:
-           raise ConfigError(f"Error initializing cache directory {cls.CACHE_DIR}: {e}")
+            raise ConfigError(f'Error initializing cache directory {cls.CACHE_DIR}: {e}') from e
 
     @classmethod
     def validate_required_config(cls) -> None:
@@ -159,7 +157,7 @@ class Config:
             except OSError as e:
                 raise ConfigError(
                     f'Error creating output directory {output_dir}: {e}'
-                )
+                ) from e
 
     @classmethod
     def is_valid(cls) -> bool:
@@ -171,7 +169,7 @@ class Config:
         try:
             cls.validate_required_config()
             cls.validate_file_paths()
-            logging.info("Config validated successfully.")
+            logging.info('Config validated successfully.')
             return True
         except ConfigError:
             return False
@@ -180,5 +178,5 @@ class Config:
 try:
     Config.initialize()
 except ConfigError as e:
-    logging.error("Configuration initialization failed: %s", e)
+    logging.error('Configuration initialization failed: %s', e)
     # NOTE: Don't raise here to allow for graceful handling by the application
