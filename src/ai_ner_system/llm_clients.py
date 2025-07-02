@@ -11,7 +11,7 @@ import logging
 import json
 
 from abc import abstractmethod, ABC
-from config import Config
+from ai_ner_system.config import Config
 
 class LLMClientError(Exception):
     """Custom exception for LLM client errors."""

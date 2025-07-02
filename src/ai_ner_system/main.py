@@ -13,11 +13,11 @@ from typing import List, Tuple, Dict
 
 from tqdm import tqdm
 
-from config import Config, ConfigError
-from prompts import PromptBuilder, GenericPromptBuilder, PromptError
-from io_utils import CSVReader, OutputWriter, IOError
-from processing import RecordProcessor, ValidationError, ProcessingError
-from llm_clients import create_llm_client, Client, LLMClientError
+from ai_ner_system.config import Config, ConfigError
+from ai_ner_system.prompts import PromptBuilder, GenericPromptBuilder, PromptError
+from ai_ner_system.io_utils import CSVReader, OutputWriter, IOError
+from ai_ner_system.processing import RecordProcessor, ValidationError, ProcessingError
+from ai_ner_system.llm_clients import create_llm_client, Client, LLMClientError
 
 
 class ApplicationError(Exception):
@@ -161,7 +161,7 @@ class MedievalTextProcessor:
                 all_metadata.extend(metadata_records)
 
                 logging.debug('Successfully processed %s: %d annotations, %d metadata',
-                            f'Brevid {brevid}' if batch_size == 1 else f'batch {batch_count}',
+                            f'Brevid {batch_records[0].get("Brevid", "unknown")}' if batch_size == 1 else f'batch {batch_count}',
                             len(annotated_records), len(metadata_records))
 
                 # Clear batch records after processing
@@ -201,7 +201,7 @@ class MedievalTextProcessor:
             if batch_size == 1:
                 # Individual processing
                 individual_record = batch_records[0]
-                brevid = record.get("Brevid", "unknown")
+                brevid = individual_record.get("Brevid", "unknown")
                 logging.info('Processing Record with Brevid: %s', brevid)
                 logging.debug('Individual record data: %s', individual_record)
                 return self.processor.process_record(individual_record)
@@ -238,7 +238,7 @@ class MedievalTextProcessor:
             return [], []
         else:
             # Batch processing error - fallback to individual processing
-            logging.error('Error processing batch %d: %s', batch_count, e)
+            logging.error('Error processing batch %d: %s', batch_count, error)
             logging.info('Falling back to individual processing for batch %d', batch_count)
             annotations: List[str] = []
             metadata: List[str] = []
@@ -274,6 +274,7 @@ class MedievalTextProcessor:
                 if batch_size == 1:
                     # This shouldn't happen since we process immediately, but we still handle it
                     for record in batch_records:
+                        brevid = record.get("Brevid", "unknown")
                         annotated_records, metadata_records = self.processor.process_record(record)
                         annotations.extend(annotated_records)
                         metadata.extend(metadata_records)
@@ -477,10 +478,10 @@ def create_argument_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         epilog="""
                 Examples:
-                    python process_medieval_llm.py --model claude
-                    python src/process_medieval_llm.py --model ollama --input input/input.txt -v
-                    python src/process_medieval_llm.py --model ollama --output-text output/annotated_output.txt --output-table output/metadata_table.txt
-                    python src/process_medieval_llm.py --model ollama --output-text output/annotated_output.txt --output-table output/metadata_table.txt --use-batch --batch-size 10 -v
+                    python main.py --model claude
+                    python src/main.py --model ollama --input input/input.txt -v
+                    python src/main.py --model ollama --output-text output/annotated_output.txt --output-table output/metadata_table.txt
+                    python src/main.py --model ollama --output-text output/annotated_output.txt --output-table output/metadata_table.txt --use-batch --batch-size 10 -v
                 """
     )
     # Model selection

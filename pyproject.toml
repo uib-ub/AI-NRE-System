@@ -1,0 +1,407 @@
+[build-system]
+requires = ["setuptools>=80.9.0", "wheel>=0.45.1", "setuptools-git-versioning>=2.1,<3"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-ner-system"
+dynamic = ["version"]
+description = "AI/NER system for processing historical texts with unstandardized orthography using Large Language Models"
+readme = {file = "README.md", content-type = "text/markdown"}
+license = {text = "MIT"}
+authors = [
+    { name = "Rui Wang", email = "Rui.Wang@uib.no" }
+]
+maintainers = [
+    { name = "Rui Wang", email = "Rui.Wang@uib.no" }
+]
+keywords = [
+    "nlp",                # Natural Language Processing
+    "ner",                # Named Entity Recognition
+    "historical-texts",
+    "medieval-texts",
+    "llm",
+    "anthropic",
+    "text-processing"
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Researchers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Text Processing :: Linguistic",
+    "Typing :: Typed",
+]
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.32.0",
+    "python-dotenv>=1.0.0",
+    "tqdm>=4.65.0",
+    "tiktoken>=0.7.0",
+    "anthropic>=0.40.0"
+]
+
+# [project.urls]
+# Homepage = ""
+# Repository = ""
+
+[project.scripts]
+process-medieval-llm = "ai_ner_system.main:main"
+
+[tool.setuptools]
+packages = {find = {where = ["src"]}}
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.setuptools-git-versioning]
+enabled = true
+dev_template = "{tag}+{ccount}.g{sha}"
+dirty_template = "{tag}+{ccount}.g{sha}.dirty"
+
+# Development dependencies organized by purpose
+[project.optional-dependencies]
+# Core linting tools
+lint = [
+    # Primary linter and formatter
+    "ruff>=0.8.0",
+
+    # Type checking
+    "mypy>=1.8.0",
+
+    # Import sorting (complementary to ruff)
+    "isort>=5.13.0",
+
+    # Code formatting
+    "black>=24.0.0",
+
+    # Spell checking
+    "codespell>=2.2.0",
+
+    # Dead code detection
+    "vulture>=2.10",
+
+    # Project validation
+    "validate-pyproject>=0.20.0",
+]
+
+# Testing framework and tools
+test = [
+    # Core testing framework
+    "pytest>=8.0.0",
+
+    # Coverage reporting
+    "pytest-cov>=5.0.0",
+
+    # Async testing support
+    "pytest-asyncio>=0.23.0",
+
+    # Mock and fixtures
+    "pytest-mock>=3.12.0",
+]
+
+# Development tools and utilities
+dev-tools = [
+    # Enhanced REPL
+    "ipython>=8.0.0",
+
+    # Jupyter for experimentation
+    "jupyter>=1.0.0",
+
+    # Pre-commit hooks
+    "pre-commit>=3.0.0",
+
+    # Build tools
+    "build>=1.0.0",
+    "twine>=5.0.0",
+]
+
+# Documentation generation
+docs = [
+    # Documentation generator
+    "sphinx>=7.0.0",
+
+    # Theme
+    "sphinx-rtd-theme>=2.0.0",
+
+    # Auto-documentation
+    "sphinx-autodoc-typehints>=2.0.0",
+
+    # Markdown support
+    "myst-parser>=3.0.0",
+]
+
+# Performance profiling and monitoring
+profiling = [
+    "memory-profiler>=0.61.0",
+    "py-spy>=0.3.0",
+    "line-profiler>=4.0.0",
+]
+
+# Security scanning
+security = [
+    "bandit>=1.7.0",
+    "safety>=3.0.0",
+]
+
+# Complete development environment
+dev = [
+    "ai-ner-system[lint,test,dev-tools,docs]"
+]
+
+# All optional dependencies
+all = [
+    "ai-ner-system[lint,test,dev-tools,docs,profiling,security]"
+]
+
+# CI/CD specific dependencies
+ci = [
+    "ai-ner-system[lint,test,security]"
+]
+
+# Configuration for ruff (replaces flake8, isort partially)
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+indent-width = 4
+respect-gitignore = true
+
+# Source code directories
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# Enable comprehensive rule sets
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # Pyflakes
+    "I",     # isort
+    "N",     # pep8-naming
+    "D",     # pydocstyle
+    "UP",    # pyupgrade
+    "YTT",   # flake8-2020
+    "ANN",   # flake8-annotations
+    "ASYNC", # flake8-async
+    "S",     # flake8-bandit
+    "BLE",   # flake8-blind-except
+    "FBT",   # flake8-boolean-trap
+    "B",     # flake8-bugbear
+    "A",     # flake8-builtins
+    "COM",   # flake8-commas
+    "C4",    # flake8-comprehensions
+    "DTZ",   # flake8-datetimez
+    "T10",   # flake8-debugger
+    "EM",    # flake8-errmsg
+    "EXE",   # flake8-executable
+    "FA",    # flake8-future-annotations
+    "ISC",   # flake8-implicit-str-concat
+    "ICN",   # flake8-import-conventions
+    "G",     # flake8-logging-format
+    "INP",   # flake8-no-pep420
+    "PIE",   # flake8-pie
+    "T20",   # flake8-print
+    "PYI",   # flake8-pyi
+    "PT",    # flake8-pytest-style
+    "Q",     # flake8-quotes
+    "RSE",   # flake8-raise
+    "RET",   # flake8-return
+    "SLF",   # flake8-self
+    "SLOT",  # flake8-slots
+    "SIM",   # flake8-simplify
+    "TID",   # flake8-tidy-imports
+    "TCH",   # flake8-type-checking
+    "INT",   # flake8-gettext
+    "ARG",   # flake8-unused-arguments
+    "PTH",   # flake8-use-pathlib
+    "ERA",   # eradicate
+    "PD",    # pandas-vet
+    "PGH",   # pygrep-hooks
+    "PL",    # pylint
+    "TRY",   # tryceratops
+    "FLY",   # flynt
+    "NPY",   # numpy
+    "PERF",  # perflint
+    "RUF",   # ruff-specific rules
+]
+
+ignore = [
+     # Allow print statements (common in CLI applications)
+    "T201",
+
+    # Allow TODO comments
+    "FIX002",
+
+    # Allow missing docstrings in magic methods
+    "D105",
+
+    # Allow missing docstrings in __init__
+    "D107",
+
+    # Allow long lines in docstrings
+    "E501",
+
+    # Too many arguments (sometimes necessary)
+    "PLR0913",
+
+    # Too many return statements
+    "PLR0911",
+
+    # Too many branches
+    "PLR0912",
+
+    # Too many statements
+    "PLR0915",
+
+    # Use isort for impor sorting
+    # "I001",
+]
+
+# Allow autofix for all enabled rules
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.lint.per-file-ignores]
+# Test files can have additional flexibility
+"tests/**/*.py" = [
+    "S101",    # Use of assert
+    "PLR2004", # Magic value used in comparison
+    "ANN",     # Missing type annotations
+]
+
+# Example files don't need full documentation
+"examples/**/*.py" = [
+    "D",       # pydocstyle
+    "T201",    # Print statements
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+known-first-party = ["ai_ner_system"]
+section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
+
+# Black configuration
+[tool.black]
+line-length = 100
+target-version = ['py311', 'py312', 'py313']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # Directories to exclude
+  \.git
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+'''
+
+# isort configuration (complementary to ruff)
+[tool.isort]
+profile="black"
+line_length = 100
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
+known_first_party = ["ai_ner_system"]
+
+# MyPy type checking configuration
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+show_error_codes = true
+
+# Per-module configuration
+[[tool.mypy.overrides]]
+module = [
+    "anthropic.*",
+    "tiktoken.*",
+    "tqdm.*",
+]
+ignore_missing_imports = true
+
+# Pytest configuration
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = [
+    "--strict-config",
+    "--strict-markers",
+    "--cov=src",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-report=xml",
+    "--cov-fail-under=80",
+]
+testpaths = ["tests"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]
+filterwarnings = [
+    "error",
+    "ignore::UserWarning",
+    "ignore::DeprecationWarning",
+]
+
+# Coverage configuration
+[tool.coverage.run]
+source = ["src"]
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+    "*/__pycache__/*",
+    "*/site-packages/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+
+# Vulture configuration (dead code detection)
+[tool.vulture]
+paths = ["src", "tests"]
+min_confidence = 60
+ignore_decorators = ["@pytest.fixture", "@click.command"]
+
+# Bandit security linter configuration
+[tool.bandit]
+exclude_dirs = ["tests"]
+skips = ["B101"]  # Skip assert_used test
+
+# Codespell configuration
+[tool.codespell]
+skip = "*.git,*.pdf,*.svg,*.pyc,*.egg-info,*.mypy_cache,*__pycache__*"
+ignore-words-list = "hist,aks,ans,nd"

@@ -10,8 +10,9 @@ import logging
 
 from dataclasses import dataclass
 from typing import List, Tuple, Dict
-from prompts import PromptBuilder
-from llm_clients import Client
+
+from ai_ner_system.prompts import PromptBuilder
+from ai_ner_system.llm_clients import Client
 
 class ProcessingError(Exception):
     """Custom exception for processing-related errors."""

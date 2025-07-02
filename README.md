@@ -2,15 +2,33 @@
 
 ## Setup
 
-1. Create virtualenv
+1. Run 
 
-python3 -m venv venv
-source venv/bin/activate
+`uv sync`
 
-2. Install deps
+2. Run 
 
-pip install -r requirements.txt
+eg 1. Claude API:
 
+```Bash
+uv run process-medieval-llm \
+      --model claude \
+      --output-text output/annotated_output_claude_batch_10R_B10.txt \
+      --output-table output/metadata_table_claude_batch_10R_B10.txt \
+      -v \
+      --use-batch --batch-size 10
+```
+
+eg 2. Ollama/OPENWEBUI:
+
+```Bash
+uv run process-medieval-llm \
+      --model ollama \
+      --output-text output/annotated_output_gemma_batch_10R_B2.txt \
+      --output-table output/metadata_table_gemma_batch_10R_B2.txt \
+      -v \
+      --use-batch --batch-size 2
+```
 
 ## Note: Individual Processing vs Batch Processing
 
@@ -39,5 +57,3 @@ For 10 records, batch size 10, Claude used 05:23 minutes with US$0.29, input tok
 Then, for 18,559 Records:
 
 * total time for batch processing: 5:23 * 18559 / 10 = 166.5 hours (6.9 days)
-
-

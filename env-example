@@ -1,0 +1,11 @@
+OPENWEBUI_TOKEN=
+OPENWEBUI_ENDPOINT=https://open-web-ai.testdu.uib.no/ollama/api/generate
+OLLAMA_MODEL=gemma3:12b-it-qat
+CLAUDE_MODEL=claude-sonnet-4-20250514
+ANTHROPIC_API_KEY=
+INPUT_FILE=input/Brevid-601-610.txt
+OUTPUT_TABLE_FILE=output/metadata_table.txt
+OUTPUT_TEXT_FILE=output/annotated_output.txt
+PROMPT_TEMPLATE_FILE=prompt/prompt-v0.1.txt
+BATCH_TEMPLATE_FILE=prompt/prompt-batch.txt
+CACHE_DIR=.cache_llm
