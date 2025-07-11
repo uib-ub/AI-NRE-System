@@ -1,27 +1,34 @@
 """Processing module for medieval text annotation with LLM services.
 
-This module provides functionality to process individual records from CSV files,
-send them to LLM services for annotation, and parse the results into structured
-data for output generation.
+This module provides classes and functions for processing medieval text records
+using Large Language Models, with support for both individual and batch processing.
 """
-
+import asyncio
 import json
 import logging
+import time
 
-from dataclasses import dataclass
-from typing import List, Tuple, Dict
+from dataclasses import dataclass, field
+from typing import List, Tuple, Dict, Optional, Callable, Union
 
 from ai_ner_system.prompts import PromptBuilder
-from ai_ner_system.llm_clients import Client
+from ai_ner_system.llm_clients import Client, BatchProgress, BatchRequest
 
 class ProcessingError(Exception):
-    """Custom exception for processing-related errors."""
+    """Base exception for processing-related errors."""
+
 
 class ValidationError(ProcessingError):
     """Exception raised when data validation fails."""
 
+
 class LLMResponseError(ProcessingError):
     """Exception raised when LLM response parsing fails."""
+
+
+class BatchProcessingError(ProcessingError):
+    """Exception for batch processing failures."""
+
 
 @dataclass
 class EntityRecord:
@@ -31,10 +38,10 @@ class EntityRecord:
         name: The proper noun itself.
         type: Type of proper noun (Person Name, Place Name, etc.).
         order: Order of occurrence in the text.
-        brevid: The Brevid identifier.
-        description: Status/occupation or description.
-        gender: Gender information.
-        language: Language code (ISO 639-3).
+        brevid: The Brevid identifier from the source record.
+        description: Status/occupation for people, type for places.
+        gender: Gender information, "Male", "Female", or "N/A" for non-persons.
+        language: Language code (ISO 639-3) (e.g., "lat", "non").
     """
     name: str
     type: str
@@ -44,10 +51,11 @@ class EntityRecord:
     gender: str = ""
     language: str = ""
 
+    # TODO: This method needs to be modified
     def to_csv_row(self) -> str:
-        """Convert entity to CSV row format.
+        """Convert entity record to CSV row format.
 
-        Returns:
+        # Returns:
             Semicolon-separated string representation.
         """
         return ";".join([
@@ -61,12 +69,12 @@ class EntityRecord:
         ])
 
     @classmethod
-    def create_entity_record(cls, data: Dict[str, str], brevid: str) -> 'EntityRecord':
+    # def create_entity_record(cls, data: Dict[str, str], brevid: str) -> 'EntityRecord':
+    def create_entity_record(cls, entity_data: Dict[str, str], brevid: str) -> 'EntityRecord':
         """Create an EntityRecord from dictionary data.
 
         Args:
-            data: Dictionary containing entity data.
-            brevid: The Brevid identifier.
+            entity_data: Dictionary containing entity information.
 
         Returns:
             An instance of EntityRecord.
@@ -76,16 +84,58 @@ class EntityRecord:
         """
         try:
             return cls(
-                name=str(data.get("name", "")).strip(),
-                type=str(data.get("type", "")).strip(),
-                order=int(data.get("order", 0)),
-                brevid=str(data.get("brevid", brevid)).strip(),
-                description=str(data.get("description", "")).strip(),
-                gender=str(data.get("gender", "")).strip(),
-                language=str(data.get("language", "")).strip()
+                name=str(entity_data.get("name", "")).strip(),
+                type=str(entity_data.get("type", "")).strip(),
+                order=int(entity_data.get("order", 0)),
+                brevid=str(entity_data.get("brevid", brevid)).strip(),
+                description=str(entity_data.get("description", "")).strip(),
+                gender=str(entity_data.get("gender", "")).strip(),
+                language=str(entity_data.get("language", "")).strip()
             )
         except (ValueError, TypeError) as e:
             raise ValidationError(f'Invalid entity data: {e}') from e
+
+@dataclass
+class ProcessingResult:
+    """Represents the result of processing a single record (for async methods).
+
+    Attributes:
+        record_id: Unique identifier for the record.
+        brevid: Brevid ID from the source record.
+        annotated_text: Text with proper nouns marked up.
+        entities: List of extracted entities.
+        processing_time: Time taken to process in seconds.
+        success: Whether processing was successful.
+        error_message: Error message if processing failed.
+    """
+    record_id: str
+    brevid: str
+    annotated_text: str = ""
+    entities: List[EntityRecord] = field(default_factory=list)
+    processing_time: float = 0.0
+    success: bool = True
+    error_message: Optional[str] = None
+
+
+@dataclass
+class BatchProcessingResult:
+    """Represents the result of processing a batch of records (for async methods).
+
+    Attributes:
+        batch_id: Unique identifier for the batch.
+        results: List of individual processing results.
+        total_processing_time: Total time for batch processing.
+        successful_count: Number of successfully processed records.
+        failed_count: Number of failed records.
+        batch_info: Additional batch information from the API.
+    """
+    batch_id: str
+    results: List[ProcessingResult] = field(default_factory=list)
+    total_processing_time: float = 0.0
+    successful_count: int = 0
+    failed_count: int = 0
+    batch_info: Optional[Dict[str, Any]] = None
+
 
 class RecordProcessor:
     """Handles processing of individual CSV records through LLM services."""
@@ -160,33 +210,292 @@ class RecordProcessor:
             return [], []
 
         try:
-            # Validate all records
-            for record in records:
-                self._validate_record(record)
+            # check if batch async processing is supported
+            if self.llm_client.supports_async_batch():
+                # Use new async batch processing (e.g. records include 10 brevids)
+                batch_result = asyncio.run(self.process_batch_async(records))
 
-            # Build batch prompt using the prompt builder (list of records)
-            batch_prompt = self.prompt_builder.build(records)
-            logging.debug('--- Prompt ---\n%s', batch_prompt)
+                # TODO: Convert new format to old format
+                annotated_records = []
+                metadata_records = []
 
-            # Call LLM with batch prompt
-            brevids = [record['Brevid'] for record in records]
-            batch_id = f"BATCH-{'-'.join(brevids[:3])}..." if len(brevids) > 3 else f"BATCH-{'-'.join(brevids)}"
+                for result in batch_result.results:
+                    if result.success:
+                       # TODO:  Convert to old format
+                       bindnr = result.record_id.split('_')[-1] if '_' in result.record_id else result.brevid
+                       annotated_records.append(f"{bindnr};{result.brevid};{result.annotated_text}")
 
-            raw_response = self._call_llm(batch_id, batch_prompt)
-            logging.debug('Received batch response (length: %d)', len(raw_response))
-            logging.debug('--- RAW RESPONSE for batch %s ---\n%s', batch_id, raw_response)
+                       # TODO: Convert entities to old metadata format
+                       for entity in result.entities:
+                           metadata_records.append(entity.to_csv_row())
 
-            # Parse batch response
-            annotated_records, metadata_records = self._parse_batch_response(records, raw_response)
+                return annotated_records, metadata_records
+            else:
+                # Use original batch processing logic
+                # Validate all records
+                for record in records:
+                    self._validate_record(record)
 
-            logging.info('Successfully processed batch of %d records: %d annotations, %d metadata',
-                         len(records), len(annotated_records), len(metadata_records))
+                # Build batch prompt using the prompt builder (list of records)
+                batch_prompt = self.prompt_builder.build(records)
+                logging.debug('--- Prompt ---\n%s', batch_prompt)
 
-            return annotated_records, metadata_records
+                # Call LLM with batch prompt
+                brevids = [record['Brevid'] for record in records]
+                batch_id = f"BATCH-{'-'.join(brevids[:3])}..." if len(brevids) > 3 else f"BATCH-{'-'.join(brevids)}"
+
+                raw_response = self._call_llm(batch_id, batch_prompt)
+                logging.debug('Received batch response (length: %d)', len(raw_response))
+                logging.debug('--- RAW RESPONSE for batch %s ---\n%s', batch_id, raw_response)
+
+                # Parse batch response
+                annotated_records, metadata_records = self._parse_batch_response(records, raw_response)
+
+                logging.info('Successfully processed batch of %d records: %d annotations, %d metadata',
+                             len(records), len(annotated_records), len(metadata_records))
+
+                return annotated_records, metadata_records
 
         except Exception as e:
             logging.error('Error during batch processing: %s', e, exc_info=True)
             raise  # Let the caller handle fallback
+
+    async def process_record_async(self, record: Dict[str, str]) -> ProcessingResult:
+        """Process a single record asynchronously
+
+        Args:
+            record: Dictionary containing record data with 'Brevid' and 'Tekst' keys.
+
+        Returns:
+            ProcessingResult containing the processed data.
+        """
+        start_time = time.time()
+        record_id = record.get("Brevid", "unknown")
+
+        try:
+            # Validate record
+            self._validate_record(record)
+
+            # Build prompt
+            prompt = self.prompt_builder.build(record)
+
+            # Call LLM asynchronously
+            response = await self.llm_client.call_async(prompt)
+
+            # Parse response
+            annotated_text, entities = self._parse_llm_response(record["Brevid"], response)
+
+            processing_time = time.time() - start_time
+
+            return ProcessingResult(
+                record_id = record_id,
+                brevid = record["Brevid"],
+                annotated_text = annotated_text,
+                entities = entities,
+                processing_time = processing_time,
+                success = True
+            )
+
+        except Exception as e:
+            processing_time = time.time() - start_time
+            error_msg = f"Failed to process record brevid: {record_id}: {e}"
+            logging.error(error_msg, exc_info=True)
+
+            return ProcessingResult(
+                record_id = record_id,
+                brevid = record.get("Brevid", "unknown"),
+                processing_time = processing_time,
+                success = False,
+                error_message = error_msg
+            )
+
+    async def process_batch_async(
+            self,
+            records: List[Dict[str, str]],
+            progress_callback: Optional[Callable[[BatchProgress], None]] = None,
+            max_wait_time: int = 86400,
+            poll_interval: int = 30,
+    ) -> BatchProcessingResult:
+        """Process multiple records as a batch asynchronously
+
+        Args:
+            records: List of record dictionaries to process.
+            progress_callback: Optional callback function to update progress.
+            max_wait_time: Maximum time to wait for the batch to complete.
+            poll_interval: Time between progress checks
+
+        Return:
+            BatchProcessingResult containing all processed records.
+        """
+        if not records:
+            raise ValueError("Records list cannot be empty")
+
+        if not self.llm_client.supports_async_batch():
+            # Fallback to individual async processing
+            return await self._process_individual_async(records, progress_callback)
+
+        start_time = time.time()
+
+        try:
+            # Prepare batch requests
+            batch_requests = []
+            for i, record in enumerate(records):
+                try:
+                    self._validate_record(record)
+                    prompt = self.prompt_builder.build(record)
+
+                    # Create a batch request
+                    batch_request = BatchRequest(
+                        custom_id = f"record_{i}_{record['Brevid']}",
+                        prompt = prompt,
+                        max_tokens = 20000,
+                        temperature = 0.0
+                    )
+                    # Append records into list
+                    batch_requests.append(batch_request)
+
+                except Exception as e:
+                    logging.error(f'Failed to prepare batch request for record {record.get("Brevid1")}: {e}')
+                    continue
+
+            if not batch_requests:
+                raise BatchProcessingError("No valid requests to process")
+
+            logging.info(f'Starting async batch processing of {len(batch_requests)} records')
+
+            # Processing batch using LLM client
+            batch_responses = await self.llm_client.process_batch_requests_async(
+                batch_requests,
+                max_wait_time=max_wait_time,
+                poll_interval=poll_interval,
+                progress_callback=progress_callback
+            )
+
+            # Parse batch responses
+            results = []
+            successful_count = 0
+            failed_count = 0
+
+            # Create mapping from custom_id to original record
+            record_map = {f'record_{i}_{record["Brevid"]}': record
+                          for i, record in enumerate(records)}
+
+            for response in batch_responses:
+                record = record_map.get(response.custom_id)
+                if not record:
+                    logging.warning(f'No record found for custom_id: {response.custom_id}')
+                    continue
+
+                if response.success:
+                    try:
+                        annotated_text, entities = self._parse_llm_response(
+                           record["Brevid"], response.response_text
+                        )
+
+                        results.append(ProcessingResult(
+                            record_id = response.custom_id,
+                            brevid = record["Brevid"],
+                            annotated_text = annotated_text,
+                            entities = entities,
+                            success = True
+                        ))
+                        successful_count += 1
+
+                    except Exception as e:
+                        logging.error(f'Failed to parse LLM response for custom id {response.custom_id} with Brevid {record["Brevid"]}: {e}')
+                        results.append(ProcessingResult(
+                            record_id = response.custom_id,
+                            brevid = record["Brevid"],
+                            success = False,
+                            error_message = f"Failed to parse LLM response for custom id {response.custom_id} with Brevid {record['Brevid']}: {e}"
+                        ))
+                        failed_count += 1
+                else:
+                    results.append(ProcessingResult(
+                        record_id = response.custom_id,
+                        brevid = record["Brevid"],
+                        success = False,
+                        error_message = response.error_message
+                    ))
+                    failed_count += 1
+
+            total_processing_time = time.time() - start_time
+
+            logging.info(f'Batch processing completed: {successful_count} successful,'
+                         f'{failed_count} failed, {total_processing_time:.2f} seconds total')
+
+            return BatchProcessingResult(
+                batch_id = f"batch_{int(start_time)}",
+                results = results,
+                total_processing_time = total_processing_time,
+                successful_count = successful_count,
+                failed_count = failed_count
+            )
+
+        except Exception as e:
+            total_processing_time = time.time() - start_time
+            error_msg = f"Batch processing failed: {e}"
+            logging.error(error_msg, exc_info=True)
+
+            return BatchProcessingResult(
+                batch_id=f"batch_{int(start_time)}_failed",
+                results=[],
+                total_processing_time=total_processing_time,
+                successful_count=0,
+                failed_count=len(records)
+            )
+
+    async def _process_individual_async(
+            self,
+            records: List[Dict[str, str]],
+            progress_callback: Optional[Callable[[BatchProgress], None]] = None
+    ) -> BatchProcessingResult:
+        """Fallback to individual async processing when batch is not supported."""
+        start_time = time.time()
+        batch_id = f'individual_batch_{int(start_time)}'
+
+        # Process records concurrently using individual async calls
+        async_tasks = []
+        for record in records:
+            async_task = self.process_record_async(record)
+            async_tasks.append(async_task)
+
+        # Execute all tasks concurrently
+        results: List[Union[ProcessingResult, Exception]] = await asyncio.gather(*async_tasks, return_exceptions=True)
+
+        # Convert exceptions to failed results
+        processed_results = []
+        successful_count = 0
+        failed_count = 0
+
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                processed_results.append(ProcessingResult(
+                    record_id = records[i].get("Brevid", f'record_{i}'),
+                    brevid = records[i].get("Brevid", 'unknown'),
+                    success = False,
+                    error_message = str(result)
+                ))
+                failed_count += 1
+            elif isinstance(result, ProcessingResult):
+                processed_results.append(result)
+                if result.success:
+                    successful_count += 1
+                else:
+                    failed_count += 1
+
+        total_processing_time = time.time() - start_time
+
+        logging.info(f'Individual async processing completed: {successful_count} successful, '
+                     f'{failed_count} failed, {total_processing_time:.2f} seconds total')
+
+        return BatchProcessingResult(
+            batch_id = batch_id,
+            results = processed_results,
+            total_processing_time = total_processing_time,
+            successful_count = successful_count,
+            failed_count = failed_count
+        )
 
     def _parse_batch_response(self, records: List[Dict[str, str]],
                               raw_response: str) -> Tuple[List[str], List[str]]:

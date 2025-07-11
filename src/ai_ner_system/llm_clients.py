@@ -138,7 +138,7 @@ class Client(ABC):
             The response text from the LLM.
         """
 
-    def supports_batch(self) -> bool:
+    def supports_async_batch(self) -> bool:
         """Check if the client supports batch processing.
 
         Returns:
@@ -307,7 +307,7 @@ class Client(ABC):
             LLMClientError: If batch processing fails.
             BatchTimeoutError: If batch doesn't complete in time.
         """
-        if not self.supports_batch():
+        if not self.supports_async_batch():
             raise LLMClientError(f'Client {self.__class__.__name__} does not support batch processing')
 
         try:
@@ -386,7 +386,7 @@ class ClaudeClient(Client):
 
         logging.info('Claude Client initialized with model=%s', model)
 
-    def supports_batch(self) -> bool:
+    def supports_async_batch(self) -> bool:
         """Check if the client supports batch processing.
 
         Returns:
