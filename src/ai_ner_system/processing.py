@@ -9,7 +9,7 @@ import logging
 import time
 
 from dataclasses import dataclass, field
-from typing import List, Tuple, Dict, Optional, Callable, Union
+from typing import List, Tuple, Dict, Optional, Callable, Union, Any
 
 from ai_ner_system.prompts import PromptBuilder
 from ai_ner_system.llm_clients import Client, BatchProgress, BatchRequest
@@ -715,3 +715,49 @@ class RecordProcessor:
         metadata_record = [entity.to_csv_row() for entity in entities]
         logging.debug('Built %d metadata records for Brevid %s', len(metadata_record), brevid)
         return metadata_record
+
+# Utility functions for batch processing monitoring
+def create_progress_logger(log_interval: int = 60) -> Callable[[BatchProgress], None]:
+    """Create a progress callback that logs batch status."""
+    last_log_time = 0
+
+    def log_progress(progress: BatchProgress) -> None:
+        nonlocal last_log_time
+        current_time = time.time()
+
+        if current_time - last_log_time > log_interval:
+            counts = progress.request_counts
+            logging.info(
+                f'Batch {progress.batch_id} progress: {progress.status.value} '
+                f'(Processing: {counts.get("processing", 0)}), '
+                f'Succeeded: {counts.get("succeeded", 0)},  '
+                f'Errored: {counts.get("errored", 0)}, '
+                f'Elapsed: {progress.elapsed_time:.1f}s, '
+            )
+            last_log_time = current_time
+
+    return log_progress
+
+
+def create_progress_tracker() -> Tuple[Callable[[BatchProgress], None], Callable[[], Dict[str, Any]]]:
+    """Create a progress tracker that stores batch information."""
+    stats = {
+        'start_time': time.time(),
+        'last_update': time.time(),
+        'status': 'starting',
+        'request_counts': {},
+        'elapsed_time': 0
+    }
+
+    def update_progress(progress: BatchProgress) -> None:
+        stats.update({
+            'last_update': time.time(),
+            'status': progress.status.value,
+            'request_counts': progress.request_counts.copy(),
+            'elapsed_time': progress.elapsed_time
+        })
+
+    def get_stats() -> Dict[str, Any]:
+        return stats.copy()
+
+    return update_progress, get_stats
