@@ -9,19 +9,24 @@ import time
 import logging
 import sys
 from pathlib import Path
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional, Callable
+from dataclasses import dataclass
 
 from tqdm import tqdm
 
 from ai_ner_system.config import Config, ConfigError
 from ai_ner_system.prompts import PromptBuilder, GenericPromptBuilder, PromptError
 from ai_ner_system.io_utils import CSVReader, OutputWriter, IOError
-from ai_ner_system.processing import RecordProcessor, ValidationError, ProcessingError
-from ai_ner_system.llm_clients import create_llm_client, Client, LLMClientError
+from ai_ner_system.processing import RecordProcessor, ValidationError, ProcessingError, LLMResponseError
+from ai_ner_system.llm_clients import create_llm_client, Client, LLMClientError, BatchProgress
 
 
 class ApplicationError(Exception):
     """Custom exception for application-level errors."""
+
+@dataclass
+class AsyncProcessingStats:
+    pass
 
 class MedievalTextProcessor:
     """Main application class for processing medieval texts with LLMs."""
@@ -37,11 +42,18 @@ class MedievalTextProcessor:
         """
         self.args = args
 
+        # Initialize components
+        self.llm_client: Optional[Client] = None
+        self.prompt_builder: Optional[PromptBuilder] = None
+        self.processor: Optional[RecordProcessor] = None
+        self.reader: Optional[CSVReader] = None
+        self.writer: Optional[OutputWriter] = None
+
         try:
-            # Initialize components
             self.llm_client = self._initialize_llm_client()
             self.prompt_builder = self._initialize_prompt_builder()
             self.processor = RecordProcessor(self.llm_client, self.prompt_builder)
+
             self.reader = self._initialize_csv_reader()
             self.writer = OutputWriter()
 
@@ -60,11 +72,19 @@ class MedievalTextProcessor:
             ApplicationError: If LLM client initialization fails.
         """
         try:
-            client = create_llm_client(self.args.model)
-            logging.info('LLM client initialized: %s', self.args.model)
-            return client
+            client_type = self.args.client.lower()
+
+            if client_type not in ['claude', 'ollama']:
+                raise ApplicationError(f'Unsupported client type: {client_type}')
+
+            llm_client = create_llm_client(client_type)
+            logging.info('LLM client initialized: %s', client_type)
+            return llm_client
+
         except LLMClientError as e:
-            raise ApplicationError(f"Failed to initialize LLM client '{self.args.model}': {e}") from e
+            raise ApplicationError(f'Failed to initialize LLM client "{self.args.client}": {e}') from e
+        except Exception as e:
+            raise ApplicationError(f'Unexpected error initializing LLM client: {e}') from e
 
     def _initialize_prompt_builder(self) -> PromptBuilder:
         """Initialize the prompt builder with template file.
@@ -101,12 +121,22 @@ class MedievalTextProcessor:
         """
         try:
             input_file = self.args.input or Config.INPUT_FILE
+
+            if not Path(input_file).exists():
+                raise ApplicationError(f"Input file does not exist: {input_file}")
+
             reader = CSVReader(input_file, delimiter=';', encoding='utf-8')
             logging.info('CSV reader initialized for input file: %s', input_file)
             return reader
+
         except IOError as e:
             raise ApplicationError(f'Failed to initialize CSV reader: {e}') from e
+        except Exception as e:
+            raise ApplicationError(f"Unexpected error initializing CSV reader: {e}") from e
 
+    # ============================================================================
+    # SYNC METHODS -  sync batch processing capabilities
+    # ============================================================================
     def process_all_records(self) -> Tuple[List[str], List[str]]:
         """Process all records from the input CSV file using streaming approach.
 
@@ -331,12 +361,14 @@ class MedievalTextProcessor:
             error: The exception that occurred.
         """
         brevid = record.get("Brevid", "unknown")
+        bindnr = record.get('Bindnr', 'unknown')
+
         if isinstance(error, ValidationError):
-            logging.error('Validation error for Brevid %s: %s', brevid, error)
-        elif isinstance(error, ProcessingError):
-            logging.error('Processing error for Brevid %s: %s', brevid, error)
+            logging.error('Validation error for Brevid %s (Bindnr: %s): %s', brevid, bindnr, error)
+        elif isinstance(error, (ProcessingError, LLMResponseError)):
+            logging.error('LLM Processing error for Brevid %s (Bindnr: %s): %s', brevid, bindnr, error)
         else:
-            logging.error('Unexpected error processing Brevid %s: %s', brevid, error, exc_info=True)
+            logging.error('Unexpected error processing Brevid %s (Bindnr: %s): %s', brevid, bindnr, error, exc_info=True)
 
     def write_output(self, annotations: List[str], metadata: List[str]) -> None:
         """Write processed data to output files.
@@ -375,18 +407,25 @@ class MedievalTextProcessor:
 
         except IOError as e:
             raise ApplicationError(f'Failed to write outputs: {e}') from e
+        except Exception as e:
+            raise ApplicationError(f'Unexpected error during output writing: {e}') from e
 
-    def run(self) -> None:
+    def run(self) -> int:
         """Run the complete processing pipeline.
 
         Raises:
             ApplicationError: If any step of the pipeline fails.
+
+        Returns:
+            Exit code (0 for success, 1 for failure).
         """
         try:
+            logging.info('Starting medieval text processing...')
+
             # Process all records
             annotations, metadata = self.process_all_records()
 
-            # Write outputs
+            # Write output files
             self.write_output(annotations, metadata)
 
             logging.info('Processing completed successfully')
@@ -398,11 +437,36 @@ class MedievalTextProcessor:
             print(f'  Annotated text: {output_text}')
             print(f'  Metadata table: {output_table}')
 
+            return 0
+
         except ApplicationError as e:
-            logging.critical('Application error: %s', e, exc_info=True)
-            raise
+            logging.error('Application error: %s', e, exc_info=True)
+            return 1
+        except KeyboardInterrupt:
+            logging.info('Processing interrupted by user.')
+            return 1
         except Exception as e:
-            raise ApplicationError(f'Unexpected error in processing pipeline: {e}') from e
+            logging.error('Unexpected error: %s', e, exc_info=True)
+            return 1
+
+    # ============================================================================
+    # ASYNC METHODS -  async batch processing capabilities
+    # ============================================================================
+    # TODO: Implement process_all_records_async
+    async def process_all_records_async(
+        self,
+        progress_callback: Optional[Callable[[BatchProgress], None]] = None,
+        max_batch_wait_time: int = 86400, # 24 hours
+        poll_interval: int = 30
+    ) -> AsyncProcessingStats:
+        pass
+
+    # TODO: Implement _async_stream_records
+    # TODO: Implement _process_batch_async
+    # TODO: Implement _process_individual_async
+    # TODO: Implement _create_batch_progress_callback
+    # TODO: Implement write_output_async
+    # TODO: Implement run_async
 
 def validate_arguments(args: argparse.Namespace) -> None:
     """Validate command line arguments.
@@ -413,10 +477,28 @@ def validate_arguments(args: argparse.Namespace) -> None:
     Raises:
         ValueError: If arguments are invalid.
     """
-    # Check if input file exists
+    # Validate input files
     input_file = args.input or Config.INPUT_FILE
-    if input_file and not Path(input_file).exists():
-        raise ValueError(f'Input file does not exist: {input_file}')
+    input_path = Path(input_file)
+
+    if not input_path.exists():
+        raise ApplicationError(f'Input file does not exist: {input_path}')
+    if not input_path.is_file():
+        raise ApplicationError(f'Input path is not a file: {input_path}')
+
+    # if input_file and not Path(input_file).exists():
+    #     raise ValueError(f'Input file does not exist: {input_file}')
+
+    # Validate output directories
+    for output_file in [args.output_text, args.output_table]:
+        output_path = Path(output_file)
+        output_dir = output_path.parent
+        if not output_dir.exists():
+            try:
+                output_dir.mkdir(parents=True, exist_ok=True)
+                logging.info('Created output directory: %s', output_dir)
+            except OSError as e:
+                raise ApplicationError(f'Failed to create output directory {output_dir}: {e}') from e
 
     # Check if prompt template exists
     if args.prompt_template and not Path(args.prompt_template).exists():
@@ -427,6 +509,10 @@ def validate_arguments(args: argparse.Namespace) -> None:
         if args.batch_template and not Path(args.batch_template).exists():
             raise ValueError(f'Batch template file does not exist: {args.batch_template}')
 
+    # Validate client type
+    if args.client.lower() not in ['claude', 'ollama']:
+        raise ApplicationError(f'Unsupported client type: {args.client}')
+
     logging.info('Command line arguments validated successfully')
 
 
@@ -436,36 +522,41 @@ def validate_configuration() -> None:
     Raises:
         ConfigError: If configuration is invalid.
     """
-    if not Config.is_valid():
-        raise ConfigError(
-            'Configuration validation failed. '
-            'Please check your .env file or environment variables.'
-        )
+    try:
+        if not Config.is_valid():
+            Config.validate_required_config()
+    except ConfigError as e:
+        raise ApplicationError(f'Configuration validation failed: {e}') from e
+
     logging.info('Configuration validated successfully')
 
-def setup_logging(verbose: bool) -> None:
-    """Setup application logging configuration.
+def setup_logging(level: str = 'INFO') -> None:
+    """Setup application logging
 
     Args:
-        verbose: Whether to enable verbose (DEBUG) logging.
+        level: Logging level ('DEBUG', 'INFO', 'WARNING', 'ERROR')
     """
-    level = logging.DEBUG if verbose else logging.INFO
+    # Convert string level to logging constant
+    numeric_level = getattr(logging, level.upper(), logging.INFO)
 
-    # Clear any existing handlers to avoid conflicts
-    root_logger = logging.getLogger()
-    for handler in root_logger.handlers[:]:
-        root_logger.removeHandler(handler)
-
-    # Configure root logger
+    # Configure logging format
+    log_format = '%(asctime)s %(name)s [%(levelname)s]: %(message)s'
     logging.basicConfig(
-        level=level,
-        format = '%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+        level=numeric_level,
+        format=log_format,
         datefmt='%Y-%m-%d %H:%M:%S',
-        force = True
+        force=True,
+        handlers=[
+            logging.StreamHandler(sys.stdout),
+        ]
     )
 
-    logging.info('Logging configured (verbose=%s)', verbose)
+    logging.info('Logging configured (level=%s)', level)
 
+    # Set specific loggers to appropriate levels
+    logging.getLogger("anthropic").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("requests").setLevel(logging.WARNING)
 
 def create_argument_parser() -> argparse.ArgumentParser:
     """Create and configure the argument parser.
@@ -474,77 +565,91 @@ def create_argument_parser() -> argparse.ArgumentParser:
         Configured ArgumentParser instance.
     """
     parser = argparse.ArgumentParser(
-        description='Annotate medieval texts by Brevid records with LLMs',
+        description='Medieval Text Processor - Process medieval texts using Large Language Models',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         epilog="""
                 Examples:
-                    python main.py --model claude
-                    python src/main.py --model ollama --input input/input.txt -v
-                    python src/main.py --model ollama --output-text output/annotated_output.txt --output-table output/metadata_table.txt
-                    python src/main.py --model ollama --output-text output/annotated_output.txt --output-table output/metadata_table.txt --use-batch --batch-size 10 -v
+                    python main.py --client claude
+                    python src/main.py --client ollama --input input/input.txt -l INFO
+                    python src/main.py --client ollama --output-text output/annotated_output.txt --output-table output/metadata_table.txt
+                    python src/main.py --client ollama --output-text output/annotated_output.txt --output-table output/metadata_table.txt --use-batch --batch-size 10 -l DEBUG
                 """
     )
     # Model selection
     parser.add_argument(
-        "--model",
-        choices=["claude", "ollama"],
-        default="claude",
-        help="Select LLM backend (default: claude)"
+        '--client', '-c',
+        choices=['claude', 'ollama'],
+        default='claude',
+        help='Select LLM Client (default: claude)'
     )
 
-    # File paths
+    # IO File paths
     parser.add_argument(
-        "--prompt-template",
-        default=Config.PROMPT_TEMPLATE_FILE,
-        help="Path to the prompt template file"
-    )
-    parser.add_argument(
-        "--batch-template",
-        default=Config.BATCH_TEMPLATE_FILE,
-        help="Path to the batch template file"
-    )
-    parser.add_argument(
-        "--input",
+        '--input',
         default=Config.INPUT_FILE,
-        help="Path to the input file"
+        help='Path to the input file'
     )
+
     parser.add_argument(
-        "--output-text",
+        '--output-text',
         default=Config.OUTPUT_TEXT_FILE,
-        help="Path for annotated text output"
+        help='Path for annotated text output'
     )
+
     parser.add_argument(
-        "--output-table",
+        '--output-table',
         default=Config.OUTPUT_TABLE_FILE,
-        help="Path for metadata table output"
+        help='Path for metadata table output'
     )
 
     # Batch processing options
     parser.add_argument(
-        "--use-batch",
-        action="store_true",
-        help="Enable batch processing for better performance"
+        '--prompt-template',
+        type=str,
+        default=Config.PROMPT_TEMPLATE_FILE,
+        help='Path to the prompt template file'
     )
 
     parser.add_argument(
-        "--batch-size",
+        '--batch-template',
+        type=str,
+        default=Config.BATCH_TEMPLATE_FILE,
+        help='Path to the batch template file'
+    )
+
+    parser.add_argument(
+        '--use-batch',
+        action='store_true',
+        help='Enable batch processing for better performance'
+    )
+
+    parser.add_argument(
+        '--batch-size',
         type=int,
         default=5,
-        help="Number of records to process in each batch (default: 5)"
+        help='Number of records to process in each batch (default: 5)'
     )
 
+    # TODO: Async processing arguments
+    # '--async'
+    # '--max-wait-time'
+    # '--poll-interval'
+
+    # Utility arguments
     # Logging
     parser.add_argument(
-        "--verbose", "-v",
-        action="store_true",
-        help="Enable verbose logging"
+        '--log-level', '-l',
+        type=str,
+        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
+        default='INFO',
+        help='Set logging level (default: INFO)'
     )
 
     # Additional options
     parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Validate configuration and inputs without processing"
+        '--dry-run',
+        action='store_true',
+        help='Validate configuration and inputs without processing'
     )
 
     return parser
@@ -553,8 +658,12 @@ def create_argument_parser() -> argparse.ArgumentParser:
 # Main function
 # ------------------------------------------------------------------------------
 
-def main() -> None:
-    """Main application entry point."""
+def main() -> int:
+    """Main application entry point.
+
+    Returns:
+        Exit code (0 for success, non-zero for errors).
+    """
     # Add this at the very beginning
     # root_logger = logging.getLogger()
     # print(f"Handlers before setup_logging: {root_logger.handlers}")
@@ -566,11 +675,11 @@ def main() -> None:
         args = parser.parse_args()
 
         # Setup logging
-        setup_logging(args.verbose)
+        setup_logging(args.log_level)
 
         # Validate configuration and arguments
-        validate_configuration()
         validate_arguments(args)
+        validate_configuration()
 
         # Handle dry run
         if args.dry_run:
@@ -578,7 +687,7 @@ def main() -> None:
             print('✓ Command line arguments validated')
             print('✓ Input files exist and are accessible')
             print('Dry run completed successfully - no processing performed')
-            return
+            return 0
 
         # Initialize and run processor
         processor = MedievalTextProcessor(args)
@@ -586,30 +695,28 @@ def main() -> None:
 
         logging.info('Application completed successfully')
 
-    except ConfigError as e:
-        logging.error('Configuration error: %s', e)
-        print(f'Configuration error: {e}', file=sys.stderr)
-        sys.exit(1)
+        # TODO: Choose sync or async execution
+        return 0
 
-    except ValueError as e:
-        logging.error('Invalid arguments: %s', e)
-        print(f'Invalid arguments: {e}', file=sys.stderr)
-        sys.exit(1)
+    # except ConfigError as e:
+    #     logging.error('Configuration error: %s', e)
+    #     print(f'Configuration error: {e}', file=sys.stderr)
+    #     sys.exit(1)
+
+    # except ValueError as e:
+    #     logging.error('Invalid arguments: %s', e)
+    #     print(f'Invalid arguments: {e}', file=sys.stderr)
+    #     sys.exit(1)
 
     except ApplicationError as e:
         logging.error('Application error: %s', e)
-        print(f'Application error: {e}', file=sys.stderr)
-        sys.exit(1)
-
+        return 1
     except KeyboardInterrupt:
-        logging.info('Processing interrupted by user')
-        print('\nProcessing interrupted by user', file=sys.stderr)
-        sys.exit(130)
-
+        logging.error('Processing interrupted by user')
+        return 1
     except Exception as e:
-        logging.critical('Unexpected error: %s', e, exc_info=True)
-        print(f'Unexpected error: {e}', file=sys.stderr)
-        sys.exit(1)
+        logging.error('Unexpected error: %s', e, exc_info=True)
+        return 1
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
