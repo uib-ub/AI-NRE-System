@@ -2,7 +2,6 @@
 
 This module provides configuration management with environment variables loading,
 validation, and error handling for the Medieval texts with LLM processing application.
-
 """
 
 import os
@@ -33,6 +32,7 @@ class Config:
         INPUT_FILE: Path to the input CSV file containing records.
         OUTPUT_TEXT_FILE: Path to the output text file for annotated records.
         OUTPUT_TABLE_FILE: Path to the output table file for metadata.
+        OUTPUT_STATS_FILE: Path to the output statistics file.
         PROMPT_TEMPLATE_FILE: Path to the prompt template file.
         BATCH_TEMPLATE_FILE: Path to the batch processing template file.
         CACHE_DIR: Directory for caching LLM responses, defaults to ".cache_llm".
@@ -52,6 +52,7 @@ class Config:
     INPUT_FILE: Optional[str] = os.getenv("INPUT_FILE")
     OUTPUT_TEXT_FILE: Optional[str] = os.getenv("OUTPUT_TEXT_FILE")
     OUTPUT_TABLE_FILE: Optional[str] = os.getenv("OUTPUT_TABLE_FILE")
+    OUTPUT_STATS_FILE: Optional[str] = os.getenv("OUTPUT_STATS_FILE")
     PROMPT_TEMPLATE_FILE: Optional[str] = os.getenv("PROMPT_TEMPLATE_FILE")
     BATCH_TEMPLATE_FILE: Optional[str] = os.getenv("BATCH_TEMPLATE_FILE")
 
@@ -90,6 +91,7 @@ class Config:
             ('INPUT_FILE', cls.INPUT_FILE),
             ('OUTPUT_TEXT_FILE', cls.OUTPUT_TEXT_FILE),
             ('OUTPUT_TABLE_FILE', cls.OUTPUT_TABLE_FILE),
+            ('OUTPUT_STATS_FILE', cls.OUTPUT_STATS_FILE),
         ]
 
         missing_config = [name for name, value in required_configs if not value]
@@ -116,7 +118,7 @@ class Config:
                 raise ConfigError(f'Input path is not a file: {cls.INPUT_FILE}')
 
         # Validate and create output directories
-        output_files = [cls.OUTPUT_TEXT_FILE, cls.OUTPUT_TABLE_FILE]
+        output_files = [cls.OUTPUT_TEXT_FILE, cls.OUTPUT_TABLE_FILE, cls.OUTPUT_STATS_FILE]
         for file_config in output_files:
             if file_config:
                 cls._ensure_output_directory(file_config)
