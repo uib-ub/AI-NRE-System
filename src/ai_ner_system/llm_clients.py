@@ -229,6 +229,7 @@ class Client(ABC):
             batch_id: The batch job ID to monitor.
             progress_callback: Optional callback function for process updates.
             poll_interval: Time between status checks in seconds, default is 30 seconds.
+            progress_callback: Optional callback function for progress updates.
 
         Yields:
             BatchProgress object with current status and timing information.
@@ -241,7 +242,7 @@ class Client(ABC):
     async def wait_for_batch_completion_async(
             self,
             batch_id: str,
-            max_wait_time: int = 86400,  # 24 hours default (batch expires after 24h)
+            max_wait_time: int = 86400,  # 24-hours default (batch expires after 24h)
             poll_interval: int = 30,
             progress_callback: Optional[Callable[[BatchProgress], None]] = None,
     ) -> BatchStatus:
@@ -269,16 +270,11 @@ class Client(ABC):
             # Check for completion
             if progress.status == BatchStatus.ENDED:
                 return progress.status
-            # if progress.status in [BatchStatus.COMPLETED, BatchStatus.FAILED,
-            #                        BatchStatus.EXPIRED, BatchStatus.CANCELLED]:
-            #     return progress.status
-
             # Check for timeout
             if time.time() - start_time > max_wait_time:
                 raise BatchTimeoutError(
                     f"Batch job {batch_id} did not complete within {max_wait_time} seconds"
                 )
-
         # Fallback status check
         return await self.get_batch_status_async(batch_id)
 
@@ -378,7 +374,7 @@ class ClaudeClient(Client):
             # Synchronous client
             self.client = anthropic.Anthropic(api_key=api_key)
             # Asynchronous client
-            self.async_client = anthropic.Anthropic(api_key=api_key)
+            self.async_client = anthropic.AsyncAnthropic(api_key=api_key)
 
             self.tokenizer = tiktoken.get_encoding('cl100k_base')
         except Exception as e:
@@ -560,7 +556,7 @@ class ClaudeClient(Client):
 
                 batch_requests.append(batch_request)
 
-            # Create the batch job using the correct API endpoint with typed requests
+            # Use AsyncAnthropic client for proper async batch creation
             message_batch = await self.async_client.messages.batches.create(
                 requests = batch_requests
             )
@@ -664,7 +660,7 @@ class ClaudeClient(Client):
             if not batch_info.get("results_url"):
                 raise LLMClientError(f"No results URL found for batch {batch_id}")
 
-            results_iter  = self.async_client.messages.batches.results(batch_id)
+            results_iter  = await self.async_client.messages.batches.results(batch_id)
 
             # Process results from the async iterator
             results = []
@@ -672,7 +668,7 @@ class ClaudeClient(Client):
                 custom_id = result.custom_id
 
                 # Check if the request was successful
-                if result.result.status == "succeeded":
+                if result.result.type == "succeeded":
                     message = result.result.message
                     if message.content and len(message.content) > 0:
                         response_text = message.content[0].text
@@ -988,36 +984,33 @@ class OllamaClient(Client):
 def create_llm_client(client_type: str, **kwargs) -> Client:
     """Factory function to create LLM clients.
 
-    Args:
-        client_type: Type of client ('claude' or 'ollama').
-        **kwargs: Additional arguments for client initialization.
+        Args:
+            client_type: Type of client ('claude' or 'ollama').
+            **kwargs: Additional arguments for client initialization.
 
-    Returns:
-        Initialized LLM client.
+        Returns:
+            Initialized LLM client.
 
-    Raises:
-        LLMClientError: If client type is unsupported or initialization fails.
+        Raises:
+            LLMClientError: If client type is unsupported or initialization fails.
     """
-
     client_type = client_type.lower()
     try:
-        match client_type:
-            case 'claude':
-                return ClaudeClient(
-                    api_key=Config.ANTHROPIC_API_KEY,
-                    model=Config.CLAUDE_MODEL
-                )
-            case 'ollama':
-                return OllamaClient(
-                    endpoint=Config.OPENWEBUI_ENDPOINT,
-                    token=Config.OPENWEBUI_TOKEN,
-                    model=Config.OLLAMA_MODEL
-                )
-            case _:
-                raise LLMClientError(f'Unsupported client type: {client_type}')
-    except (ValueError, LLMClientError):
-        raise
+        if client_type == 'claude':
+            return ClaudeClient(
+                api_key=Config.ANTHROPIC_API_KEY,
+                model=Config.CLAUDE_MODEL
+            )
+        elif client_type == 'ollama':
+            return OllamaClient(
+                endpoint=Config.OPENWEBUI_ENDPOINT,
+                token=Config.OPENWEBUI_TOKEN,
+                model=Config.OLLAMA_MODEL
+            )
+        else:
+            raise LLMClientError(f'Unsupported client type: {client_type}')
     except Exception as e:
+        # Catch any unexpected exceptions and wrap them
         raise LLMClientError(f'Failed to create {client_type} client: {e}') from e
 
 
