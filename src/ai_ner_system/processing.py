@@ -51,7 +51,6 @@ class EntityRecord:
     gender: str = ""
     language: str = ""
 
-    # TODO: This method needs to be modified
     def to_csv_row(self) -> str:
         """Convert entity record to CSV row format.
 
@@ -69,12 +68,12 @@ class EntityRecord:
         ])
 
     @classmethod
-    # def create_entity_record(cls, data: Dict[str, str], brevid: str) -> 'EntityRecord':
     def create_entity_record(cls, entity_data: Dict[str, str], brevid: str) -> 'EntityRecord':
         """Create an EntityRecord from dictionary data.
 
         Args:
             entity_data: Dictionary containing entity information.
+            brevid: Brevid identifier for the record.
 
         Returns:
             An instance of EntityRecord.
@@ -210,51 +209,30 @@ class RecordProcessor:
             return [], []
 
         try:
-            # check if batch async processing is supported
-            if self.llm_client.supports_async_batch():
-                # Use new async batch processing (e.g. records include 10 brevids)
-                batch_result = asyncio.run(self.process_batch_async(records))
+            # Use original sync batch processing logic
+            # Validate all records
+            for record in records:
+                self._validate_record(record)
 
-                # TODO: Convert new format to old format
-                annotated_records = []
-                metadata_records = []
+            # Build batch prompt using the prompt builder (list of records)
+            batch_prompt = self.prompt_builder.build(records)
+            logging.debug('--- Prompt ---\n%s', batch_prompt)
 
-                for result in batch_result.results:
-                    if result.success:
-                       # TODO:  Convert to old format
-                       bindnr = result.record_id.split('_')[-1] if '_' in result.record_id else result.brevid
-                       annotated_records.append(f"{bindnr};{result.brevid};{result.annotated_text}")
+            # Call LLM with batch prompt
+            brevids = [record['Brevid'] for record in records]
+            batch_id = f"BATCH-{'-'.join(brevids[:3])}..." if len(brevids) > 3 else f"BATCH-{'-'.join(brevids)}"
 
-                       # TODO: Convert entities to old metadata format
-                       for entity in result.entities:
-                           metadata_records.append(entity.to_csv_row())
+            raw_response = self._call_llm(batch_id, batch_prompt)
+            logging.debug('Received batch response (length: %d)', len(raw_response))
+            logging.debug('--- RAW RESPONSE for batch %s ---\n%s', batch_id, raw_response)
 
-                return annotated_records, metadata_records
-            else:
-                # Use original batch processing logic
-                # Validate all records
-                for record in records:
-                    self._validate_record(record)
+            # Parse batch response
+            annotated_records, metadata_records = self._parse_batch_response(records, raw_response)
 
-                # Build batch prompt using the prompt builder (list of records)
-                batch_prompt = self.prompt_builder.build(records)
-                logging.debug('--- Prompt ---\n%s', batch_prompt)
+            logging.info('Successfully processed batch of %d records: %d annotations, %d metadata',
+                         len(records), len(annotated_records), len(metadata_records))
 
-                # Call LLM with batch prompt
-                brevids = [record['Brevid'] for record in records]
-                batch_id = f"BATCH-{'-'.join(brevids[:3])}..." if len(brevids) > 3 else f"BATCH-{'-'.join(brevids)}"
-
-                raw_response = self._call_llm(batch_id, batch_prompt)
-                logging.debug('Received batch response (length: %d)', len(raw_response))
-                logging.debug('--- RAW RESPONSE for batch %s ---\n%s', batch_id, raw_response)
-
-                # Parse batch response
-                annotated_records, metadata_records = self._parse_batch_response(records, raw_response)
-
-                logging.info('Successfully processed batch of %d records: %d annotations, %d metadata',
-                             len(records), len(annotated_records), len(metadata_records))
-
-                return annotated_records, metadata_records
+            return annotated_records, metadata_records
 
         except Exception as e:
             logging.error('Error during batch processing: %s', e, exc_info=True)
@@ -270,7 +248,7 @@ class RecordProcessor:
             ProcessingResult containing the processed data.
         """
         start_time = time.time()
-        record_id = record.get("Brevid", "unknown")
+        record_id = f'{record.get("Bindnr", "unknown")}_{record.get("Brevid", "unknown")}'
 
         try:
             # Validate record
@@ -298,7 +276,7 @@ class RecordProcessor:
 
         except Exception as e:
             processing_time = time.time() - start_time
-            error_msg = f"Failed to process record brevid: {record_id}: {e}"
+            error_msg = f"Failed to process record having Bindnr_Brevid: {record_id}: {e}"
             logging.error(error_msg, exc_info=True)
 
             return ProcessingResult(
@@ -342,11 +320,11 @@ class RecordProcessor:
             for i, record in enumerate(records):
                 try:
                     self._validate_record(record)
-                    prompt = self.prompt_builder.build(record)
+                    prompt = self.prompt_builder.build(record) # one record prompt
 
                     # Create a batch request
                     batch_request = BatchRequest(
-                        custom_id = f"record_{i}_{record['Brevid']}",
+                        custom_id = f'record_{i}_{record.get("Bindnr", "unknown")}_{record.get("Brevid", "unknown")}',
                         prompt = prompt,
                         max_tokens = 20000,
                         temperature = 0.0
@@ -355,11 +333,11 @@ class RecordProcessor:
                     batch_requests.append(batch_request)
 
                 except Exception as e:
-                    logging.error(f'Failed to prepare batch request for record {record.get("Brevid1")}: {e}')
+                    logging.error(f'Failed to prepare batch request for record Bindnr {record.get("Bindnr", "unknown")} Brevid {record.get("Brevid", "unknown")}: {e}')
                     continue
 
             if not batch_requests:
-                raise BatchProcessingError("No valid requests to process")
+                raise BatchProcessingError('No valid requests to process')
 
             logging.info(f'Starting async batch processing of {len(batch_requests)} records')
 
@@ -376,46 +354,66 @@ class RecordProcessor:
             successful_count = 0
             failed_count = 0
 
-            # Create mapping from custom_id to original record
-            record_map = {f'record_{i}_{record["Brevid"]}': record
-                          for i, record in enumerate(records)}
-
+            # Create mapping from custom_id to (index, record) for order preservation
+            response_map = {}
             for response in batch_responses:
-                record = record_map.get(response.custom_id)
-                if not record:
-                    logging.warning(f'No record found for custom_id: {response.custom_id}')
+                if 'record_' in response.custom_id:
+                    try:
+                        # Extract index i from custom_id: "record_{i}_{Bindnr}_{Brevid}"
+                        parts = response.custom_id.split('_')
+                        if len(parts) >= 2:
+                            index = int(parts[1])
+                            response_map[index] = response
+                    except (ValueError, IndexError):
+                        logging.warning(f'Could not parse index from custom_id: {response.custom_id}')
+
+            # Process responses in original order
+            for i, record in enumerate(records):
+                response = response_map.get(i)
+
+                if not response:
+                    # No response found for this record
+                    logging.warning(f'No response found for record index {i}, Bindnr {record.get("Bindnr", "unknown")} Brevid {record.get("Brevid", "unknown")}')
+                    results.append(ProcessingResult(
+                        record_id = f'record_{i}_{record.get("Bindnr", "unknown")}_{record.get("Brevid", "unknown")}',
+                        brevid=record.get("Brevid", "unknown"),
+                        success=False,
+                        error_message=f'No response received for record index {i} with Bindnr {record.get("Bindnr", "unknown")} Brevid {record.get("Brevid", "unknown")}'
+                    ))
+                    failed_count += 1
                     continue
 
                 if response.success:
                     try:
                         annotated_text, entities = self._parse_llm_response(
-                           record["Brevid"], response.response_text
+                            record["Brevid"], response.response_text
                         )
 
                         results.append(ProcessingResult(
-                            record_id = response.custom_id,
-                            brevid = record["Brevid"],
-                            annotated_text = annotated_text,
-                            entities = entities,
-                            success = True
+                            record_id=response.custom_id,
+                            brevid=record.get("Brevid", "unknown"),
+                            annotated_text=f'{record.get("Bindnr")};{record.get("Brevid")};{annotated_text}',
+                            entities=entities,
+                            success=True
                         ))
                         successful_count += 1
 
                     except Exception as e:
-                        logging.error(f'Failed to parse LLM response for custom id {response.custom_id} with Brevid {record["Brevid"]}: {e}')
+                        logging.error(
+                            f'Failed to parse LLM response for custom id {response.custom_id} with Brevid {record["Brevid"]}: {e}')
                         results.append(ProcessingResult(
-                            record_id = response.custom_id,
-                            brevid = record["Brevid"],
-                            success = False,
-                            error_message = f"Failed to parse LLM response for custom id {response.custom_id} with Brevid {record['Brevid']}: {e}"
+                            record_id=response.custom_id,
+                            brevid=record.get("Brevid", "unknown"),
+                            success=False,
+                            error_message=f"Failed to parse LLM response for custom id {response.custom_id} with Brevid {record['Brevid']}: {e}"
                         ))
                         failed_count += 1
                 else:
                     results.append(ProcessingResult(
-                        record_id = response.custom_id,
-                        brevid = record["Brevid"],
-                        success = False,
-                        error_message = response.error_message
+                        record_id=response.custom_id,
+                        brevid=record.get("Brevid", "unknown"),
+                        success=False,
+                        error_message=response.error_message
                     ))
                     failed_count += 1
 
@@ -425,8 +423,8 @@ class RecordProcessor:
                          f'{failed_count} failed, {total_processing_time:.2f} seconds total')
 
             return BatchProcessingResult(
-                batch_id = f"batch_{int(start_time)}",
-                results = results,
+                batch_id = f'batch_{int(start_time)}',
+                results = results, # Results in original order
                 total_processing_time = total_processing_time,
                 successful_count = successful_count,
                 failed_count = failed_count
@@ -471,7 +469,7 @@ class RecordProcessor:
         for i, result in enumerate(results):
             if isinstance(result, Exception):
                 processed_results.append(ProcessingResult(
-                    record_id = records[i].get("Brevid", f'record_{i}'),
+                    record_id = f'record_{i}_{records[i].get("Bindnr", "unkown")}_{records[i].get("Brevid", "unknown")}',
                     brevid = records[i].get("Brevid", 'unknown'),
                     success = False,
                     error_message = str(result)
