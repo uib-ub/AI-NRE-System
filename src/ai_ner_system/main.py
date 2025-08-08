@@ -1,30 +1,100 @@
-"""Medieval text processing application with LLM annotation.
+"""Main application module for medieval text processing using Large Language Models.
 
-This module provides the main entry point for processing medieval texts using
-Large Language Models (LLMs) for proper noun annotation and metadata extraction.
+This module provides the primary entry point and orchestration logic for processing
+medieval texts with Named Entity Recognition capabilities. It supports both
+synchronous and asynchronous processing modes with comprehensive error handling
+and progress monitoring.
 """
 
 import argparse
+import asyncio
 import time
 import logging
 import sys
 from pathlib import Path
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional, Callable, Any, AsyncIterator
+from dataclasses import dataclass
 
 from tqdm import tqdm
 
 from ai_ner_system.config import Config, ConfigError
+from ai_ner_system.llm_clients import (
+    create_llm_client,
+    Client,
+    LLMClientError,
+    BatchProgress
+)
 from ai_ner_system.prompts import PromptBuilder, GenericPromptBuilder, PromptError
+from ai_ner_system.processing import (
+    RecordProcessor,
+    ValidationError,
+    ProcessingError,
+    LLMResponseError,
+    ProcessingResult,
+    BatchProcessingError,
+    create_progress_logger
+)
 from ai_ner_system.io_utils import CSVReader, OutputWriter, IOError
-from ai_ner_system.processing import RecordProcessor, ValidationError, ProcessingError
-from ai_ner_system.llm_clients import create_llm_client, Client, LLMClientError
 
 
 class ApplicationError(Exception):
     """Custom exception for application-level errors."""
 
+@dataclass
+class AsyncProcessingStats:
+    """Statistics for async processing operations
+
+    Attributes:
+        total_records: Total number of records to process.
+        processed_records: Number of successfully processed records.
+        failed_records: Number of failed records.
+        start_time: Processing start time.
+        end_time: Processing end time (None if still running).
+        processing_time: Total processing time in seconds.
+        batch_info: Information about batch processing (if used).
+        results: List of ProcessingResult objects for detailed tracking.
+    """
+    total_records: int = 0
+    processed_records: int = 0
+    failed_records: int = 0
+    start_time: float = 0.0
+    end_time: Optional[float] = None
+    processing_time: float = 0.0
+    batch_info: Optional[Dict[str, Any]] = None
+    results: List[ProcessingResult] = None
+
+    def __post_init__(self):
+        """Initialize results list if not provided."""
+        if self.results is None:
+            self.results = []
+
+    @property
+    def success_rate(self) -> float:
+        """Calculate success rate of processing as percentage."""
+        if self.total_records == 0:
+            return 0.0
+        return (self.processed_records / self.total_records) * 100.0
+
+    @property
+    def is_complete(self) -> bool:
+        """Check if processing is complete."""
+        return self.end_time is not None
+
+    @property
+    def throughput(self) -> float:
+        """Calculate records processed per second."""
+        if self.processing_time == 0:
+            return 0.0
+        return self.processed_records / self.processing_time
+
 class MedievalTextProcessor:
-    """Main application class for processing medieval texts with LLMs."""
+    """Main processor for medieval text analysis using Large Language Models.
+
+    This class orchestrates the entire processing pipeline, from reading input CSV
+    files to generating annotated output. It supports both individual record
+    processing and batch processing, with automatic fallback mechanisms and
+    comprehensive error handling.
+    """
 
     def __init__(self, args: argparse.Namespace) -> None:
         """Initialize the medieval text processor.
@@ -37,11 +107,18 @@ class MedievalTextProcessor:
         """
         self.args = args
 
+        # Initialize components
+        self.llm_client: Optional[Client] = None
+        self.prompt_builder: Optional[PromptBuilder] = None
+        self.processor: Optional[RecordProcessor] = None
+        self.reader: Optional[CSVReader] = None
+        self.writer: Optional[OutputWriter] = None
+
         try:
-            # Initialize components
             self.llm_client = self._initialize_llm_client()
             self.prompt_builder = self._initialize_prompt_builder()
             self.processor = RecordProcessor(self.llm_client, self.prompt_builder)
+
             self.reader = self._initialize_csv_reader()
             self.writer = OutputWriter()
 
@@ -60,11 +137,19 @@ class MedievalTextProcessor:
             ApplicationError: If LLM client initialization fails.
         """
         try:
-            client = create_llm_client(self.args.model)
-            logging.info('LLM client initialized: %s', self.args.model)
-            return client
+            client_type = self.args.client.lower()
+
+            if client_type not in ['claude', 'ollama']:
+                raise ApplicationError(f'Unsupported client type: {client_type}')
+
+            llm_client = create_llm_client(client_type)
+            logging.info('LLM client initialized: %s', client_type)
+            return llm_client
+
         except LLMClientError as e:
-            raise ApplicationError(f"Failed to initialize LLM client '{self.args.model}': {e}") from e
+            raise ApplicationError(f'Failed to initialize LLM client "{self.args.client}": {e}') from e
+        except Exception as e:
+            raise ApplicationError(f'Unexpected error initializing LLM client: {e}') from e
 
     def _initialize_prompt_builder(self) -> PromptBuilder:
         """Initialize the prompt builder with template file.
@@ -101,12 +186,22 @@ class MedievalTextProcessor:
         """
         try:
             input_file = self.args.input or Config.INPUT_FILE
+
+            if not Path(input_file).exists():
+                raise ApplicationError(f"Input file does not exist: {input_file}")
+
             reader = CSVReader(input_file, delimiter=';', encoding='utf-8')
             logging.info('CSV reader initialized for input file: %s', input_file)
             return reader
+
         except IOError as e:
             raise ApplicationError(f'Failed to initialize CSV reader: {e}') from e
+        except Exception as e:
+            raise ApplicationError(f"Unexpected error initializing CSV reader: {e}") from e
 
+    # ============================================================================
+    # SYNC METHODS -  sync batch processing capabilities
+    # ============================================================================
     def process_all_records(self) -> Tuple[List[str], List[str]]:
         """Process all records from the input CSV file using streaming approach.
 
@@ -148,34 +243,39 @@ class MedievalTextProcessor:
 
         logging.info('Using %s processing (batch_size=%d)', processing_mode, batch_size)
 
-        for record in tqdm(self.reader.stream_records(), desc=f'Processing Records ({processing_mode} mode)'):
-            batch_records.append(record)
+        try:
+            for record in tqdm(self.reader.stream_records(), desc=f'Processing Records ({processing_mode} mode)'):
+                batch_records.append(record)
 
-            # Process when batch is full or for individual processing (batch_size=1)
-            if len(batch_records) >= batch_size:
+                # Process when batch is full or for individual processing (batch_size=1)
+                if len(batch_records) >= batch_size:
+                    batch_count += 1
+
+                    annotated_records, metadata_records = self._process_batch(batch_records, batch_count, batch_size)
+                    # Collect results
+                    all_annotations.extend(annotated_records)
+                    all_metadata.extend(metadata_records)
+
+                    logging.debug('Successfully processed %s: %d annotations, %d metadata',
+                                f'Brevid {batch_records[0].get("Brevid", "unknown")}' if batch_size == 1 else f'batch {batch_count}',
+                                len(annotated_records), len(metadata_records))
+
+                    # Clear batch records after processing
+                    batch_records = []
+                    time.sleep(0.2)
+
+            # Process any remaining records in the final partial batch
+            if batch_records:
                 batch_count += 1
+                annotations, metadata = self._process_final_batch(batch_records, batch_count, batch_size, processing_mode)
+                all_annotations.extend(annotations)
+                all_metadata.extend(metadata)
 
-                annotated_records, metadata_records = self._process_batch(batch_records, batch_count, batch_size)
-                # Collect results
-                all_annotations.extend(annotated_records)
-                all_metadata.extend(metadata_records)
-
-                logging.debug('Successfully processed %s: %d annotations, %d metadata',
-                            f'Brevid {batch_records[0].get("Brevid", "unknown")}' if batch_size == 1 else f'batch {batch_count}',
-                            len(annotated_records), len(metadata_records))
-
-                # Clear batch records after processing
-                batch_records = []
-                time.sleep(0.2)
-
-        # Process any remaining records in the final partial batch
-        if batch_records:
-            batch_count += 1
-            annotations, metadata = self._process_final_batch(batch_records, batch_count, batch_size, processing_mode)
-            all_annotations.extend(annotations)
-            all_metadata.extend(metadata)
-
-        return all_annotations, all_metadata
+            # logging.info(f'Streaming processing completed: {batch_count} records processed')
+            return all_annotations, all_metadata
+        except Exception as e:
+            logging.error(f"Streaming processing failed: {e}", exc_info=True)
+            raise
 
     def _process_batch(
         self,
@@ -323,20 +423,22 @@ class MedievalTextProcessor:
 
         return annotated_record, metadata_record
 
-    def _handle_individual_error(self, record: Dict[str, str], error: Exception) -> None:
+    def _handle_individual_error(self, record: Dict[str, str], exception: Exception) -> None:
         """Handle errors that occur during individual record processing.
 
         Args:
             record: The record that failed to process.
-            error: The exception that occurred.
+            exception: The exception that occurred.
         """
         brevid = record.get("Brevid", "unknown")
-        if isinstance(error, ValidationError):
-            logging.error('Validation error for Brevid %s: %s', brevid, error)
-        elif isinstance(error, ProcessingError):
-            logging.error('Processing error for Brevid %s: %s', brevid, error)
+        bindnr = record.get('Bindnr', 'unknown')
+
+        if isinstance(exception, ValidationError):
+            logging.error('Validation error for Brevid %s (Bindnr: %s): %s', brevid, bindnr, exception)
+        elif isinstance(exception, (ProcessingError, LLMResponseError)):
+            logging.error('LLM Processing error for Brevid %s (Bindnr: %s): %s', brevid, bindnr, exception)
         else:
-            logging.error('Unexpected error processing Brevid %s: %s', brevid, error, exc_info=True)
+            logging.error('Unexpected error processing Brevid %s (Bindnr: %s): %s', brevid, bindnr, exception, exc_info=True)
 
     def write_output(self, annotations: List[str], metadata: List[str]) -> None:
         """Write processed data to output files.
@@ -375,18 +477,25 @@ class MedievalTextProcessor:
 
         except IOError as e:
             raise ApplicationError(f'Failed to write outputs: {e}') from e
+        except Exception as e:
+            raise ApplicationError(f'Unexpected error during output writing: {e}') from e
 
-    def run(self) -> None:
+    def run(self) -> int:
         """Run the complete processing pipeline.
 
         Raises:
             ApplicationError: If any step of the pipeline fails.
+
+        Returns:
+            Exit code (0 for success, 1 for failure).
         """
         try:
+            logging.info('Starting medieval text processing...')
+
             # Process all records
             annotations, metadata = self.process_all_records()
 
-            # Write outputs
+            # Write output files
             self.write_output(annotations, metadata)
 
             logging.info('Processing completed successfully')
@@ -398,11 +507,592 @@ class MedievalTextProcessor:
             print(f'  Annotated text: {output_text}')
             print(f'  Metadata table: {output_table}')
 
+            return 0
+
         except ApplicationError as e:
-            logging.critical('Application error: %s', e, exc_info=True)
-            raise
+            logging.error('Application error: %s', e, exc_info=True)
+            return 1
+        except KeyboardInterrupt:
+            logging.info('Processing interrupted by user.')
+            return 1
         except Exception as e:
-            raise ApplicationError(f'Unexpected error in processing pipeline: {e}') from e
+            logging.error('Unexpected error: %s', e, exc_info=True)
+            return 1
+
+    # ============================================================================
+    # ASYNC METHODS -  async batch processing capabilities
+    # ============================================================================
+
+    async def process_all_records_async(
+        self,
+        progress_callback: Optional[Callable[[BatchProgress], None]] = None,
+        max_batch_wait_time: int = 86400, # 24 hours
+        poll_interval: int = 30
+    ) -> AsyncProcessingStats:
+        """Process all records asynchronously
+
+        This method provides async batch processing with real-time progress monitoring
+        and comprehensive error handling. It automatically falls back to individual
+        processing if batch processing is not available.
+
+        Args:
+            progress_callback: Optional callback for batch progress updates.
+            max_batch_wait_time: Maximum time to wait for batch completion.
+            poll_interval: Time between progress checks.
+
+        Returns:
+            AsyncProcessingStats with detailed processing information.
+
+        Raises:
+            ApplicationError: If processing fails completely.
+        """
+        if not self.reader or not self.processor:
+            raise ApplicationError('Components not properly initialized for async processing')
+
+        # Initialize statistics
+        stats = AsyncProcessingStats(start_time=time.time())
+
+        # batch_size = self.args.batch_size if self.args.use_batch and self.args.batch_size > 1 else 1
+
+        try:
+            logging.info("Starting async streaming processing...")
+
+            # check if the LLM client supports async batch processing and if batch processing is enabled
+            # TODO: need to revise code for self.args.use_batch
+            if ( # self.args.use_batch and
+                self.args.batch_size > 1 and
+                self.llm_client.supports_async_batch()):
+                # Use async batch processing with streaming
+                await self._process_records_streaming_async(
+                    stats, progress_callback, max_batch_wait_time, poll_interval
+                )
+            else:
+                # Use individual async processing with streaming
+                await self._process_records_individual_async(stats)
+
+            # Finalize statistics
+            stats.end_time = time.time()
+            stats.processing_time = stats.end_time - stats.start_time
+
+            logging.info(
+                f"Async streaming processing completed: {stats.processed_records}/{stats.total_records} "
+                f"records ({stats.success_rate:.1f}% success rate) in {stats.processing_time:.2f}s"
+            )
+
+            return stats
+
+        except Exception as e:
+            stats.end_time = time.time()
+            stats.processing_time = stats.end_time - stats.start_time
+            error_msg = f"Async streaming processing failed: {e}"
+            logging.error(error_msg, exc_info=True)
+            raise ApplicationError(error_msg) from e
+
+    async def _process_records_streaming_async(
+        self,
+        stats: AsyncProcessingStats,
+        progress_callback: Optional[Callable[[BatchProgress], None]],
+        max_wait_time: int,
+        poll_interval: int
+    ) -> None:
+        """Process records using async streaming approach with batching
+
+        Args:
+            stats: Statistics object to update.
+            progress_callback: Optional callback for progress updates.
+            max_wait_time: Maximum time to wait for batch completion.
+            poll_interval: Time between progress checks.
+        """
+        logging.info("Starting async streaming with batch processing, batch size: %d", self.args.batch_size)
+
+        batch_records: List[Dict[str, str]] = [] # a batch of records to process together
+        record_count = 0
+        batch_num = 0
+
+        try:
+            # Stream records asynchronously
+            async for record in self._async_stream_csv_records():
+                batch_records.append(record)
+                # count number of records
+                record_count += 1
+
+                # Update total count as we discover records
+                stats.total_records = record_count
+
+                # Process batch when it reaches the specified size, eg: 10
+                if len(batch_records) >= self.args.batch_size:
+                    batch_num += 1
+                    # Process the batch asynchronously
+                    await self._process_batch_async_streaming(
+                        batch_records, batch_num, stats, progress_callback,
+                        max_wait_time, poll_interval
+                    )
+                    batch_records = [] # Clear batch records after processing a batch
+
+            # Process any remaining records in the final partial batch
+            if batch_records:
+                batch_num += 1
+                # Process the final batch asynchronously
+                await self._process_final_batch_async_streaming(
+                    batch_records, batch_num, stats, progress_callback,
+                    max_wait_time, poll_interval
+                )
+
+            logging.info('Async streaming processing completed: %d records processed', record_count)
+
+        except Exception as e:
+            error_msg = f'Async streaming processing failed: {e}'
+            logging.error(error_msg, exc_info=True)
+            raise ApplicationError(error_msg) from e
+
+    async def _async_stream_csv_records(self) -> AsyncIterator[Dict[str, str]]:
+        """Asynchronously stream records from the CSV input file.
+
+        Returns:
+            AsyncIterator yielding records as dictionaries.
+        """
+        iterator = self.reader.stream_records()  # synchronous generator
+
+        while True:
+            # next(it, None) never raises StopIteration—it returns None at end
+            record = await asyncio.to_thread(lambda it: next(it, None), iterator)
+            if record is None:
+                break
+            yield record
+
+    async def _process_batch_async_streaming(
+        self,
+        batch_records: List[Dict[str, str]],
+        batch_num: int,
+        stats: AsyncProcessingStats,
+        progress_callback: Optional[Callable[[BatchProgress], None]],
+        max_wait_time: int,
+        poll_interval: int
+    ) -> None:
+        """Process a batch of records asynchronously in streaming mode
+
+        Args:
+           batch_records: List of records to process in this batch (eg 10 records).
+           batch_num: Current batch number (staring from number 1).
+           stats: Statistics object to update.
+           progress_callback: Optional callback for progress updates.
+           max_wait_time: Maximum time to wait for batch completion.
+           poll_interval: Time between progress checks.
+        """
+        batch_size = len(batch_records)
+        logging.info(f'Processing batch {batch_num} with {batch_size} records asynchronously')
+
+        try:
+            # Create progress callback for this batch
+            batch_progress_callback = self._create_batch_progress_callback(
+                batch_num, None, progress_callback # None for total_batches since we don't know yet
+            )
+
+            # Process batch asynchronously
+            batch_result = await self.processor.process_batch_async(
+                batch_records,
+                progress_callback=batch_progress_callback,
+                max_wait_time=max_wait_time,
+                poll_interval=poll_interval
+            )
+
+            # Update stats with results
+            stats.processed_records += batch_result.successful_count
+            stats.failed_records += batch_result.failed_count
+
+            # Collect individual results
+            if batch_result.results:
+                stats.results.extend(batch_result.results)
+
+            logging.info(
+                f'Async batch {batch_num} completed: {batch_result.successful_count} successful, '
+                f'{batch_result.failed_count} failed in {batch_result.total_processing_time:.2f}s'
+            )
+
+        except BatchProcessingError as e:
+            logging.error(f'Async batch {batch_num} failed: {e}')
+            # Fallback to individual processing for this batch
+            await self._fallback_to_individual_async_streaming(batch_records, stats)
+        except Exception as e:
+            logging.error(f'Unexpected error in async batch {batch_num}: {e}')
+            await self._fallback_to_individual_async_streaming(batch_records, stats)
+
+    async def _process_final_batch_async_streaming(
+        self,
+        batch_records: List[Dict[str, str]],
+        batch_num: int,
+        stats: AsyncProcessingStats,
+        progress_callback: Optional[Callable[[BatchProgress], None]],
+        max_wait_time: int,
+        poll_interval: int
+    ) -> None:
+        """Process the final batch of records asynchronously
+
+        Args:
+            batch_records: Final batch of records to process.
+            batch_num: Current batch number.
+            stats: Statistics object to update.
+            progress_callback: Optional callback for progress updates.
+            max_wait_time: Maximum time to wait for batch completion.
+            poll_interval: Time between progress checks.
+        """
+        batch_size = len(batch_records)
+        logging.info(f"Processing final async batch {batch_num} of {batch_size} records")
+
+        try:
+            if batch_size == 1:
+                # Process single record individually
+                record = batch_records[0]
+                result = await self.processor.process_record_async(record)
+
+                # Update statistics
+                stats.results.append(result)
+                if result.success:
+                    stats.processed_records += 1
+                else:
+                    stats.failed_records += 1
+
+                logging.info('Final individual async record processing completed')
+
+            else:
+                # Process as batch
+                await self._process_batch_async_streaming(
+                    batch_records, batch_num, stats, progress_callback,
+                    max_wait_time, poll_interval
+                )
+        except Exception as e:
+            logging.error(f'Final async batch processing failed: {e}')
+            await self._fallback_to_individual_async_streaming(batch_records, stats)
+
+    async def _process_records_individual_async(self, stats: AsyncProcessingStats) -> None:
+        """Process records individually asynchronously using streaming
+
+        Args:
+            stats: Statistics object to update.
+        """
+        logging.info("Starting individual async streaming processing")
+
+        try:
+            # Process records with limited concurrency to avoid overwhelming the API
+            semaphore = asyncio.Semaphore(5) # Limit to 5 concurrent requests
+
+            async def process_single_record(record: Dict[str, str]) -> ProcessingResult:
+                async with semaphore:
+                    return await self.processor.process_record_async(record)
+
+            # Create tasks for streaming records
+            tasks: List[asyncio.Task] = []
+            # Keep track of current chunk records
+            current_chunk_records = []
+            record_count = 0
+
+            async for record in self._async_stream_csv_records():
+                record_count += 1
+                stats.total_records = record_count
+                task = asyncio.create_task(process_single_record(record))
+                tasks.append(task)
+                current_chunk_records.append(record)
+
+                # Process in chunks to avoid memory issues with large files
+                if len(tasks) >= 50: # Process 50 records at a time
+                    await self._process_task_chunk(tasks, current_chunk_records, stats)
+                    tasks.clear()
+                    current_chunk_records.clear()
+
+            # Process remaining tasks
+            if tasks:
+                await self._process_task_chunk(tasks, current_chunk_records, stats)
+
+        except Exception as e:
+            logging.error(f'Individual async streaming processing failed: {e}', exc_info=True)
+            raise ApplicationError(f'Individual async streaming processing failed: {e}') from e
+
+    async def _process_task_chunk(
+        self,
+        tasks: List[asyncio.Task],
+        chunk_records: List[Dict[str, str]],
+        stats: AsyncProcessingStats
+    ) -> None:
+        """Process a chunk of async tasks
+
+        Args:
+            tasks: List of asyncio tasks to process.
+            chunk_records: Original records corresponding to the tasks.
+            stats: Statistics object to update.
+        """
+        try:
+            # Gather results in the same order tasks were created
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # Process results in the same order as input
+            for i, result in enumerate(results):
+                original_record = chunk_records[i]  # Get original record by index
+                brevid = original_record.get("Brevid", "")  # Extract brevid
+
+                if isinstance(result, Exception):
+                    # Handle failed task
+                    stats.failed_records += 1
+                    # Create a failed ProcessingResult for consistency
+                    failed_result = ProcessingResult(
+                        record_id=f'failed_{brevid}',
+                        brevid=brevid,
+                        success=False,
+                        error_message=f'Processing failed for Brevid {brevid}: {result}'
+                    )
+                    stats.results.append(failed_result)
+                    logging.error(f'Task failed for Brevid {brevid} with exception: {result}')
+                elif isinstance(result, ProcessingResult):
+                    # Handle successful task
+                    stats.results.append(result)
+                    if result.success:
+                        stats.processed_records += 1
+                    else:
+                        stats.failed_records += 1
+                        logging.warning(f'Record {result.record_id} and Brevid {result.brevid} failed: {result.error_message}')
+
+            logging.info(f'Processed chunk: {len(results)} tasks completed')
+
+        except Exception as e:
+            logging.error(f"Error processing task chunk: {e}", exc_info=True)
+            # Update stats for failed chunk
+            stats.failed_records += len(tasks)
+            raise
+
+    async def _fallback_to_individual_async_streaming(
+        self,
+        batch_records: List[Dict[str, str]],
+        stats: AsyncProcessingStats
+    ) -> None:
+        """Fallback to individual async processing for a batch of records
+
+        Args:
+            batch_records: Records to process individually.
+            stats: Statistics object to update.
+        """
+        logging.info(f"Falling back to individual async processing for {len(batch_records)} records")
+
+        # Process records with limited concurrency
+        semaphore = asyncio.Semaphore(3) # Lower concurrency for fallback
+
+        async def process_single_record(record: Dict[str, str]) -> ProcessingResult:
+            async with semaphore:
+                return await self.processor.process_record_async(record)
+
+        # Create tasks for all records in this batch
+        tasks = [process_single_record(record) for record in batch_records]
+
+        # Process all tasks by asyncio.gather() to preserve order
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Process results in original order and update statistics
+        for i, result in enumerate(results):
+            original_record = batch_records[i] # Get original record by index
+            brevid = original_record.get("Brevid", "")  # Extract brevid
+
+            if isinstance(result, Exception):
+                # Handle failed task
+                stats.failed_records += 1
+                # Create a failed ProcessingResult for the exception
+                failed_result = ProcessingResult(
+                    record_id=f"failed_{brevid}",
+                    brevid=brevid,
+                    success=False,
+                    error_message=f"Processing failed for Brevid {brevid}: {result}"
+                )
+                stats.results.append(failed_result)
+                logging.warning(f'Fallback processing exception for Brevid {brevid}: {result}')
+            elif isinstance(result, ProcessingResult):
+                # Handle successful task
+                stats.results.append(result) # Results added in original order
+                if result.success:
+                    stats.processed_records += 1
+                else:
+                    stats.failed_records += 1
+                    logging.warning(f'Fallback processing failed for record {result.record_id} and Brevid {result.brevid}: {result.error_message}')
+
+    def _create_batch_progress_callback(
+        self,
+        batch_num: int,
+        total_batches: Optional[int],
+        user_callback: Optional[Callable[[BatchProgress], None]] = None
+    ) -> Callable[[BatchProgress], None]:
+        """Create a progress callback for batch monitoring
+
+        Args:
+            batch_num: Current batch number (starting from number 1).
+            total_batches: Total number of batches (None if unknown).
+            user_callback: Optional user-defined callback for progress updates.
+
+        Returns:
+            Progress callback function that can be used to report batch progress.
+        """
+        def progress_callback(progress: BatchProgress) -> None:
+            # Log batch progress
+            counts = progress.request_counts
+            if total_batches:
+                batch_info = f'Batch {batch_num}/{total_batches}'
+            else:
+                batch_info = f'Batch {batch_num}'
+
+            logging.info(
+                f'{batch_info} ({progress.batch_id}): {progress.status.value} - '
+                f'Processing: {counts.get("processing", 0)}, '
+                f'Succeeded: {counts.get("succeeded", 0)}, '
+                f'Errored: {counts.get("errored", 0)}, '
+                f'Elapsed: {progress.elapsed_time:.1f}s'
+            )
+
+            # Call user-defined callback if available
+            if user_callback:
+                try:
+                    user_callback(progress)
+                except Exception as e:
+                    logging.warning(f"Error in user progress callback: {e}")
+
+        return progress_callback
+
+    async def write_output_async(self, stats: AsyncProcessingStats) -> None:
+        """Write processing results from async operations
+
+        Args:
+            stats: Processing statistics containing results
+
+        Raises:
+            ApplicationError: If output writing fails.
+        """
+        try:
+            # Determine output file paths
+            output_text = self.args.output_text or Config.OUTPUT_TEXT_FILE
+            output_table = self.args.output_table or Config.OUTPUT_TABLE_FILE
+
+            # Define headers
+            annotated_header = "Bindnr;Brevid;Tekst"
+            metadata_header = (
+                "Proper Noun;Type of Proper Noun;Order of Occurrence in Doc;"
+                "Brevid;Status/Occupation/Description;Gender;Language"
+            )
+
+            # Extract annotated texts and metadata from results
+            annotated_records = []
+            metadata_records = []
+
+            for result in stats.results:
+                if result.success and result.annotated_text:
+                    annotated_records.append(result.annotated_text)
+                    # Convert entities to metadata records
+                    for entity in result.entities:
+                        metadata_records.append(entity.to_csv_row())
+
+            # Use TaskGroup for better async task management, and it
+            # automatically waits for all tasks to complete when exiting the context manager
+            async with asyncio.TaskGroup() as tg:
+                # write output files asynchronously using OutputWriter methods
+                tg.create_task(asyncio.to_thread(
+                    self.writer.write_text_output,
+                    output_text,
+                    annotated_header,
+                    annotated_records
+                ))
+
+                tg.create_task(asyncio.to_thread(
+                    self.writer.write_metadata_output,
+                    output_table,
+                    metadata_header,
+                    metadata_records
+                ))
+
+                # Write processing statistics, ASYNC method, no asyncio.to_thread needed
+                tg.create_task(self._write_stats_async(stats))
+
+            logging.info(f'Text output written to: {output_text} ({len(annotated_records)} records)')
+            logging.info(f'Metadata output written to: {output_table} ({len(metadata_records)} records)')
+
+        except* Exception as eg: # Exception groups handling
+            # Handle exception group
+            errors = [str(e) for e in eg.exceptions]
+            raise ApplicationError(f'Failed to write async output. Errors: {errors}') from eg
+
+    async def _write_stats_async(self, stats: AsyncProcessingStats) -> None:
+        """Write processing statistics to file
+
+        Args:
+            stats: Processing statistics to write.
+        """
+        try:
+            stats_output_file = self.args.output_stats or Config.OUTPUT_STATS_FILE
+
+            stats_data = {
+                "total_records": stats.total_records,
+                "processed_records": stats.processed_records,
+                "failed_records": stats.failed_records,
+                "success_rate": stats.success_rate,
+                "processing_time": stats.processing_time,
+                "throughput": stats.throughput,
+                "batch_info": stats.batch_info,
+                "start_time": stats.start_time,
+                "end_time": stats.end_time,
+                "timestamp": time.time(),
+                "processing_mode": "async" if hasattr(self.args, 'async_mode') and self.args.async_mode else "sync"
+            }
+
+            await asyncio.to_thread(
+                self.writer.write_stats_output,
+                stats_output_file,
+                stats_data
+            )
+        except Exception as e:
+            logging.warning(f"Failed to write processing statistics: {e}")
+            # Don't raise the exception - stats writing is not critical
+
+    async def run_async(
+        self,
+        progress_callback: Optional[Callable[[BatchProgress], None]] = None,
+    ) -> int:
+        """Run the medieval text processor asynchronously
+
+        This method provides the async entry point for the application,
+        with comprehensive error handling and progress monitoring.
+
+        Args:
+            progress_callback: Optional callback for batch progress updates.
+
+        returns:
+            Exit code (0 for success, 1 for failure).
+        """
+        try:
+            logging.info("Starting async medieval text processing...")
+
+            # Use async context manager for better resource cleanup with timeout
+            async with asyncio.timeout(3600 * 24): # 24-hour timeout
+                # Process all records asynchronously using streaming
+                stats = await self.process_all_records_async(progress_callback)
+
+                # Write output files asynchronously
+                await self.write_output_async(stats)
+
+            logging.info(
+                'Async processing completed successfully: '
+                f'{stats.processed_records}/{stats.total_records} records '
+                f'({stats.success_rate:.1f}% success) in {stats.processing_time:.2f}s'
+            )
+            return 0
+
+        except asyncio.TimeoutError:
+            logging.error("Processing timed out after 24 hours")
+            return 1
+        except ApplicationError as e:
+            logging.error('Application error: %s', e, exc_info=True)
+            return 1
+        except KeyboardInterrupt:
+            logging.info('Processing interrupted by user.')
+            return 1
+        except Exception as e:
+            logging.error('Unexpected error during async processing: %s', e, exc_info=True)
+            return 1
+
+# ============================================================================
+# Utility functions
+# ============================================================================
 
 def validate_arguments(args: argparse.Namespace) -> None:
     """Validate command line arguments.
@@ -413,10 +1103,28 @@ def validate_arguments(args: argparse.Namespace) -> None:
     Raises:
         ValueError: If arguments are invalid.
     """
-    # Check if input file exists
+    # Validate input files
     input_file = args.input or Config.INPUT_FILE
-    if input_file and not Path(input_file).exists():
-        raise ValueError(f'Input file does not exist: {input_file}')
+    input_path = Path(input_file)
+
+    if not input_path.exists():
+        raise ApplicationError(f'Input file does not exist: {input_path}')
+    if not input_path.is_file():
+        raise ApplicationError(f'Input path is not a file: {input_path}')
+
+    # if input_file and not Path(input_file).exists():
+    #     raise ValueError(f'Input file does not exist: {input_file}')
+
+    # Validate output directories
+    for output_file in [args.output_text, args.output_table]:
+        output_path = Path(output_file)
+        output_dir = output_path.parent
+        if not output_dir.exists():
+            try:
+                output_dir.mkdir(parents=True, exist_ok=True)
+                logging.info('Created output directory: %s', output_dir)
+            except OSError as e:
+                raise ApplicationError(f'Failed to create output directory {output_dir}: {e}') from e
 
     # Check if prompt template exists
     if args.prompt_template and not Path(args.prompt_template).exists():
@@ -427,6 +1135,17 @@ def validate_arguments(args: argparse.Namespace) -> None:
         if args.batch_template and not Path(args.batch_template).exists():
             raise ValueError(f'Batch template file does not exist: {args.batch_template}')
 
+    # Validate client type
+    if args.client.lower() not in ['claude', 'ollama']:
+        raise ApplicationError(f'Unsupported client type: {args.client}')
+
+    # Validate async-specific arguments
+    if hasattr(args, 'async_mode') and args.async_mode:
+        if hasattr(args, 'max_wait_time') and args.max_wait_time <= 60:
+            raise ApplicationError(f'Max wait time must be at least 60 seconds for async mode, got {args.max_wait_time} seconds')
+        if hasattr(args, 'poll_interval') and args.poll_interval <= 5:
+            raise ApplicationError(f'Poll interval must be at least 5 seconds for async mode, got {args.poll_interval} seconds')
+
     logging.info('Command line arguments validated successfully')
 
 
@@ -436,36 +1155,42 @@ def validate_configuration() -> None:
     Raises:
         ConfigError: If configuration is invalid.
     """
-    if not Config.is_valid():
-        raise ConfigError(
-            'Configuration validation failed. '
-            'Please check your .env file or environment variables.'
-        )
+    try:
+        if not Config.is_valid():
+            Config.validate_required_config()
+            Config.validate_file_paths()
+    except ConfigError as e:
+        raise ApplicationError(f'Configuration validation failed: {e}') from e
+
     logging.info('Configuration validated successfully')
 
-def setup_logging(verbose: bool) -> None:
-    """Setup application logging configuration.
+def setup_logging(level: str = 'INFO') -> None:
+    """Setup application logging
 
     Args:
-        verbose: Whether to enable verbose (DEBUG) logging.
+        level: Logging level ('DEBUG', 'INFO', 'WARNING', 'ERROR')
     """
-    level = logging.DEBUG if verbose else logging.INFO
+    # Convert string level to logging constant
+    numeric_level = getattr(logging, level.upper(), logging.INFO)
 
-    # Clear any existing handlers to avoid conflicts
-    root_logger = logging.getLogger()
-    for handler in root_logger.handlers[:]:
-        root_logger.removeHandler(handler)
-
-    # Configure root logger
+    # Configure logging format
+    log_format = '%(asctime)s %(name)s [%(levelname)s]: %(message)s'
     logging.basicConfig(
-        level=level,
-        format = '%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+        level=numeric_level,
+        format=log_format,
         datefmt='%Y-%m-%d %H:%M:%S',
-        force = True
+        force=True,
+        handlers=[
+            logging.StreamHandler(sys.stdout),
+        ]
     )
 
-    logging.info('Logging configured (verbose=%s)', verbose)
+    logging.info('Logging configured (level=%s)', level)
 
+    # Set specific loggers to appropriate levels
+    logging.getLogger("anthropic").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("requests").setLevel(logging.WARNING)
 
 def create_argument_parser() -> argparse.ArgumentParser:
     """Create and configure the argument parser.
@@ -474,77 +1199,123 @@ def create_argument_parser() -> argparse.ArgumentParser:
         Configured ArgumentParser instance.
     """
     parser = argparse.ArgumentParser(
-        description='Annotate medieval texts by Brevid records with LLMs',
+        description='Medieval Text Processor - Process medieval texts using Large Language Models',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         epilog="""
                 Examples:
-                    python main.py --model claude
-                    python src/main.py --model ollama --input input/input.txt -v
-                    python src/main.py --model ollama --output-text output/annotated_output.txt --output-table output/metadata_table.txt
-                    python src/main.py --model ollama --output-text output/annotated_output.txt --output-table output/metadata_table.txt --use-batch --batch-size 10 -v
+                    # Process with sync mode
+                    python -m ai_ner_system.main --client claude/ollama --input input/input.txt --output-text output/annotated_output.txt --output-table output/metadata_table.txt --use-batch --batch-size 10 -l DEBUG
+                
+                    # Process with async batch processing
+                    python -m ai_ner_system.main --client claude --input data.csv --batch-size 20 --async
+                    
+                    uv run src/ai_ner_system/main.py --client claude --output-text output/annotated_output_claude_batch_100R_B100_async.txt --output-table output/metadata_table_claude_batch_100R_B100_async.txt --output-stats output/stats_claude_batch_100R_B100_async.txt  -l DEBUG --batch-size 100 --async
                 """
     )
-    # Model selection
+
+    # Model client selection
     parser.add_argument(
-        "--model",
-        choices=["claude", "ollama"],
-        default="claude",
-        help="Select LLM backend (default: claude)"
+        '--client', '-c',
+        type=str,
+        choices=['claude', 'ollama'],
+        default='claude',
+        help='Select LLM Client (default: claude)'
     )
 
-    # File paths
+    # IO File paths
     parser.add_argument(
-        "--prompt-template",
-        default=Config.PROMPT_TEMPLATE_FILE,
-        help="Path to the prompt template file"
-    )
-    parser.add_argument(
-        "--batch-template",
-        default=Config.BATCH_TEMPLATE_FILE,
-        help="Path to the batch template file"
-    )
-    parser.add_argument(
-        "--input",
+        '--input',
+        type=str,
         default=Config.INPUT_FILE,
-        help="Path to the input file"
+        help='Path to the input file'
     )
+
     parser.add_argument(
-        "--output-text",
+        '--output-text',
+        type=str,
         default=Config.OUTPUT_TEXT_FILE,
-        help="Path for annotated text output"
+        help='Path for annotated text output'
     )
+
     parser.add_argument(
-        "--output-table",
+        '--output-table',
+        type=str,
         default=Config.OUTPUT_TABLE_FILE,
-        help="Path for metadata table output"
+        help='Path for metadata table output'
+    )
+
+    parser.add_argument(
+        "--output-stats",
+        type=str,
+        default=Config.OUTPUT_STATS_FILE,
+        help="Output file for processing statistics (JSON format)"
     )
 
     # Batch processing options
     parser.add_argument(
-        "--use-batch",
-        action="store_true",
-        help="Enable batch processing for better performance"
+        '--use-batch',
+        action='store_true',
+        help='Enable batch processing for better performance'
     )
 
     parser.add_argument(
-        "--batch-size",
+        '--batch-size',
         type=int,
         default=5,
-        help="Number of records to process in each batch (default: 5)"
+        help='Number of records to process in each batch (default: 5)'
     )
 
+    parser.add_argument(
+        '--prompt-template',
+        type=str,
+        default=Config.PROMPT_TEMPLATE_FILE,
+        help='Path to the prompt template file'
+    )
+
+    parser.add_argument(
+        '--batch-template',
+        type=str,
+        default=Config.BATCH_TEMPLATE_FILE,
+        help='Path to the batch template file'
+    )
+
+    # Async processing arguments
+    parser.add_argument(
+        '--async', '-a',
+        action='store_true',
+        dest='async_mode',
+        help='Enable asynchronous processing for batch operations'
+    )
+
+    parser.add_argument(
+        '--max-wait-time',
+        type=int,
+        default=86400,  # 24 hours
+        help='Maximum time to wait for async batch completion (default: 86400 seconds, i.e. 24 hours)'
+    )
+
+    parser.add_argument(
+        '--poll-interval',
+        type=int,
+        default=30,
+        help='Time between progress checks for async processing (default: 30s)'
+    )
+
+    # Utility arguments
     # Logging
     parser.add_argument(
-        "--verbose", "-v",
-        action="store_true",
-        help="Enable verbose logging"
+        '--log-level', '-l',
+        type=str,
+        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
+        default='INFO',
+        help='Set logging level (default: INFO)'
     )
 
     # Additional options
     parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Validate configuration and inputs without processing"
+        '--dry-run',
+        action='store_true',
+        help='Validate configuration and inputs without processing'
     )
 
     return parser
@@ -553,8 +1324,12 @@ def create_argument_parser() -> argparse.ArgumentParser:
 # Main function
 # ------------------------------------------------------------------------------
 
-def main() -> None:
-    """Main application entry point."""
+def main() -> int:
+    """Main application entry point.
+
+    Returns:
+        Exit code (0 for success, non-zero for errors).
+    """
     # Add this at the very beginning
     # root_logger = logging.getLogger()
     # print(f"Handlers before setup_logging: {root_logger.handlers}")
@@ -566,11 +1341,11 @@ def main() -> None:
         args = parser.parse_args()
 
         # Setup logging
-        setup_logging(args.verbose)
+        setup_logging(args.log_level)
 
         # Validate configuration and arguments
-        validate_configuration()
         validate_arguments(args)
+        validate_configuration()
 
         # Handle dry run
         if args.dry_run:
@@ -578,38 +1353,42 @@ def main() -> None:
             print('✓ Command line arguments validated')
             print('✓ Input files exist and are accessible')
             print('Dry run completed successfully - no processing performed')
-            return
+            return 0
 
-        # Initialize and run processor
+        # Initialize and run processor instance
         processor = MedievalTextProcessor(args)
-        processor.run()
+        # processor.run()
 
-        logging.info('Application completed successfully')
+        # Choose sync or async execution
+        match getattr(args, 'async_mode', False):
+            case True:
+                logging.info('Using asynchronous processing mode')
 
-    except ConfigError as e:
-        logging.error('Configuration error: %s', e)
-        print(f'Configuration error: {e}', file=sys.stderr)
-        sys.exit(1)
+                # Create progress callback
+                progress_callback = create_progress_logger(60) # Log every 60 seconds
 
-    except ValueError as e:
-        logging.error('Invalid arguments: %s', e)
-        print(f'Invalid arguments: {e}', file=sys.stderr)
-        sys.exit(1)
-
-    except ApplicationError as e:
-        logging.error('Application error: %s', e)
-        print(f'Application error: {e}', file=sys.stderr)
-        sys.exit(1)
+                # Run async processing
+                return asyncio.run(processor.run_async(progress_callback))
+            case False:
+                logging.info('Using synchronous processing mode')
+                # Run synchronous processing
+                return processor.run()
+            case _:
+                logging.error(
+                    f"Invalid value for async_mode: {args.async_mode}. "
+                    "Please set it to either True or False."
+                )
+                return 1  # Non-zero exit code to indicate configuration error
 
     except KeyboardInterrupt:
-        logging.info('Processing interrupted by user')
-        print('\nProcessing interrupted by user', file=sys.stderr)
-        sys.exit(130)
-
+        logging.error('Processing interrupted by user')
+        return 1
+    except ApplicationError as e:
+        logging.error('Application error: %s', e)
+        return 1
     except Exception as e:
-        logging.critical('Unexpected error: %s', e, exc_info=True)
-        print(f'Unexpected error: {e}', file=sys.stderr)
-        sys.exit(1)
+        logging.error('Unexpected error: %s', e, exc_info=True)
+        return 1
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

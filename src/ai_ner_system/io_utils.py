@@ -5,9 +5,10 @@ and write annotated text and metadata outputs.
 """
 
 import csv
+import json
 import logging
 from pathlib import Path
-from typing import List, Dict, Generator, Union
+from typing import List, Dict, Generator, Union, Any
 
 
 class IOError(Exception):
@@ -16,7 +17,7 @@ class IOError(Exception):
 class CSVReader:
     """CSV file reader with streaming capabilities."""
 
-    def __init__(self, file_path: str, delimiter: str = ':', encoding: str = 'utf-8') -> None:
+    def __init__(self, file_path: str, delimiter: str = ';', encoding: str = 'utf-8') -> None:
         """Initialize the CSVReader with file path, delimiter, and encoding.
 
         Args:
@@ -222,51 +223,21 @@ class OutputWriter:
         except OSError as e:
             raise IOError(f'Error writing metadata output to {output_path}: {e}') from e
 
+    def write_stats_output(self, file_path: str, stats_data: Dict[str, Any]) -> None:
+        """Write processing statistics to a JSON file.
 
-def stream_csv_records(file_path: str, delimiter: str = ";"):
-    """
-    Stream records from a file
-    Args:
-        file_path: Path to the file.
-        delimiter: Delimiter used in the file
-    """
-    try:
-        with open(file_path, encoding="utf-8") as f:
-            reader = csv.DictReader(f, delimiter=delimiter)
-            for record_row in reader:
-                yield record_row
-    except Exception as e:
-        logging.error('Error reading CSV file %s: %s', file_path, e, exc_info=True)
-        raise
+        Args:
+            file_path: Output file path for the statistics.
+            stats_data: Dictionary containing processing statistics.
 
-def write_text_output(file_path: str, header: str, annotations: List[str]):
-    """
-    Write annotated text output to a file.
-    Args:
-        file_path: Output file path.
-        header: Header line for the file.
-        annotations: List of annotated text records (strings).
-    """
-    try:
-        with open(file_path, "w", encoding="utf-8") as txt:
-            txt.write(header + "\n")
-            txt.write("\n".join(annotations))
-    except Exception as e:
-        logging.error('Error writing text output to %s: %s', file_path, e, exc_info=True)
-        raise
+        Raises:
+            IOError: If writing to the file fails.
+        """
+        try:
+            with open(file_path, "w", encoding="utf-8") as stats_file:
+                json.dump(stats_data, stats_file, indent=2, ensure_ascii=False)
 
-def write_metadata_output(file_path: str, header: str, metadata: List[str]):
-    """
-    Write metadata table output to a file.
-    Args:
-        file_path: Output file path:
-        header: Header line for the file.
-        metadata: List of metadata rows (strings)
-    """
-    try:
-        with open(file_path, "w", encoding="utf-8") as tbl:
-            tbl.write(header + "\n")
-            tbl.write("\n".join(metadata))
-    except Exception as e:
-        logging.error('Error writing metadata output to %s: %s', file_path, e, exc_info=True)
-        raise e
+            logging.info(f'Processing statistics written to: {file_path}')
+        except Exception as e:
+            logging.error(f"Error writing stats output to {file_path}: {e}", exc_info=True)
+            raise e
