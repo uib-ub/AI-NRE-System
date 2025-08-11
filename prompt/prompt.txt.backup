@@ -1,0 +1,27 @@
+Brevid: {brevid}
+
+Text:
+"""{text}"""
+
+Task:
+1) Identify all PROPER NOUNS (PERSON, PLACE, TITLE).
+2) First output the FULL annotated text, wrapping each occurrence exactly as:
+   < Name;Type;Order;Brevid >
+   (one space before '<' and one space after '>')
+3) Then on a new line output exactly:
+===JSON===
+{{
+   "entities": [
+     {{
+        "name": "...",
+        "type": "...",
+        "order": X,
+        "brevid": "{brevid}",
+        "description": "...",
+        "gender": "...",
+        "language": "ISO-639-3"
+     }},
+     ...
+   ]
+}}
+Use this wrapped format expression to replace each corresponding PROPER NOUN in the medieval text

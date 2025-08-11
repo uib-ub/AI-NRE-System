@@ -3,25 +3,61 @@ Brevid: {brevid}
 Text:
 """{text}"""
 
-Task:
-1) Identify all PROPER NOUNS (PERSON, PLACE, TITLE).
-2) First output the FULL annotated text, wrapping each occurrence exactly as:
-   < Name;Type;Order;Brevid >
-   (one space before '<' and one space after '>')
-3) Then on a new line output exactly:
+Tasks:
+
+Task 1: 
+  First, markup all PROPER NOUNS inside this given medieval text above by wrapping each occurrence of PROPER NOUN in the text exactly as the format expression:
+  < name;type;order;brevid >
+  (one space before '<' and one space after '>')
+  Indicate inside the brackets '<' and '>' : 
+    1. 'name' is the proper noun itself, 
+    2. 'type' is the type of proper noun, such as Person Name, Place Name, etc.,
+    3. 'order' is the order of occurrence of the proper noun in the text,
+    4. 'brevid' is the number from the value of field 'Brevid'.
+  Then, you must replace all PROPER NOUNS in this medieval text with their corresponding wrapped format expressions,
+  and give the FULL MODIFIED text as the final output.
+  IMPORTANT: Do NOT make any program, but directly output the final FULL MODIFIED medieval text without any quotation marks!
+
+Task 2:
+  After that, on a new line output exactly:
+
 ===JSON===
 {{
-   "entities": [
-     {{
-        "name": "...",
-        "type": "...",
-        "order": X,
-        "brevid": "{brevid}",
-        "description": "...",
-        "gender": "...",
-        "language": "ISO-639-3"
-     }},
-     ...
-   ]
+  "entities": [
+    {{
+      "name": "...",
+      "type": "...",
+      "order": X,
+      "brevid": "{brevid}",
+      "description": "...",
+      "gender": "...",
+      "language": "..."
+    }},
+    ...
+  ]
 }}
-Use this wrapped format expression to replace each corresponding PROPER NOUN in the medieval text
+
+IMPORTANT for Task 2: 
+- Ensure every entity has **description**, **gender**, and **language** filled per the rules below:
+   * description: a brief status/occupation for people (e.g. "Abbot", "Priest", "Landowner", etc.) or a type for places (e.g. "Monastery", "Town/City", "Location", "Kingdom (include kingdom name)" etc.)
+   * gender: “Male”, “Female”, or “N/A” if not a person
+   * language: ISO-639-3 code of the text’s language (e.g. “lat” for Latin, “non” for Old Norse)
+
+   Example
+   -------
+   
+   ===JSON===
+   {{
+     "entities": [
+       {{
+         "name": "Olauer",
+         "type": "Person Name",
+         "order": 1,
+         "brevid": "{brevid}",
+         "description": "Abbot",
+         "gender": "Male",
+         "language": "non"
+       }}
+     ]
+   }}
+   -------

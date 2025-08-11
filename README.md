@@ -57,3 +57,11 @@ For 10 records, batch size 10, Claude used 05:23 minutes with US$0.29, input tok
 Then, for 18,559 Records:
 
 * total time for batch processing: 5:23 * 18559 / 10 = 166.5 hours (6.9 days)
+
+
+NOTE: for the new async implementation, 
+1. for 10 records, batch size 10, claude used 1.56 minutes with US$0.17, total time for batch processing 1:34 * 18559 / 10 = 48.5 hours (2.02 days)
+2. for 50 records, batch size 50, claude used 2.04 minutes with US$1.18, total time for batch processing 2:04 * 18559 / 50 = 12.79 hours (0.53 days)
+3. for 100 records, batch size 100, claude used 2.04 minutes with US$1.75, total time for batch processing 2:35 * 18559 / 100 = 7.99 hours (0.33 days)
+
+4. for 103 records, batch size 10, currently handle 5 batches each time, claude used 3:37 for 100 records and 1:03 for 3 records, total time for batch processing will be about 11 hours 

@@ -32,7 +32,7 @@ from ai_ner_system.processing import (
     LLMResponseError,
     ProcessingResult,
     BatchProcessingError,
-    create_progress_logger
+    create_progress_logger, BatchProcessingResult
 )
 from ai_ner_system.io_utils import CSVReader, OutputWriter, IOError
 
@@ -588,6 +588,7 @@ class MedievalTextProcessor:
             logging.error(error_msg, exc_info=True)
             raise ApplicationError(error_msg) from e
 
+    # TODO: need to revise code
     async def _process_records_streaming_async(
         self,
         stats: AsyncProcessingStats,
@@ -609,6 +610,10 @@ class MedievalTextProcessor:
         record_count = 0
         batch_num = 0
 
+        # TODO: Track batch tasks with their order information
+        batch_tasks: Dict[int, asyncio.Task] = {}  # batch_num -> task
+        max_concurrent_batches = 5
+
         try:
             # Stream records asynchronously
             async for record in self._async_stream_csv_records():
@@ -622,25 +627,83 @@ class MedievalTextProcessor:
                 # Process batch when it reaches the specified size, eg: 10
                 if len(batch_records) >= self.args.batch_size:
                     batch_num += 1
-                    # Process the batch asynchronously
-                    await self._process_batch_async_streaming(
-                        batch_records, batch_num, stats, progress_callback,
-                        max_wait_time, poll_interval
+
+                    # TODO: Create and start coroutine task with batch number tracking
+                    batch_task = asyncio.create_task(
+                        self._process_batch_with_order_async(
+                            batch_records.copy(),
+                            batch_num, # Use batch_num for tracking the order
+                            progress_callback,
+                            max_wait_time,
+                            poll_interval
+                        )
                     )
+
+                    # Add the task to the tracking dictionary
+                    batch_tasks[batch_num] = batch_task
+
+                    # TODO commented out code for async batch processing
+                    # # Process the batch asynchronously
+                    # await self._process_batch_async_streaming(
+                    #     batch_records, batch_num, stats, progress_callback,
+                    #     max_wait_time, poll_interval
+                    # )
                     batch_records = [] # Clear batch records after processing a batch
 
-            # Process any remaining records in the final partial batch
+                    # TODO: Limit concurrent batch processing tasks by
+                    # keep up max_concurrent_batches tasks running at any time
+                    if len(batch_tasks) >= max_concurrent_batches:
+                        # Wait for the OLDEST(smallest batch_num) batch to complete (maintain order)
+                        oldest_batch_num = min(batch_tasks.keys())
+                        oldest_task = batch_tasks.pop(oldest_batch_num)
+
+                        # TODO: Process results in order
+                        batch_result = await oldest_task
+                        self._add_batch_results_in_order(
+                            stats,
+                            batch_result,
+                            oldest_batch_num
+                        )
+            # TODO: commented out code for async batch processing
+            # # Process any remaining records in the final partial batch
+            # if batch_records:
+            #     batch_num += 1
+            #     # Process the final batch asynchronously
+            #     await self._process_final_batch_async_streaming(
+            #         batch_records, batch_num, stats, progress_callback,
+            #         max_wait_time, poll_interval
+            #     )
+
+            # logging.info('Async streaming processing completed: %d records processed', record_count)
+
+            # TODO: Process final batch if there are any remaining records
             if batch_records:
                 batch_num += 1
-                # Process the final batch asynchronously
-                await self._process_final_batch_async_streaming(
-                    batch_records, batch_num, stats, progress_callback,
-                    max_wait_time, poll_interval
+                final_task = asyncio.create_task(
+                    self._process_batch_with_order_async(
+                        batch_records.copy(), batch_num, progress_callback,
+                        max_wait_time, poll_interval
+                    )
                 )
+                batch_tasks[batch_num] = final_task
 
-            logging.info('Async streaming processing completed: %d records processed', record_count)
+            # TODO: Process any remaining batch tasks in ORDER
+            for batch_num in sorted(batch_tasks.keys()):
+                batch_task = batch_tasks[batch_num]
+                batch_result = await batch_task
+                self._add_batch_results_in_order(stats, batch_result, batch_num)
+
+            logging.info('Async streaming processing completed with preserved order: %d records', record_count)
 
         except Exception as e:
+            # TODO: commented out code for async batch processing
+            # error_msg = f'Async streaming processing failed: {e}'
+            # logging.error(error_msg, exc_info=True)
+            # raise ApplicationError(error_msg) from e
+            # TODO: Cancel remaining tasks
+            for task in batch_tasks.values():
+                if not task.done():
+                    task.cancel()
             error_msg = f'Async streaming processing failed: {e}'
             logging.error(error_msg, exc_info=True)
             raise ApplicationError(error_msg) from e
@@ -660,34 +723,33 @@ class MedievalTextProcessor:
                 break
             yield record
 
-    async def _process_batch_async_streaming(
-        self,
-        batch_records: List[Dict[str, str]],
-        batch_num: int,
-        stats: AsyncProcessingStats,
-        progress_callback: Optional[Callable[[BatchProgress], None]],
-        max_wait_time: int,
-        poll_interval: int
-    ) -> None:
-        """Process a batch of records asynchronously in streaming mode
+    async def _process_batch_with_order_async(
+            self,
+            batch_records: List[Dict[str, str]],
+            batch_num: int,
+            progress_callback: Optional[Callable[[BatchProgress], None]],
+            max_wait_time: int,
+            poll_interval: int
+    ) -> BatchProcessingResult:
+        """Process a batch of records asynchronously with order tracking
 
         Args:
-           batch_records: List of records to process in this batch (eg 10 records).
-           batch_num: Current batch number (staring from number 1).
-           stats: Statistics object to update.
-           progress_callback: Optional callback for progress updates.
-           max_wait_time: Maximum time to wait for batch completion.
-           poll_interval: Time between progress checks.
+            batch_records: List of records to process in this batch.
+            batch_num: Current batch number (starting from number 1).
+            progress_callback: Optional callback for progress updates.
+            max_wait_time: Maximum time to wait for batch completion.
+            poll_interval: Time between progress checks.
+
+        Returns:
+            BatchProcessingResult.
         """
-        batch_size = len(batch_records)
-        logging.info(f'Processing batch {batch_num} with {batch_size} records asynchronously')
+
+        # Create progress callback for this batch
+        batch_progress_callback = self._create_batch_progress_callback(
+            batch_num, None, progress_callback  # None for total_batches since we don't know yet
+        )
 
         try:
-            # Create progress callback for this batch
-            batch_progress_callback = self._create_batch_progress_callback(
-                batch_num, None, progress_callback # None for total_batches since we don't know yet
-            )
-
             # Process batch asynchronously
             batch_result = await self.processor.process_batch_async(
                 batch_records,
@@ -696,73 +758,157 @@ class MedievalTextProcessor:
                 poll_interval=poll_interval
             )
 
-            # Update stats with results
-            stats.processed_records += batch_result.successful_count
-            stats.failed_records += batch_result.failed_count
-
-            # Collect individual results
-            if batch_result.results:
-                stats.results.extend(batch_result.results)
-
             logging.info(
                 f'Async batch {batch_num} completed: {batch_result.successful_count} successful, '
                 f'{batch_result.failed_count} failed in {batch_result.total_processing_time:.2f}s'
             )
 
-        except BatchProcessingError as e:
-            logging.error(f'Async batch {batch_num} failed: {e}')
-            # Fallback to individual processing for this batch
-            await self._fallback_to_individual_async_streaming(batch_records, stats)
-        except Exception as e:
-            logging.error(f'Unexpected error in async batch {batch_num}: {e}')
-            await self._fallback_to_individual_async_streaming(batch_records, stats)
+            return batch_result
 
-    async def _process_final_batch_async_streaming(
+        except Exception as e:
+            logging.error(f'Batch {batch_num} failed: {e}')
+            # Create fallback results for this batch
+            fallback_stats = AsyncProcessingStats()
+            await self._fallback_to_individual_async_streaming(batch_records, fallback_stats)
+
+            # Convert to BatchProcessingResult format
+            fallback_batch_result = BatchProcessingResult(
+                batch_id = f"fallback_batch_{batch_num}",
+                results=fallback_stats.results,
+                total_processing_time=0.0,
+                successful_count=fallback_stats.processed_records,
+                failed_count=fallback_stats.failed_records
+            )
+
+            return fallback_batch_result
+
+    def _add_batch_results_in_order(
         self,
-        batch_records: List[Dict[str, str]],
-        batch_num: int,
         stats: AsyncProcessingStats,
-        progress_callback: Optional[Callable[[BatchProgress], None]],
-        max_wait_time: int,
-        poll_interval: int
+        batch_result: BatchProcessingResult,
+        batch_num: int
     ) -> None:
-        """Process the final batch of records asynchronously
+        """Add batch results to stats while preserving order
 
         Args:
-            batch_records: Final batch of records to process.
-            batch_num: Current batch number.
             stats: Statistics object to update.
-            progress_callback: Optional callback for progress updates.
-            max_wait_time: Maximum time to wait for batch completion.
-            poll_interval: Time between progress checks.
+            batch_result: Result of the processed batch.
+            batch_num: The batch number for tracking.
         """
-        batch_size = len(batch_records)
-        logging.info(f"Processing final async batch {batch_num} of {batch_size} records")
+        # Update stats with results
+        stats.processed_records += batch_result.successful_count
+        stats.failed_records += batch_result.failed_count
 
-        try:
-            if batch_size == 1:
-                # Process single record individually
-                record = batch_records[0]
-                result = await self.processor.process_record_async(record)
+        # Add results in batch order (they're already in record order within batch)
+        if batch_result.results:
+            stats.results.extend(batch_result.results)
 
-                # Update statistics
-                stats.results.append(result)
-                if result.success:
-                    stats.processed_records += 1
-                else:
-                    stats.failed_records += 1
+        logging.info(f'Added results from batch {batch_num} to stats in order')
 
-                logging.info('Final individual async record processing completed')
+    # TODO: commented out code for async batch processing
+    # async def _process_batch_async_streaming(
+    #     self,
+    #     batch_records: List[Dict[str, str]],
+    #     batch_num: int,
+    #     stats: AsyncProcessingStats,
+    #     progress_callback: Optional[Callable[[BatchProgress], None]],
+    #     max_wait_time: int,
+    #     poll_interval: int
+    # ) -> None:
+    #     """Process a batch of records asynchronously in streaming mode
 
-            else:
-                # Process as batch
-                await self._process_batch_async_streaming(
-                    batch_records, batch_num, stats, progress_callback,
-                    max_wait_time, poll_interval
-                )
-        except Exception as e:
-            logging.error(f'Final async batch processing failed: {e}')
-            await self._fallback_to_individual_async_streaming(batch_records, stats)
+    #     Args:
+    #        batch_records: List of records to process in this batch (eg 10 records).
+    #        batch_num: Current batch number (staring from number 1).
+    #        stats: Statistics object to update.
+    #        progress_callback: Optional callback for progress updates.
+    #        max_wait_time: Maximum time to wait for batch completion.
+    #        poll_interval: Time between progress checks.
+    #     """
+    #     batch_size = len(batch_records)
+    #     logging.info(f'Processing batch {batch_num} with {batch_size} records asynchronously')
+
+    #     try:
+    #         # Create progress callback for this batch
+    #         batch_progress_callback = self._create_batch_progress_callback(
+    #             batch_num, None, progress_callback # None for total_batches since we don't know yet
+    #         )
+
+    #         # Process batch asynchronously
+    #         batch_result = await self.processor.process_batch_async(
+    #             batch_records,
+    #             progress_callback=batch_progress_callback,
+    #             max_wait_time=max_wait_time,
+    #             poll_interval=poll_interval
+    #         )
+
+    #         # Update stats with results
+    #         stats.processed_records += batch_result.successful_count
+    #         stats.failed_records += batch_result.failed_count
+
+    #         # Collect individual results
+    #         if batch_result.results:
+    #             stats.results.extend(batch_result.results)
+
+    #         logging.info(
+    #             f'Async batch {batch_num} completed: {batch_result.successful_count} successful, '
+    #             f'{batch_result.failed_count} failed in {batch_result.total_processing_time:.2f}s'
+    #         )
+
+    #     except BatchProcessingError as e:
+    #         logging.error(f'Async batch {batch_num} failed: {e}')
+    #         # Fallback to individual processing for this batch
+    #         await self._fallback_to_individual_async_streaming(batch_records, stats)
+    #     except Exception as e:
+    #         logging.error(f'Unexpected error in async batch {batch_num}: {e}')
+    #         await self._fallback_to_individual_async_streaming(batch_records, stats)
+
+    # async def _process_final_batch_async_streaming(
+    #     self,
+    #     batch_records: List[Dict[str, str]],
+    #     batch_num: int,
+    #     stats: AsyncProcessingStats,
+    #     progress_callback: Optional[Callable[[BatchProgress], None]],
+    #     max_wait_time: int,
+    #     poll_interval: int
+    # ) -> None:
+    #     """Process the final batch of records asynchronously
+
+    #     Args:
+    #         batch_records: Final batch of records to process.
+    #         batch_num: Current batch number.
+    #         stats: Statistics object to update.
+    #         progress_callback: Optional callback for progress updates.
+    #         max_wait_time: Maximum time to wait for batch completion.
+    #         poll_interval: Time between progress checks.
+    #     """
+    #     batch_size = len(batch_records)
+    #     logging.info(f"Processing final async batch {batch_num} of {batch_size} records")
+
+    #     try:
+    #         if batch_size == 1:
+    #             # Process single record individually
+    #             record = batch_records[0]
+    #             result = await self.processor.process_record_async(record)
+
+    #             # Update statistics
+    #             stats.results.append(result)
+    #             if result.success:
+    #                 stats.processed_records += 1
+    #             else:
+    #                 stats.failed_records += 1
+
+    #             logging.info('Final individual async record processing completed')
+
+    #         else:
+    #             # Process as batch
+    #             await self._process_batch_async_streaming(
+    #                 batch_records, batch_num, stats, progress_callback,
+    #                 max_wait_time, poll_interval
+    #             )
+    #     except Exception as e:
+    #         logging.error(f'Final async batch processing failed: {e}')
+    #         await self._fallback_to_individual_async_streaming(batch_records, stats)
 
     async def _process_records_individual_async(self, stats: AsyncProcessingStats) -> None:
         """Process records individually asynchronously using streaming
