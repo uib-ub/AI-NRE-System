@@ -43,6 +43,9 @@ class ApplicationError(Exception):
 class AsyncProcessingStats:
     """Statistics for async processing operations
 
+    This class tracks comprehensive statistics during asynchronous processing,
+    including timing, success rates, and detailed batch information.
+
     Attributes:
         total_records: Total number of records to process.
         processed_records: Number of successfully processed records.
@@ -57,7 +60,7 @@ class AsyncProcessingStats:
     processed_records: int = 0
     failed_records: int = 0
     start_time: float = 0.0
-    end_time: Optional[float] = None
+    end_time: float = 0.0
     processing_time: float = 0.0
     batch_info: Optional[Dict[str, Any]] = None
     results: List[ProcessingResult] = None
@@ -69,19 +72,31 @@ class AsyncProcessingStats:
 
     @property
     def success_rate(self) -> float:
-        """Calculate success rate of processing as percentage."""
+        """Calculate success rate of processing as percentage.
+
+        Returns:
+            Success rate as a percentage of processed records over total records.
+        """
         if self.total_records == 0:
             return 0.0
         return (self.processed_records / self.total_records) * 100.0
 
     @property
     def is_complete(self) -> bool:
-        """Check if processing is complete."""
+        """Check if processing is complete.
+
+        Returns:
+            True if processing has ended (end_time is not None), False otherwise.
+        """
         return self.end_time is not None
 
     @property
     def throughput(self) -> float:
-        """Calculate records processed per second."""
+        """Calculate records processed per second.
+
+        Returns:
+            Throughput as records per second. Returns 0 if processing time is zero.
+        """
         if self.processing_time == 0:
             return 0.0
         return self.processed_records / self.processing_time
@@ -113,6 +128,12 @@ class MedievalTextProcessor:
         self.reader: Optional[CSVReader] = None
         self.writer: Optional[OutputWriter] = None
 
+        # Initialize incremental mode based on args
+        self._incremental_mode = getattr(args, 'incremental_output', False)
+        # Initialize tracking for incremental output order preservation
+        self._next_expected_batch_num = 1
+        self._batch_result_queue: Dict[int, BatchProcessingResult] = {}
+
         try:
             self.llm_client = self._initialize_llm_client()
             self.prompt_builder = self._initialize_prompt_builder()
@@ -121,7 +142,8 @@ class MedievalTextProcessor:
             self.reader = self._initialize_csv_reader()
             self.writer = OutputWriter()
 
-            logging.info('Medieval text processor initialized successfully')
+            logging.info('MedievalTextProcessor initialized successfully')
+            logging.info('Incremental output mode: %s', self._incremental_mode)
 
         except Exception as e:
             raise ApplicationError(f'Failed to initialize MedievalTextProcessor: {e}') from e
@@ -199,7 +221,7 @@ class MedievalTextProcessor:
             raise ApplicationError(f"Unexpected error initializing CSV reader: {e}") from e
 
     # ============================================================================
-    # SYNC METHODS -  sync batch processing capabilities
+    # SYNCHRONOUS METHODS -  sync batch processing capabilities
     # ============================================================================
     def process_all_records(self) -> Tuple[List[str], List[str]]:
         """Process all records from the input CSV file using streaming approach.
@@ -518,16 +540,15 @@ class MedievalTextProcessor:
             return 1
 
     # ============================================================================
-    # ASYNC METHODS -  async batch processing capabilities
+    # ASYNCHRONOUS METHODS -  async batch processing capabilities
     # ============================================================================
-
     async def process_all_records_async(
         self,
         progress_callback: Optional[Callable[[BatchProgress], None]] = None,
         max_batch_wait_time: int = 86400, # 24 hours
         poll_interval: int = 30
     ) -> AsyncProcessingStats:
-        """Process all records asynchronously
+        """Process all records asynchronously with batch operations.
 
         This method provides async batch processing with real-time progress monitoring
         and comprehensive error handling. It automatically falls back to individual
@@ -571,8 +592,8 @@ class MedievalTextProcessor:
             stats.processing_time = stats.end_time - stats.start_time
 
             logging.info(
-                f"Async streaming processing completed: {stats.processed_records}/{stats.total_records} "
-                f"records ({stats.success_rate:.1f}% success rate) in {stats.processing_time:.2f}s"
+                f'Async streaming processing completed: {stats.processed_records}/{stats.total_records} '
+                f'records ({stats.success_rate:.1f}% success rate) in {stats.processing_time:.2f}s'
             )
 
             return stats
@@ -584,7 +605,6 @@ class MedievalTextProcessor:
             logging.error(error_msg, exc_info=True)
             raise ApplicationError(error_msg) from e
 
-    # TODO: need to revise code
     async def _process_records_streaming_async(
         self,
         stats: AsyncProcessingStats,
@@ -612,7 +632,7 @@ class MedievalTextProcessor:
         max_concurrent_batches = 5
 
         try:
-            # Stream records asynchronously
+            # Stream records asynchronously in batches and concurrently (coroutines) process them with order preservation
             async for record in self._async_stream_csv_records():
                 batch_records.append(record)
                 # count number of records
@@ -623,7 +643,7 @@ class MedievalTextProcessor:
 
                 # Process batch when it reaches the specified size, eg: 10, 100
                 if len(batch_records) >= self.args.batch_size:
-                    batch_num += 1
+                    batch_num += 1 # batch_num starts from 1
 
                     # Create and start coroutine task with batch number tracking
                     batch_task = asyncio.create_task(
@@ -649,7 +669,8 @@ class MedievalTextProcessor:
 
                         # Process results in order
                         batch_result = await oldest_task
-                        self._add_batch_results_in_order(
+                        # Add results to stats in order
+                        await self._add_batch_results_in_order(
                             stats,
                             batch_result,
                             oldest_batch_num
@@ -670,7 +691,12 @@ class MedievalTextProcessor:
             for batch_num in sorted(batch_tasks.keys()):
                 batch_task = batch_tasks[batch_num]
                 batch_result = await batch_task
-                self._add_batch_results_in_order(stats, batch_result, batch_num)
+                # Add results to stats in order
+                await self._add_batch_results_in_order(stats, batch_result, batch_num)
+
+            # Final flush of any queued results (for incremental mode)
+            if self._incremental_mode:
+                await self._flush_queued_batch_results_async()
 
             logging.info('Async streaming processing completed with preserved order: %d records', record_count)
 
@@ -719,6 +745,9 @@ class MedievalTextProcessor:
             BatchProcessingResult.
         """
 
+        logging.info('Processing batch %d with %d records (order-preserving)',
+                     batch_num, len(batch_records))
+
         # Create progress callback for this batch
         batch_progress_callback = self._create_batch_progress_callback(
             batch_num, None, progress_callback  # None for total_batches since we don't know yet
@@ -757,28 +786,125 @@ class MedievalTextProcessor:
 
             return fallback_batch_result
 
-    def _add_batch_results_in_order(
+    async def _add_batch_results_in_order(
         self,
         stats: AsyncProcessingStats,
         batch_result: BatchProcessingResult,
         batch_num: int
     ) -> None:
-        """Add batch results to stats while preserving order
+        """Add batch results to stats while preserving order and handle incremental output.
 
         Args:
             stats: Statistics object to update.
             batch_result: Result of the processed batch.
             batch_num: The batch number for tracking.
         """
-        # Update stats with results
+
+        logging.info('Adding results for batch %d (expected: %d)',
+                     batch_num, self._next_expected_batch_num)
+
         stats.processed_records += batch_result.successful_count
         stats.failed_records += batch_result.failed_count
 
-        # Add results in batch order (they're already in record order within batch)
-        if batch_result.results:
-            stats.results.extend(batch_result.results)
+        if self._incremental_mode:
+            # Incremental mode: queue results until we can write them in order
+            self._batch_result_queue[batch_num] = batch_result
+            await self._flush_queued_batch_results_async()
+        else:
+            # Standard mode: accumulate all results in memory
+            # Add results in batch order (they're already in record order within batch)
+            if batch_result.results:
+                stats.results.extend(batch_result.results)
+            logging.info(f'Added results from batch {batch_num} to stats in order')
 
-        logging.info(f'Added results from batch {batch_num} to stats in order')
+        logging.info('Added batch %d results: %d successful, %d failed',
+                     batch_num, batch_result.successful_count, batch_result.failed_count)
+
+    async def _flush_queued_batch_results_async(self) -> None:
+        """Write queued batch results in order and remove from queue."""
+
+        while self._next_expected_batch_num in self._batch_result_queue:
+            # pop the next expected batch result
+            batch_result = self._batch_result_queue.pop(self._next_expected_batch_num)
+            # Write this batch's results immediately
+            await self._write_batch_results_incremental_async(
+                batch_result,
+                self._next_expected_batch_num
+            )
+            self._next_expected_batch_num += 1
+
+            logging.info(f'Flushed batch {self._next_expected_batch_num - 1} results to output files')
+
+    async def _write_batch_results_incremental_async(
+        self,
+        batch_result: BatchProcessingResult,
+        batch_num: int
+    ) -> None:
+        """Write batch results to output files incrementally
+
+        Args:
+            batch_result: Result of the processed batch.
+            batch_num: The batch number for tracking.
+        """
+        try:
+            successful_results = [r for r in batch_result.results if r.success and r.annotated_text.strip()]
+
+            if not successful_results:
+                logging.info('Batch %d: No successful results to write', batch_num)
+                return
+
+            # Prepare annotated data and entity metadata
+            annotated_rows = []
+            metadata_rows = []
+
+            for result in successful_results:
+                annotated_rows.append(result.annotated_text)
+                # Convert entities to metadata records
+                for entity in result.entities:
+                    metadata_rows.append(entity.to_csv_row())
+
+            # Determine output file paths
+            output_text_file = self.args.output_text or Config.OUTPUT_TEXT_FILE
+            output_table_file = self.args.output_table or Config.OUTPUT_TABLE_FILE
+
+            # Define headers
+            annotated_header = "Bindnr;Brevid;Tekst"
+            metadata_header = (
+                "Proper Noun;Type of Proper Noun;Order of Occurrence in Doc;"
+                "Brevid;Status/Occupation/Description;Gender;Language"
+            )
+
+            # Use TaskGroup for better async task management concurrently, and it
+            # automatically waits for all tasks to complete when exiting the context manager
+            async with asyncio.TaskGroup() as tg:
+                # write output files asynchronously using OutputWriter methods
+                # Write annotated text output
+                tg.create_task(
+                   asyncio.to_thread(
+                       self.writer.append_text_output,
+                       output_text_file,
+                       annotated_header,
+                       annotated_rows
+                   )
+                )
+
+                # Write metadata if we have entities
+                if metadata_rows:
+                    tg.create_task(
+                        asyncio.to_thread(
+                            self.writer.append_metadata_output,
+                            output_table_file,
+                            metadata_header,
+                            metadata_rows
+                        )
+                    )
+            logging.info('Batch %d: Wrote %d annotations and %d entities incrementally',
+                     batch_num, len(annotated_rows), len(metadata_rows))
+
+        except Exception as e:
+            logging.error('Failed to write batch %d results incrementally: %s',
+                          batch_num, e)
+            # Don't raise - this is not critical enough to stop processing
 
     async def _process_records_individual_async(self, stats: AsyncProcessingStats) -> None:
         """Process records individually asynchronously using streaming
@@ -976,7 +1102,17 @@ class MedievalTextProcessor:
         Raises:
             ApplicationError: If output writing fails.
         """
+        # handle incremental output mode
+        if self._incremental_mode:
+            # In incremental mode, most output is already written
+            # Just ensure final stats are written
+            logging.info('Finalizing incremental output mode')
+            await self._write_stats_async(stats)
+            return
+
         try:
+            logging.info('Writing output files...')
+
             # Determine output file paths
             output_text = self.args.output_text or Config.OUTPUT_TEXT_FILE
             output_table = self.args.output_table or Config.OUTPUT_TABLE_FILE
@@ -1226,6 +1362,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
                     python -m ai_ner_system.main --client claude --input data.csv --batch-size 20 --async
                     
                     uv run src/ai_ner_system/main.py --client claude --output-text output/annotated_output_claude_batch_100R_B100_async.txt --output-table output/metadata_table_claude_batch_100R_B100_async.txt --output-stats output/stats_claude_batch_100R_B100_async.txt  -l DEBUG --batch-size 100 --async
+                    uv run src/ai_ner_system/main.py --client claude --output-text output/annotated_output_claude_batch_13R_B2_async.txt --output-table output/metadata_table_claude_batch_13R_B2_async.txt --output-stats output/stats_claude_batch_13R_B2_async.txt  -l DEBUG --batch-size 2 --async --incremental-output
                 """
     )
 
@@ -1238,7 +1375,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help='Select LLM Client (default: claude)'
     )
 
-    # IO File paths
+    # IO File file arguments
     parser.add_argument(
         '--input',
         type=str,
@@ -1297,10 +1434,25 @@ def create_argument_parser() -> argparse.ArgumentParser:
 
     # Async processing arguments
     parser.add_argument(
-        '--async', '-a',
+        '--async-mode', '-a',
         action='store_true',
         dest='async_mode',
         help='Enable asynchronous processing for batch operations'
+    )
+
+    # Maximum number of concurrent batches
+    parser.add_argument(
+        '--max-concurrent-batches',
+        type=int,
+        default=5,
+        help='Maximum number of concurrent batches (default: 5)'
+    )
+
+    # Incremental output option
+    parser.add_argument(
+        '--incremental-output',
+        action='store_true',
+        help='Write outputs incrementally after each batch (useful for large datasets)'
     )
 
     parser.add_argument(
