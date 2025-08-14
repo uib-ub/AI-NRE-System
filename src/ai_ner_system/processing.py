@@ -37,6 +37,7 @@ class EntityRecord:
     Attributes:
         name: The proper noun itself.
         type: Type of proper noun (Person Name, Place Name, etc.).
+        preposition: Preposition used with the proper noun (if applicable, otherwise use “N/A”),
         order: Order of occurrence in the text.
         brevid: The Brevid identifier from the source record.
         description: Status/occupation for people, type for places.
@@ -45,6 +46,7 @@ class EntityRecord:
     """
     name: str
     type: str
+    preposition: str
     order: int
     brevid: str
     description: str = ""
@@ -60,6 +62,7 @@ class EntityRecord:
         return ";".join([
             self.name,
             self.type,
+            self.preposition,
             str(self.order),
             self.brevid,
             self.description,
@@ -85,6 +88,7 @@ class EntityRecord:
             return cls(
                 name=str(entity_data.get("name", "")).strip(),
                 type=str(entity_data.get("type", "")).strip(),
+                preposition=str(entity_data.get("preposition", "N/A")).strip(),
                 order=int(entity_data.get("order", 0)),
                 brevid=str(entity_data.get("brevid", brevid)).strip(),
                 description=str(entity_data.get("description", "")).strip(),
