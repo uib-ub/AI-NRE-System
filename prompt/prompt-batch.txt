@@ -13,9 +13,10 @@ Process the following {num_records} medieval text records in a single batch.
 {batch_content}
 
 For each record above:
-1. Markup all PROPER NOUNS by wrapping as: < name;type;order;brevid >
+1. Markup all PROPER NOUNS by wrapping as: < name;type;preposition;order;brevid >
    - `name` is the proper noun itself,
    - `type` is the type of proper noun, such as Person Name, Place Name, etc.,
+   - `preposition` is the preposition used with the proper noun which is the Place Name type (if applicable, otherwise use “N/A”),
    - `order` is the order of occurrence of the proper noun in the text,
    - `brevid` is the number from the value of field 'Brevid'.
 2. Provide metadata with:
@@ -34,6 +35,7 @@ RECORD 1 RESULT:
     {{
       "name": "...",
       "type": "...",
+      "preposition": "...",
       "order": X,
       "brevid": "...",
       "description": "...",
