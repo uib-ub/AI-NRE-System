@@ -487,7 +487,7 @@ class MedievalTextProcessor:
             # Write metadata table output
             if metadata:
                 metadata_header = (
-                    "Proper Noun;Type of Proper Noun;Order of Occurrence in Doc;"
+                    "Proper Noun;Type of Proper Noun;Preposition;Order of Occurrence in Doc;"
                     "Brevid;Status/Occupation/Description;Gender;Language"
                 )
                 self.writer.write_metadata_output(output_table, metadata_header, metadata)
@@ -870,7 +870,7 @@ class MedievalTextProcessor:
             # Define headers
             annotated_header = "Bindnr;Brevid;Tekst"
             metadata_header = (
-                "Proper Noun;Type of Proper Noun;Order of Occurrence in Doc;"
+                "Proper Noun;Type of Proper Noun;Preposition;Order of Occurrence in Doc;"
                 "Brevid;Status/Occupation/Description;Gender;Language"
             )
 
@@ -1120,7 +1120,7 @@ class MedievalTextProcessor:
             # Define headers
             annotated_header = "Bindnr;Brevid;Tekst"
             metadata_header = (
-                "Proper Noun;Type of Proper Noun;Order of Occurrence in Doc;"
+                "Proper Noun;Type of Proper Noun;Preposition;Order of Occurrence in Doc;"
                 "Brevid;Status/Occupation/Description;Gender;Language"
             )
 
