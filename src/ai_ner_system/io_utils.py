@@ -121,6 +121,11 @@ class OutputWriter:
             encoding: Encoding for output files.
         """
         self.encoding = encoding
+        # Track which files have headers written for incremental writing output
+        self._headers_written = {
+            'text': False,
+            'metadata': False
+        }
 
     def _ensure_output_directory(self, file_path: Union[str, Path]) -> Path:
         """Ensure the output directory exists.
@@ -222,6 +227,110 @@ class OutputWriter:
 
         except OSError as e:
             raise IOError(f'Error writing metadata output to {output_path}: {e}') from e
+
+    def append_text_output(
+        self,
+        file_path: str,
+        header: str,
+        annotations: List[str]
+    ) -> None:
+        """Append annotated text output to a file.
+
+         Args:
+             file_path: Output file path.
+             header: Header line for the file (written only once).
+             annotations: List of annotated text records (strings).
+
+         Raises:
+             IOError: If writing to the file fails.
+             ValueError: If annotations list is empty.
+         """
+        if not annotations:
+            raise ValueError('Annotations list cannot be empty.')
+
+        # Ensure output directory exists
+        output_path = self._ensure_output_directory(file_path)
+
+        try:
+            # Check if the file exists to determine if we need to write the header
+            file_exists = output_path.exists()
+            needs_header = not file_exists and not self._headers_written['text']
+
+            mode = 'a' if file_exists else 'w'
+
+            with open(output_path, mode, encoding=self.encoding) as file:
+                # Write header only if the file is new or header has not been written yet
+                if needs_header:
+                    file.write(header)
+                    if header and not header.endswith('\n'):
+                        file.write('\n')
+                    self._headers_written['text'] = True
+
+                # Add newline before content if file already has content to avoid sticking
+                # new annotations directly after old content without spacing.
+                if file_exists and output_path.stat().st_size > 0:
+                    file.write('\n')
+
+                # Write the new annotations
+                content = "\n".join(annotations)
+                file.write(content)
+
+            logging.info('Appended %d annotations to %s', len(annotations), output_path)
+
+        except OSError as e:
+            raise IOError(f'Error appending text output to {output_path}: {e}') from e
+
+    def append_metadata_output(
+        self,
+        file_path: str,
+        header: str,
+        metadata: List[str]
+    ) -> None:
+        """Append metadata table output to a file.
+
+         Args:
+             file_path: Output file path.
+             header: Header line for the file (written only once).
+             metadata: List of metadata rows (strings).
+
+         Raises:
+             IOError: If writing to the file fails.
+             ValueError: If metadata list is empty.
+         """
+        if not metadata:
+            raise ValueError('Metadata list cannot be empty.')
+
+        # Ensure output directory exists
+        output_path = self._ensure_output_directory(file_path)
+
+        try:
+            # Check if file exists and if header needs to be written
+            file_exists = output_path.exists()
+            needs_header = not file_exists and not self._headers_written['metadata']
+
+            mode = 'a' if file_exists else 'w'
+
+            with open(output_path, mode, encoding=self.encoding) as file:
+                # Write header only if the file is new or header has not been written yet
+                if needs_header:
+                    file.write(header)
+                    if header and not header.endswith('\n'):
+                        file.write('\n')
+                    self._headers_written['metadata'] = True
+
+                # Add newline before content if file already has content to avoid sticking
+                # new annotations directly after old content without spacing.
+                if file_exists and output_path.stat().st_size > 0:
+                    file.write('\n')
+
+                # Write the new metadata
+                content = "\n".join(metadata)
+                file.write(content)
+
+            logging.info('Appended %d metadata rows to %s', len(metadata), output_path)
+
+        except OSError as e:
+            raise IOError(f'Error appending metadata output to {output_path}: {e}') from e
 
     def write_stats_output(self, file_path: str, stats_data: Dict[str, Any]) -> None:
         """Write processing statistics to a JSON file.
