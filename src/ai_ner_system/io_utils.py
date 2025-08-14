@@ -350,3 +350,36 @@ class OutputWriter:
         except Exception as e:
             logging.error(f"Error writing stats output to {file_path}: {e}", exc_info=True)
             raise e
+
+    def clean_output_files(self, *file_paths: str) -> None:
+        """Clean up (delete) existing output files.
+
+        Args:
+            *file_paths: Variable number of file paths to clean up.
+
+        Raises:
+            IOError: If file deletion fails for any critical reason.
+        """
+        for file_path in file_paths:
+            if not file_path: # Skip empty/None file paths
+                continue
+
+            try:
+                path = Path(file_path)
+                if path.exists():
+                    path.unlink()
+                    logging.info(f'Cleaned up existing output file: {file_path}')
+                else:
+                    logging.warning(f'Output file does not exist, skipping cleanup: {file_path}')
+
+            except OSError as e:
+                # Log error but don't fail the entire process for file cleanup issues
+                logging.warning('Failed to clean up output file %s: %s', file_path, e)
+
+        # Reset header tracking since we're starting fresh
+        self._headers_written = {
+            'text': False,
+            'metadata': False
+        }
+
+        logging.info('Output file cleanup completed')

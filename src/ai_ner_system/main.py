@@ -220,6 +220,28 @@ class MedievalTextProcessor:
         except Exception as e:
             raise ApplicationError(f"Unexpected error initializing CSV reader: {e}") from e
 
+    def _cleanup_output_files(self) -> None:
+        """Cleanup existing output files before processing.
+
+        This method removes existing output files to ensure a clean slate for new processing.
+        It is called at the start of the run/run_async method.
+        """
+        try:
+            output_text_file = self.args.output_text or Config.OUTPUT_TEXT_FILE
+            output_table_file = self.args.output_table or Config.OUTPUT_TABLE_FILE
+            output_stats_file = self.args.output_stats or Config.OUTPUT_STATS_FILE
+
+            # Clean up all output files if they exist
+            self.writer.clean_output_files(
+                output_text_file,
+                output_table_file,
+                output_stats_file
+            )
+
+        except Exception as e:
+            logging.warning('Error during output file cleanup: %s', e)
+            # Don't fail the entire process for cleanup issues
+
     # ============================================================================
     # SYNCHRONOUS METHODS -  sync batch processing capabilities
     # ============================================================================
@@ -487,7 +509,7 @@ class MedievalTextProcessor:
             # Write metadata table output
             if metadata:
                 metadata_header = (
-                    "Proper Noun;Type of Proper Noun;Order of Occurrence in Doc;"
+                    "Proper Noun;Type of Proper Noun;Preposition;Order of Occurrence in Doc;"
                     "Brevid;Status/Occupation/Description;Gender;Language"
                 )
                 self.writer.write_metadata_output(output_table, metadata_header, metadata)
@@ -511,6 +533,9 @@ class MedievalTextProcessor:
         """
         try:
             logging.info('Starting medieval text processing...')
+
+            # Clean up existing output files first
+            self._cleanup_output_files()
 
             # Process all records
             annotations, metadata = self.process_all_records()
@@ -870,7 +895,7 @@ class MedievalTextProcessor:
             # Define headers
             annotated_header = "Bindnr;Brevid;Tekst"
             metadata_header = (
-                "Proper Noun;Type of Proper Noun;Order of Occurrence in Doc;"
+                "Proper Noun;Type of Proper Noun;Preposition;Order of Occurrence in Doc;"
                 "Brevid;Status/Occupation/Description;Gender;Language"
             )
 
@@ -1120,7 +1145,7 @@ class MedievalTextProcessor:
             # Define headers
             annotated_header = "Bindnr;Brevid;Tekst"
             metadata_header = (
-                "Proper Noun;Type of Proper Noun;Order of Occurrence in Doc;"
+                "Proper Noun;Type of Proper Noun;Preposition;Order of Occurrence in Doc;"
                 "Brevid;Status/Occupation/Description;Gender;Language"
             )
 
@@ -1213,6 +1238,9 @@ class MedievalTextProcessor:
         """
         try:
             logging.info("Starting async medieval text processing...")
+
+            # Clean up existing output files first
+            self._cleanup_output_files()
 
             # Use async context manager for better resource cleanup with timeout
             async with asyncio.timeout(3600 * 24): # 24-hour timeout

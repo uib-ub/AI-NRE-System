@@ -7,13 +7,14 @@ Tasks:
 
 Task 1: 
   First, markup all PROPER NOUNS inside this given medieval text above by wrapping each occurrence of PROPER NOUN in the text exactly as the format expression:
-  < name;type;order;brevid >
+  < name;type;preposition;order;brevid >
   (one space before '<' and one space after '>')
   Indicate inside the brackets '<' and '>' : 
     1. 'name' is the proper noun itself, 
     2. 'type' is the type of proper noun, such as Person Name, Place Name, etc.,
-    3. 'order' is the order of occurrence of the proper noun in the text,
-    4. 'brevid' is the number from the value of field 'Brevid'.
+    3. 'preposition' is the preposition used with the proper noun which is the Place Name type (if applicable, otherwise use “N/A”),
+    4. 'order' is the order of occurrence of the proper noun in the text,
+    5. 'brevid' is the number from the value of field 'Brevid'.
   Then, you must replace all PROPER NOUNS in this medieval text with their corresponding wrapped format expressions,
   and give the FULL MODIFIED text as the final output.
   IMPORTANT: Do NOT make any program, but directly output the final FULL MODIFIED medieval text without any quotation marks!
@@ -27,6 +28,7 @@ Task 2:
     {{
       "name": "...",
       "type": "...",
+      "preposition": "...",
       "order": X,
       "brevid": "{brevid}",
       "description": "...",
@@ -52,6 +54,7 @@ IMPORTANT for Task 2:
        {{
          "name": "Olauer",
          "type": "Person Name",
+         "preposition": "N/A",
          "order": 1,
          "brevid": "{brevid}",
          "description": "Abbot",
