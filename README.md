@@ -11,24 +11,33 @@
 eg 1. Claude API:
 
 ```Bash
-uv run process-medieval-llm \
-      --model claude \
-      --output-text output/annotated_output_claude_batch_10R_B10.txt \
-      --output-table output/metadata_table_claude_batch_10R_B10.txt \
-      -v \
-      --use-batch --batch-size 10
+uv run src/ai_ner_system/main.py \ 
+      --client claude \
+      --output-text output/annotated_output_claude_batch_13R_B2_async_incremental.txt \
+      --output-table output/metadata_table_claude_batch_13R_B2_async_incremental.txt \
+      --output-stats output/stats_claude_batch_13R_B2_async_incremental.txt \
+      --batch-size 2 --async --incremental-output
 ```
 
 eg 2. Ollama/OPENWEBUI:
 
 ```Bash
-uv run process-medieval-llm \
+uv run src/ai_ner_system/main.py \ 
       --model ollama \
       --output-text output/annotated_output_gemma_batch_10R_B2.txt \
       --output-table output/metadata_table_gemma_batch_10R_B2.txt \
-      -v \
+      -l DEBUG
       --use-batch --batch-size 2
 ```
+
+```Bash
+uv run src/ai_ner_system/main.py \ 
+       --client ollama \ 
+       --output-text output/annotated_output_gemma_batch_13R_B1.txt \
+       --output-table output/metadata_table_gemma_batch_13R_B1.txt 
+       -l DEBUG
+```
+
 
 ## Note: Individual Processing vs Batch Processing
 
@@ -65,3 +74,5 @@ NOTE: for the new async implementation,
 3. for 100 records, batch size 100, claude used 2.04 minutes with US$1.75, total time for batch processing 2:35 * 18559 / 100 = 7.99 hours (0.33 days)
 
 4. for 103 records, batch size 10, currently handle 5 batches each time, claude used 3:37 for 100 records and 1:03 for 3 records, total time for batch processing will be about 11 hours 
+
+5. for 551 records, batch size 100 currently handle 5 batches each time, claude used 827 seconds and about 12 usd for 551 records, then total time for batch processing 18559 records will be about 827 * 18559 / 551 / 3600 = 7.73 hours (0.32 days), 12 * 18559 / 551 = 404.19 USD
