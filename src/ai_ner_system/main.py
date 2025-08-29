@@ -7,34 +7,30 @@ and progress monitoring.
 """
 
 import argparse
-import asyncio
-import time
 import logging
 import sys
+import time
+import asyncio
+
 from pathlib import Path
 from typing import List, Tuple, Dict, Optional, Callable, Any, AsyncIterator
 from dataclasses import dataclass
 
 from tqdm import tqdm
 
-from ai_ner_system.config import Config, ConfigError
-from ai_ner_system.llm_clients import (
-    create_llm_client,
-    Client,
-    LLMClientError,
-    BatchProgress
-)
-from ai_ner_system.prompts import PromptBuilder, GenericPromptBuilder, PromptError
+from ai_ner_system.config import Settings, ConfigValidator, ConfigError
+from ai_ner_system.io import CSVReader, OutputWriter, CSVError, OutputError
+from ai_ner_system.llm import create_llm_client, Client, LLMClientError, BatchProgress
+from ai_ner_system.prompt import PromptBuilder, GenericPromptBuilder, PromptError
 from ai_ner_system.processing import (
     RecordProcessor,
-    ValidationError,
-    ProcessingError,
-    LLMResponseError,
     ProcessingResult,
-    create_progress_logger, BatchProcessingResult
+    BatchProcessingResult,
+    ProcessingError,
+    ValidationError,
+    LLMResponseError,
+    create_progress_logger
 )
-from ai_ner_system.io_utils import CSVReader, OutputWriter, IOError
-
 
 class ApplicationError(Exception):
     """Custom exception for application-level errors."""
@@ -184,10 +180,10 @@ class MedievalTextProcessor:
         try:
             # Determine which template to use based on whether batch processing is enabled
             if self.args.use_batch:
-                template_file = self.args.batch_template or Config.BATCH_TEMPLATE_FILE
+                template_file = self.args.batch_template or Settings.BATCH_TEMPLATE_FILE
                 logging.info('Using batch prompt template: %s', template_file)
             else:
-                template_file = self.args.prompt_template or Config.PROMPT_TEMPLATE_FILE
+                template_file = self.args.prompt_template or Settings.PROMPT_TEMPLATE_FILE
                 logging.info('Using single prompt template: %s', template_file)
 
             prompt_builder = GenericPromptBuilder(template_file)
@@ -206,7 +202,7 @@ class MedievalTextProcessor:
             ApplicationError: If CSV reader initialization fails.
         """
         try:
-            input_file = self.args.input or Config.INPUT_FILE
+            input_file = self.args.input or Settings.INPUT_FILE
 
             if not Path(input_file).exists():
                 raise ApplicationError(f"Input file does not exist: {input_file}")
@@ -215,7 +211,7 @@ class MedievalTextProcessor:
             logging.info('CSV reader initialized for input file: %s', input_file)
             return reader
 
-        except IOError as e:
+        except CSVError as e:
             raise ApplicationError(f'Failed to initialize CSV reader: {e}') from e
         except Exception as e:
             raise ApplicationError(f"Unexpected error initializing CSV reader: {e}") from e
@@ -227,9 +223,9 @@ class MedievalTextProcessor:
         It is called at the start of the run/run_async method.
         """
         try:
-            output_text_file = self.args.output_text or Config.OUTPUT_TEXT_FILE
-            output_table_file = self.args.output_table or Config.OUTPUT_TABLE_FILE
-            output_stats_file = self.args.output_stats or Config.OUTPUT_STATS_FILE
+            output_text_file = self.args.output_text or Settings.OUTPUT_TEXT_FILE
+            output_table_file = self.args.output_table or Settings.OUTPUT_TABLE_FILE
+            output_stats_file = self.args.output_stats or Settings.OUTPUT_STATS_FILE
 
             # Clean up all output files if they exist
             self.writer.clean_output_files(
@@ -495,8 +491,8 @@ class MedievalTextProcessor:
 
         try:
             # Determine output file paths
-            output_text = self.args.output_text or Config.OUTPUT_TEXT_FILE
-            output_table = self.args.output_table or Config.OUTPUT_TABLE_FILE
+            output_text = self.args.output_text or Settings.OUTPUT_TEXT_FILE
+            output_table = self.args.output_table or Settings.OUTPUT_TABLE_FILE
 
             # Write annotated text output
             if annotations:
@@ -517,7 +513,7 @@ class MedievalTextProcessor:
             else:
                 logging.warning('No metadata output to write')
 
-        except IOError as e:
+        except OutputError as e:
             raise ApplicationError(f'Failed to write outputs: {e}') from e
         except Exception as e:
             raise ApplicationError(f'Unexpected error during output writing: {e}') from e
@@ -546,8 +542,8 @@ class MedievalTextProcessor:
             logging.info('Processing completed successfully')
 
             # Final output paths
-            output_text = self.args.output_text or Config.OUTPUT_TEXT_FILE
-            output_table = self.args.output_table or Config.OUTPUT_TABLE_FILE
+            output_text = self.args.output_text or Settings.OUTPUT_TEXT_FILE
+            output_table = self.args.output_table or Settings.OUTPUT_TABLE_FILE
             print(f'\nOutputs written to:')
             print(f'  Annotated text: {output_text}')
             print(f'  Metadata table: {output_table}')
@@ -889,8 +885,8 @@ class MedievalTextProcessor:
                     metadata_rows.append(entity.to_csv_row())
 
             # Determine output file paths
-            output_text_file = self.args.output_text or Config.OUTPUT_TEXT_FILE
-            output_table_file = self.args.output_table or Config.OUTPUT_TABLE_FILE
+            output_text_file = self.args.output_text or Settings.OUTPUT_TEXT_FILE
+            output_table_file = self.args.output_table or Settings.OUTPUT_TABLE_FILE
 
             # Define headers
             annotated_header = "Bindnr;Brevid;Tekst"
@@ -1139,8 +1135,8 @@ class MedievalTextProcessor:
             logging.info('Writing output files...')
 
             # Determine output file paths
-            output_text = self.args.output_text or Config.OUTPUT_TEXT_FILE
-            output_table = self.args.output_table or Config.OUTPUT_TABLE_FILE
+            output_text = self.args.output_text or Settings.OUTPUT_TEXT_FILE
+            output_table = self.args.output_table or Settings.OUTPUT_TABLE_FILE
 
             # Define headers
             annotated_header = "Bindnr;Brevid;Tekst"
@@ -1196,7 +1192,7 @@ class MedievalTextProcessor:
             stats: Processing statistics to write.
         """
         try:
-            stats_output_file = self.args.output_stats or Config.OUTPUT_STATS_FILE
+            stats_output_file = self.args.output_stats or Settings.OUTPUT_STATS_FILE
 
             stats_data = {
                 "total_records": stats.total_records,
@@ -1284,7 +1280,7 @@ def validate_arguments(args: argparse.Namespace) -> None:
         ValueError: If arguments are invalid.
     """
     # Validate input files
-    input_file = args.input or Config.INPUT_FILE
+    input_file = args.input or Settings.INPUT_FILE
     input_path = Path(input_file)
 
     if not input_path.exists():
@@ -1329,20 +1325,18 @@ def validate_arguments(args: argparse.Namespace) -> None:
     logging.info('Command line arguments validated successfully')
 
 
-def validate_configuration() -> None:
+def validate_configuration(args: argparse.Namespace) -> None:
     """Validate application configuration.
 
     Raises:
         ConfigError: If configuration is invalid.
     """
     try:
-        if not Config.is_valid():
-            Config.validate_required_config()
-            Config.validate_file_paths()
+        ConfigValidator.validate_all(args.client)
+
+        logging.info('Configuration validation completed successfully')
     except ConfigError as e:
         raise ApplicationError(f'Configuration validation failed: {e}') from e
-
-    logging.info('Configuration validated successfully')
 
 def setup_logging(level: str = 'INFO') -> None:
     """Setup application logging
@@ -1384,7 +1378,8 @@ def create_argument_parser() -> argparse.ArgumentParser:
         epilog="""
                 Examples:
                     # Process with sync mode
-                    python -m ai_ner_system.main --client claude/ollama --input input/input.txt --output-text output/annotated_output.txt --output-table output/metadata_table.txt --use-batch --batch-size 10 -l DEBUG
+                    uv run src/ai_ner_system.main.py --client ollama --input input/input.txt --output-text output/annotated_output.txt --output-table output/metadata_table.txt --use-batch --batch-size 10 -l DEBUG
+                    uv run src/ai_ner_system/main.py --client ollama --output-text output/annotated_output_gemma_batch_13R_B1.txt --output-table output/metadata_table_gemma_batch_13R_B1.txt -l DEBUG
                 
                     # Process with async batch processing
                     python -m ai_ner_system.main --client claude --input data.csv --batch-size 20 --async
@@ -1407,28 +1402,28 @@ def create_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         '--input',
         type=str,
-        default=Config.INPUT_FILE,
+        default=Settings.INPUT_FILE,
         help='Path to the input file'
     )
 
     parser.add_argument(
         '--output-text',
         type=str,
-        default=Config.OUTPUT_TEXT_FILE,
+        default=Settings.OUTPUT_TEXT_FILE,
         help='Path for annotated text output'
     )
 
     parser.add_argument(
         '--output-table',
         type=str,
-        default=Config.OUTPUT_TABLE_FILE,
+        default=Settings.OUTPUT_TABLE_FILE,
         help='Path for metadata table output'
     )
 
     parser.add_argument(
         "--output-stats",
         type=str,
-        default=Config.OUTPUT_STATS_FILE,
+        default=Settings.OUTPUT_STATS_FILE,
         help="Output file for processing statistics (JSON format)"
     )
 
@@ -1449,14 +1444,14 @@ def create_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         '--prompt-template',
         type=str,
-        default=Config.PROMPT_TEMPLATE_FILE,
+        default=Settings.PROMPT_TEMPLATE_FILE,
         help='Path to the prompt template file'
     )
 
     parser.add_argument(
         '--batch-template',
         type=str,
-        default=Config.BATCH_TEMPLATE_FILE,
+        default=Settings.BATCH_TEMPLATE_FILE,
         help='Path to the batch template file'
     )
 
@@ -1538,10 +1533,11 @@ def main() -> int:
 
         # Setup logging
         setup_logging(args.log_level)
+        logging.info('AI NER System - Medieval Text Processing started')
 
         # Validate configuration and arguments
         validate_arguments(args)
-        validate_configuration()
+        validate_configuration(args)
 
         # Handle dry run
         if args.dry_run:
