@@ -1,115 +1,12 @@
-"""Input/Output utilities for LLL processing medieval texts.
 
-This module provides functions to read CSV files, stream records,
-and write annotated text and metadata outputs.
-"""
+"""Output writing operations for AI NER System."""
 
-import csv
 import json
 import logging
 from pathlib import Path
-from typing import List, Dict, Generator, Union, Any
+from typing import List, Dict, Union, Any
 
-
-class IOError(Exception):
-    """Custom exception for I/O errors."""
-
-class CSVReader:
-    """CSV file reader with streaming capabilities."""
-
-    def __init__(self, file_path: str, delimiter: str = ';', encoding: str = 'utf-8') -> None:
-        """Initialize the CSVReader with file path, delimiter, and encoding.
-
-        Args:
-            file_path: Path to the CSV file.
-            delimiter: Delimiter used in the CSV file.
-            encoding: Encoding of the CSV file.
-
-        Raises:
-            IOError: If file path is invalid or file does not exist.
-        """
-        self.file_path = Path(file_path)
-        self.delimiter = delimiter
-        self.encoding = encoding
-        self._validate_file()
-
-    def _validate_file(self) -> None:
-        """Validate that the CSV file exists and is readable.
-
-        Raises:
-            IOError: If file validation fails.
-        """
-        if not self.file_path.exists():
-            raise IOError(f'CSV file does not exist: {self.file_path}')
-
-        if not self.file_path.is_file():
-            raise IOError(f'Path is not a file: {self.file_path}')
-
-        if self.file_path.stat().st_size == 0:
-            raise IOError(f'CSV file is empty: {self.file_path}')
-
-    def stream_records(self) -> Generator[Dict[str, str], None, None]:
-        """Stream records from the CSV file.
-
-        Yields:
-            Dictionary representing each CSV row with column headers as keys
-
-        Raises:
-            IOError: If file cannot be read or CSV parsing fails.
-        """
-        try:
-            logging.info('Starting to stream records from: %s', self.file_path)
-
-            with open(self.file_path, encoding=self.encoding) as file:
-                reader = csv.DictReader(file, delimiter=self.delimiter)
-
-                # Validate that the CSV has headers
-                if not reader.fieldnames:
-                    raise IOError(f'CSV file does not have headers: {self.file_path}')
-
-                record_count = 0
-                for row_number, record in enumerate(reader, start=2): # Start at 2 (header is row 1)
-                    # Validate record completeness
-                    if not any(record.values()):
-                        logging.warning('Empty record found at row %d', row_number)
-                        continue
-
-                    record_count += 1
-                    yield record
-
-                logging.info('Finished streaming %d records from: %s', record_count, self.file_path)
-
-        except csv.Error as e:
-            raise IOError(f'Error parsing CSV file {self.file_path}: {e}') from e
-        except OSError as e:
-            raise IOError(f'Error reading CSV file {self.file_path}: {e}') from e
-        except Exception as e:
-            raise IOError(f'Unexpected error reading CSV file {self.file_path}: {e}') from e
-
-    def get_headers(self) -> List[str]:
-        """Get the column headers from the CSV file.
-
-        Returns:
-            List of column header names.
-
-        Raises:
-            IOError: If headers cannot be read.
-        """
-        try:
-            with open(self.file_path, encoding=self.encoding) as file:
-                reader = csv.DictReader(file, delimiter=self.delimiter)
-                headers = list(reader.fieldnames or [])
-
-                if not headers:
-                    raise IOError(f'No headers found in CSV file: {self.file_path}')
-
-                return headers
-
-        except csv.Error as e:
-            raise IOError(f'CSV parsing error reading headers from {self.file_path}: {e}') from e
-        except OSError as e:
-            raise IOError(f'Failed to read headers from {self.file_path}: {e}') from e
-
+from .exceptions import OutputError
 
 class OutputWriter:
     """Output file writer for annotated text and metadata."""
@@ -127,7 +24,8 @@ class OutputWriter:
             'metadata': False
         }
 
-    def _ensure_output_directory(self, file_path: Union[str, Path]) -> Path:
+    @staticmethod
+    def _ensure_output_directory(file_path: Union[str, Path]) -> Path:
         """Ensure the output directory exists.
 
         Args:
@@ -146,7 +44,10 @@ class OutputWriter:
             directory.mkdir(parents=True, exist_ok=True)
             return path
         except OSError as e:
-            raise IOError(f'Failed to create output directory {directory}: {e}') from e
+            raise OutputError(
+                f"Failed to create output directory {directory}: {e}",
+                file_path=str(file_path)
+            ) from e
 
     def write_text_output(
             self,
@@ -185,8 +86,12 @@ class OutputWriter:
 
             logging.info('Annotated text output written to %s successfully', output_path)
 
-        except OSError as e:
-            raise IOError(f'Error writing annotated text output to {output_path}: {e}') from e
+        except (OSError, UnicodeEncodeError) as e:
+            raise OutputError(
+                f'Failed to write annotated text output to {output_path}: {e}',
+                file_path=str(output_path),
+                output_type="annotation"
+            ) from e
 
     def write_metadata_output(
             self,
@@ -225,8 +130,12 @@ class OutputWriter:
 
             logging.info('Metadata output written to %s successfully', output_path)
 
-        except OSError as e:
-            raise IOError(f'Error writing metadata output to {output_path}: {e}') from e
+        except (OSError, UnicodeEncodeError) as e:
+            raise OutputError(
+                f'Failed to write metadata output to {output_path}: {e}',
+                file_path=str(output_path),
+                output_type="metadata"
+            ) from e
 
     def append_text_output(
         self,
@@ -277,8 +186,12 @@ class OutputWriter:
 
             logging.info('Appended %d annotations to %s', len(annotations), output_path)
 
-        except OSError as e:
-            raise IOError(f'Error appending text output to {output_path}: {e}') from e
+        except (OSError, UnicodeEncodeError) as e:
+            raise OutputError(
+                f"Failed to append annotated text output to {output_path}: {e}",
+                file_path=str(output_path),
+                output_type="annotation"
+            ) from e
 
     def append_metadata_output(
         self,
@@ -329,10 +242,16 @@ class OutputWriter:
 
             logging.info('Appended %d metadata rows to %s', len(metadata), output_path)
 
-        except OSError as e:
-            raise IOError(f'Error appending metadata output to {output_path}: {e}') from e
+        except (OSError, UnicodeEncodeError) as e:
+            raise OutputError(
+                f"Failed to append metadata output to {output_path}: {e}",
+                file_path=str(output_path),
+                output_type="metadata"
+            ) from e
 
-    def write_stats_output(self, file_path: str, stats_data: Dict[str, Any]) -> None:
+
+    @staticmethod
+    def write_stats_output(file_path: str, stats_data: Dict[str, Any]) -> None:
         """Write processing statistics to a JSON file.
 
         Args:
@@ -343,13 +262,24 @@ class OutputWriter:
             IOError: If writing to the file fails.
         """
         try:
-            with open(file_path, "w", encoding="utf-8") as stats_file:
+            # Ensure output directory exists
+            output_path = OutputWriter._ensure_output_directory(file_path)
+
+            with open(output_path, "w", encoding="utf-8") as stats_file:
                 json.dump(stats_data, stats_file, indent=2, ensure_ascii=False)
 
-            logging.info(f'Processing statistics written to: {file_path}')
-        except Exception as e:
+            logging.info(f'Processing statistics written to: {output_path}')
+
+        # except Exception as e:
+        #     logging.error(f"Error writing stats output to {file_path}: {e}", exc_info=True)
+        #     raise e
+        except (OSError, UnicodeEncodeError, TypeError) as e:
             logging.error(f"Error writing stats output to {file_path}: {e}", exc_info=True)
-            raise e
+            raise OutputError(
+                f"Failed to write stats output to {file_path}: {e}",
+                file_path=str(file_path),
+                output_type="stats"
+            ) from e
 
     def clean_output_files(self, *file_paths: str) -> None:
         """Clean up (delete) existing output files.
