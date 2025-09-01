@@ -551,26 +551,6 @@ class ClaudeClient(Client):
         Returns:
             A human-readable error message string.
         """
-
-        """
-            eg: error example:
-            {
-              "custom_id": "record_85_1_386",
-              "result": {
-                "type": "errored",
-                "error": {
-                  "type": "error",
-                  "error": {
-                    "type": "invalid_request_error",
-                    "message": "Your credit balance is too low ...",
-                    "details": null
-                  },
-                  "request_id": null
-                }
-              }
-            }
-        """
-
         if result_type == "canceled":
             # NOTE: Claude API does not provide a output result for cancellation, and
             # canceled requests “will not be billed”, since they never executed
