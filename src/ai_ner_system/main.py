@@ -67,9 +67,6 @@ def validate_arguments(args: argparse.Namespace) -> None:
     if not input_path.is_file():
         raise ApplicationError(f'Input path is not a file: {input_path}')
 
-    # if input_file and not Path(input_file).exists():
-    #     raise ValueError(f'Input file does not exist: {input_file}')
-
     # Validate output directories
     for output_file in [args.output_text, args.output_table]:
         output_path = Path(output_file)
@@ -286,11 +283,6 @@ def main() -> int:
     Returns:
         Exit code (0 for success, non-zero for errors).
     """
-    # Add this at the very beginning
-    # root_logger = logging.getLogger()
-    # print(f"Handlers before setup_logging: {root_logger.handlers}")
-    # print(f"Root logger level before setup_logging: {root_logger.level}")
-
     try:
         # Parse command line arguments
         parser = create_argument_parser()

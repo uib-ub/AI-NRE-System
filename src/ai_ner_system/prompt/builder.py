@@ -26,7 +26,6 @@ class PromptBuilder(ABC):
         Args:
             template_file: Path to the template file.
         """
-
         self.template_file = template_file
         self.template: Optional[str] = None
         self._load_template()
@@ -109,7 +108,6 @@ class GenericPromptBuilder(PromptBuilder):
         Raises:
             TypeError: If data is not a dict or list of dicts.
         """
-
         if isinstance(data, dict):
             return self._build_single_record_prompt(data)
         elif isinstance(data, list):
@@ -134,7 +132,6 @@ class GenericPromptBuilder(PromptBuilder):
             PromptError: If the template is not loaded or is invalid.
             ValueError: If the template is missing required placeholders.
         """
-
         if not self.template:
             raise PromptError(
                 'Prompt template is not loaded or is invalid.',
@@ -191,7 +188,6 @@ class GenericPromptBuilder(PromptBuilder):
             ValueError: If records list is empty or contains invalid records.
             PromptError: If template is not loaded or formatting fails.
         """
-
         if not self.template:
             raise PromptError(
                 'Batch prompt template is not loaded',

@@ -20,7 +20,6 @@ class RecordValidator:
         Raises:
             ValidationError: If record validation fails.
         """
-
         if not isinstance(record, dict):
             raise ValidationError("Record must be a dictionary")
 

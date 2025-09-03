@@ -7,7 +7,7 @@ error handling with progress monitoring for sync operations.
 
 import logging
 import time
-from typing import Callable, Dict, List, Tuple, TYPE_CHECKING
+from typing import Dict, List, Tuple, TYPE_CHECKING
 
 from tqdm import tqdm
 
@@ -187,7 +187,7 @@ class SyncProcessor:
             # Individual processing error
             brevid = batch_records[0].get("Brevid", "unknown")
             logging.error('Error processing Brevid %s: %s', brevid, error)
-            self._handle_individual_error(batch_records[0], error)
+            SyncProcessor._handle_individual_error(batch_records[0], error)
             return [], []
         else:
             # Batch processing error - fallback to individual processing
@@ -272,11 +272,12 @@ class SyncProcessor:
         except Exception as e:
             brevid = record.get("Brevid", "unknown")
             logging.error('Error in fallback processing for Brevid %s: %s', brevid, e)
-            self._handle_individual_error(record, e)
+            SyncProcessor._handle_individual_error(record, e)
 
         return annotated_record, metadata_record
 
-    def _handle_individual_error(self, record: Dict[str, str], exception: Exception) -> None:
+    @staticmethod
+    def _handle_individual_error(record: Dict[str, str], exception: Exception) -> None:
         """Handle errors that occur during individual record processing.
 
         Args:

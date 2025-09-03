@@ -33,23 +33,6 @@ class EntityRecord:
     gender: str = "N/A"
     language: str = ""
 
-    # def to_csv_row(self) -> str:
-    #     """Convert entity record to CSV row format.
-
-    #     # Returns:
-    #         Semicolon-separated string representation.
-    #     """
-    #     return ";".join([
-    #         self.name,
-    #         self.type,
-    #         self.preposition,
-    #         str(self.order),
-    #         self.brevid,
-    #         self.description,
-    #         self.gender,
-    #         self.language
-    #     ])
-
     def to_csv_row(self) -> str:
         """Semicolon-separated row with proper quoting.
 
