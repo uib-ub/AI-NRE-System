@@ -6,6 +6,7 @@ and generate structured metadata.
 
 ## System Architecture Overview
 
+<img width="1021" height="1111" alt="AI-NER-System excalidraw dark" src="https://github.com/user-attachments/assets/82938153-5046-427a-8fc6-4b009e9d5d28" />
 
 
 ## Setup
