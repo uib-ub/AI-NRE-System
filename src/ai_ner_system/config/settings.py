@@ -1,6 +1,5 @@
 """Configuration settings for Medieval texts LLM processing application.
 
-
 This module provides configuration management with environment variables loading,
 validation, and error handling with type safety and client-specific validation.
 """
@@ -37,6 +36,7 @@ class Settings:
         BATCH_TEMPLATE_FILE: Path to the batch processing template file.
         CACHE_DIR: Directory for caching LLM responses, defaults to ".cache_llm".
     """
+
     # API Configuration
     ANTHROPIC_API_KEY: Optional[str] = os.getenv('ANTHROPIC_API_KEY')
     OPENWEBUI_TOKEN: Optional[str] = os.getenv('OPENWEBUI_TOKEN')
@@ -46,22 +46,22 @@ class Settings:
     OLLAMA_MODEL: Optional[str] = os.getenv('OLLAMA_MODEL')
     CLAUDE_MODEL: Optional[str] = os.getenv('CLAUDE_MODEL')
 
-    # File Input/Output Configuration
-    INPUT_FILE: Optional[str] = os.getenv('INPUT_FILE', 'input/Brevid-DN-AI.txt')
-    OUTPUT_TEXT_FILE: Optional[str] = os.getenv('OUTPUT_TEXT_FILE', 'output/annotated_texts.txt')
-    OUTPUT_TABLE_FILE: Optional[str] = os.getenv('OUTPUT_TABLE_FILE', 'output/metadata_table.txt')
-    OUTPUT_STATS_FILE: Optional[str] = os.getenv('OUTPUT_STATS_FILE', 'output/processing_stats.json')
+    # File I/O Configuration
+    INPUT_FILE: str = os.getenv('INPUT_FILE', 'input/Brevid-DN-AI.txt')
+    OUTPUT_TEXT_FILE: str = os.getenv('OUTPUT_TEXT_FILE', 'output/annotated_texts.txt')
+    OUTPUT_TABLE_FILE: str = os.getenv('OUTPUT_TABLE_FILE', 'output/metadata_table.txt')
+    OUTPUT_STATS_FILE: str = os.getenv('OUTPUT_STATS_FILE', 'output/processing_stats.json')
 
     # Template Configuration
-    PROMPT_TEMPLATE_FILE: Optional[str] = os.getenv('PROMPT_TEMPLATE_FILE', 'prompt/prompt.txt')
-    BATCH_TEMPLATE_FILE: Optional[str] = os.getenv('BATCH_TEMPLATE_FILE', 'prompt/batch_template.txt')
+    PROMPT_TEMPLATE_FILE: str = os.getenv('PROMPT_TEMPLATE_FILE', 'prompt/prompt.txt')
+    BATCH_TEMPLATE_FILE: str = os.getenv('BATCH_TEMPLATE_FILE', 'prompt/batch_template.txt')
 
-    # Cache Configuration with default
+    # Cache Configuration
     CACHE_DIR: Path = Path(os.getenv('CACHE_DIR', '.cache_llm'))
 
     @classmethod
     def initialize(cls) -> None:
-        """ Initialize configuration and create necessary directories.
+        """Initialize configuration and create necessary directories.
 
         Should be called once at the application startup.
 
@@ -71,7 +71,7 @@ class Settings:
         try:
             cls._create_cache_directory()
             cls._ensure_output_directories()
-            logging.info('Configuration initialized successfully.')
+            logging.info('Configuration initialized successfully')
 
         except OSError as e:
             raise ConfigError(f'Failed to initialize configuration: {e}') from e
@@ -84,8 +84,12 @@ class Settings:
         Raises:
            OSError: If directory creation fails.
         """
-        cls.CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        logging.info('Cache directory created: %s', cls.CACHE_DIR)
+        try:
+            cls.CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            logging.info('Cache directory created: %s', cls.CACHE_DIR)
+        except OSError as e:
+            logging.error('Failed to create cache directory %s: %s', cls.CACHE_DIR, e)
+            raise
 
     @classmethod
     def _ensure_output_directories(cls) -> None:
@@ -165,16 +169,3 @@ class Settings:
             'OUTPUT_STATS_FILE': cls.OUTPUT_STATS_FILE,
             'PROMPT_TEMPLATE_FILE': cls.PROMPT_TEMPLATE_FILE,
         }
-
-
-
-
-
-
-
-
-
-
-
-
-
