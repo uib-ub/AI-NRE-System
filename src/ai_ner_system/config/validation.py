@@ -5,12 +5,24 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from .exceptions import ConfigError, ConfigValidationError
+from .exceptions import ConfigError, ConfigValidationError, DirectoryValidationError, FileValidationError
 from .settings import Settings
 
 
 class ConfigValidator:
     """Validates configuration settings for the AI NER System."""
+
+    # Class constants for better maintainability and type safety
+    _SUPPORTED_CLIENT_TYPES = {'claude', 'ollama'}
+    _TEMPLATE_FILES = {
+        'PROMPT_TEMPLATE_FILE': 'prompt template',
+        'BATCH_TEMPLATE_FILE': 'batch template',
+    }
+    _OUTPUT_FILES = {
+        'OUTPUT_TEXT_FILE': 'output text file',
+        'OUTPUT_TABLE_FILE': 'output table file',
+        'OUTPUT_STATS_FILE': 'output stats file',
+    }
 
     @staticmethod
     def validate_for_client(client_type: str) -> None:
@@ -22,6 +34,12 @@ class ConfigValidator:
         Raises:
             ConfigValidationError: If required configuration is missing or invalid.
         """
+        if client_type.lower() not in ConfigValidator._SUPPORTED_CLIENT_TYPES:
+            raise ConfigValidationError(
+                f'Unsupported client type: {client_type}. '
+                f'Supported types: {", ".join(ConfigValidator._SUPPORTED_CLIENT_TYPES)}'
+            )
+
         try:
             # Validate client-specific configuration
             client_configs = Settings.get_client_required_configs(client_type)
@@ -51,6 +69,7 @@ class ConfigValidator:
         except ConfigError as e:
             raise ConfigValidationError(str(e)) from e
 
+
     @staticmethod
     def validate_file_paths() -> None:
         """Validate that all file paths are accessible and directories exist.
@@ -65,8 +84,9 @@ class ConfigValidator:
 
             logging.info('File path validation completed successfully')
 
-        except (OSError, ConfigError) as e:
+        except (OSError, ConfigError, FileValidationError, DirectoryValidationError) as e:
             raise ConfigValidationError(f'File path validation failed: {e}')
+
 
     @staticmethod
     def _validate_input_file() -> None:
@@ -80,21 +100,24 @@ class ConfigValidator:
 
         # Validate input file exists
         input_path = Path(Settings.INPUT_FILE)
-        if not input_path.exists():
-            raise ConfigError(
-                f'Input file does not exist: {Settings.INPUT_FILE}',
-                config_key='INPUT_FILE',
+
+        try:
+            ConfigValidator._validate_file_exists_and_readable(
+                input_path, 'INPUT_FILE', 'Input file'
             )
-        if not input_path.is_file():
-            raise ConfigError(
-                f'Input path is not a file: {Settings.INPUT_FILE}',
-                config_key='INPUT_FILE',
-            )
-        if not input_path.stat().st_size > 0:
-            raise ConfigError(
-                f'Input file is empty: {Settings.INPUT_FILE}',
-                config_key='INPUT_FILE',
-            )
+
+            if input_path.stat().st_size == 0:
+                raise ConfigError(
+                    f'Input file is empty: {Settings.INPUT_FILE}',
+                    config_key='INPUT_FILE',
+                )
+        except OSError as e:
+            raise FileValidationError(
+                f'Cannot access input file {Settings.INPUT_FILE}: {e}',
+                file_path=str(input_path),
+                config_key='INPUT_FILE'
+            ) from e
+
 
     @staticmethod
     def _validate_template_files() -> None:
@@ -103,26 +126,58 @@ class ConfigValidator:
         Raises:
             ConfigError: If template files are invalid.
         """
-        template_files = [
-            ('PROMPT_TEMPLATE_FILE', Settings.PROMPT_TEMPLATE_FILE),
-            ('BATCH_TEMPLATE_FILE', Settings.BATCH_TEMPLATE_FILE),
-        ]
+        template_configs = {
+            'PROMPT_TEMPLATE_FILE': Settings.PROMPT_TEMPLATE_FILE,
+            'BATCH_TEMPLATE_FILE': Settings.BATCH_TEMPLATE_FILE,
+        }
 
-        for config_key, file_path in template_files:
+        for config_key, file_path in template_configs.items():
             if not file_path:
                 continue # Optional files
 
             template_path = Path(file_path)
-            if not template_path.exists():
-                raise ConfigError(
-                    f'Template file does not exist: {file_path}',
-                    config_key=config_key,
+            file_description = ConfigValidator._TEMPLATE_FILES.get(config_key, 'Template file')
+
+            try:
+                ConfigValidator._validate_file_exists_and_readable(
+                    template_path, config_key, file_description
                 )
-            if not template_path.is_file():
-                raise ConfigError(
-                    f'Template path is not a file: {file_path}',
-                    config_key=config_key,
-                )
+            except OSError as e:
+                raise FileValidationError(
+                    f'Cannot access {file_description} {file_path}: {e}',
+                    file_path=str(template_path),
+                    config_key=config_key
+                ) from e
+
+
+    @staticmethod
+    def _validate_file_exists_and_readable(
+            file_path: Path, config_key: str, file_description: str
+    ) -> None:
+        """Validate that a file exists and is readable.
+
+        Args:
+            file_path: Path to the file to validate.
+            config_key: Configuration key for error reporting.
+            file_description: Human-readable description of the file.
+
+        Raises:
+            ConfigError: If file validation fails.
+        """
+        if not file_path.exists():
+            raise FileValidationError(
+                f'{file_description} does not exist: {file_path}',
+                file_path=str(file_path),
+                config_key=config_key
+            )
+
+        if not file_path.is_file():
+            raise FileValidationError(
+                f'{file_description} path is not a file: {file_path}',
+                file_path=str(file_path),
+                config_key=config_key
+            )
+
 
     @staticmethod
     def _validate_output_paths_writable() -> None:
@@ -131,40 +186,73 @@ class ConfigValidator:
         Raises:
             ConfigError: If output paths are not writable.
         """
-        output_files = [
-            ("OUTPUT_TEXT_FILE", Settings.OUTPUT_TEXT_FILE),
-            ("OUTPUT_TABLE_FILE", Settings.OUTPUT_TABLE_FILE),
-            ("OUTPUT_STATS_FILE", Settings.OUTPUT_STATS_FILE),
-        ]
+        output_configs = {
+            'OUTPUT_TEXT_FILE': Settings.OUTPUT_TEXT_FILE,
+            'OUTPUT_TABLE_FILE': Settings.OUTPUT_TABLE_FILE,
+            'OUTPUT_STATS_FILE': Settings.OUTPUT_STATS_FILE,
+        }
 
-        for config_key, file_path in output_files:
+        for config_key, file_path in output_configs.items():
             if not file_path:
                 continue
 
             output_path = Path(file_path)
-            output_dir = output_path.parent
+            file_description = ConfigValidator._OUTPUT_FILES.get(config_key, 'output file')
 
-            # Check if directory exists (should be created by Settings.initialize())
-            if not output_dir.exists():
-                raise ConfigError(
-                    f'Output directory does not exist: {output_dir}. '
-                    'Make sure Settings.initialize() was called.',
-                    config_key=config_key,
+            try:
+                ConfigValidator._validate_output_directory_writable(
+                    output_path, config_key, file_description
                 )
+            except OSError as e:
+                raise DirectoryValidationError(
+                    f'Cannot access directory for {file_description} {file_path}: {e}',
+                    directory_path=str(output_path.parent),
+                    config_key=config_key
+                ) from e
 
-            # Check if directory is writable
-            if not output_dir.is_dir():
-                raise ConfigError(
-                    f'Output path is not a directory: {output_dir}',
-                    config_key=config_key,
-                )
 
-            # Test writability by checking permissions
-            if not os.access(output_dir, os.W_OK):
-                raise ConfigError(
-                    f'Output directory is not writable: {output_dir}',
-                    config_key=config_key,
-                )
+
+    @staticmethod
+    def _validate_output_directory_writable(
+        output_path: Path, config_key: str, file_description: str
+    ) -> None:
+        """Validate that an output directory exists and is writable.
+
+       Args:
+           output_path: Path to the output file.
+           config_key: Configuration key for error reporting.
+           file_description: Human-readable description of the file.
+
+       Raises:
+           ConfigError: If directory validation fails.
+       """
+        output_dir = output_path.parent
+
+        # Check if directory exists (should be created by Settings.initialize())
+        if not output_dir.exists():
+            raise DirectoryValidationError(
+                f'Output directory for {file_description} does not exist: {output_dir}. '
+                'Make sure Settings.initialize() was called.',
+                directory_path=str(output_dir),
+                config_key=config_key
+            )
+
+        # Check if directory is actually a directory
+        if not output_dir.is_dir():
+            raise DirectoryValidationError(
+                f'Output path for {file_description} is not a directory: {output_dir}',
+                directory_path=str(output_dir),
+                config_key=config_key
+            )
+
+        # Test writability
+        if not os.access(output_dir, os.W_OK):
+            raise DirectoryValidationError(
+                f'Output directory for {file_description} is not writable: {output_dir}',
+                directory_path=str(output_dir),
+                config_key=config_key
+            )
+
 
     @staticmethod
     def validate_all(client_type: Optional[str] = None) -> None:
@@ -189,7 +277,7 @@ class ConfigValidator:
 
             logging.info("Comprehensive configuration validation completed successfully")
 
-        except (ConfigError, ConfigValidationError) as e:
+        except (ConfigError, ConfigValidationError, FileValidationError, DirectoryValidationError) as e:
             logging.error("Configuration validation failed: %s", e)
             raise
 

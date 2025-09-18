@@ -12,7 +12,7 @@ import logging
 import sys
 from pathlib import Path
 
-from ai_ner_system.config import Settings, ConfigValidator, ConfigError
+from ai_ner_system.config import ConfigValidator, ConfigError, Settings
 from ai_ner_system.pipeline import ApplicationError, MedievalTextProcessor
 from ai_ner_system.processing import create_progress_logger
 
@@ -21,7 +21,7 @@ from ai_ner_system.processing import create_progress_logger
 # Utility functions
 # ============================================================================
 def setup_logging(level: str = 'INFO') -> None:
-    """Setup application logging
+    """Set up application logging.
 
     Args:
         level: Logging level ('DEBUG', 'INFO', 'WARNING', 'ERROR')
@@ -44,22 +44,19 @@ def setup_logging(level: str = 'INFO') -> None:
     logging.info('Logging configured (level=%s)', level)
 
     # Set specific loggers to appropriate levels
-    logging.getLogger("anthropic").setLevel(logging.WARNING)
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("requests").setLevel(logging.WARNING)
+    for logger_name in ["anthropic", "httpx", "requests"]:
+        logging.getLogger(logger_name).setLevel(logging.WARNING)
 
 
-def validate_arguments(args: argparse.Namespace) -> None:
-    """Validate command line arguments.
+def _validate_input_file(input_file: str) -> None:
+    """Validate the input file path.
 
     Args:
-        args: Parsed command line arguments.
+        input_file: Path to the input file.
 
     Raises:
-        ValueError: If arguments are invalid.
+        ApplicationError: If the input file is invalid.
     """
-    # Validate input files
-    input_file = args.input or Settings.INPUT_FILE
     input_path = Path(input_file)
 
     if not input_path.exists():
@@ -67,8 +64,17 @@ def validate_arguments(args: argparse.Namespace) -> None:
     if not input_path.is_file():
         raise ApplicationError(f'Input path is not a file: {input_path}')
 
-    # Validate output directories
-    for output_file in [args.output_text, args.output_table]:
+
+def _validate_output_directories(output_files: list[str]) -> None:
+    """Validate and create output directories if they do not exist.
+
+    Args:
+        output_files: List of output file paths.
+
+    Raises:
+        ApplicationError: If an output directory cannot be created.
+    """
+    for output_file in output_files:
         output_path = Path(output_file)
         output_dir = output_path.parent
         if not output_dir.exists():
@@ -78,6 +84,16 @@ def validate_arguments(args: argparse.Namespace) -> None:
             except OSError as e:
                 raise ApplicationError(f'Failed to create output directory {output_dir}: {e}') from e
 
+
+def _validate_template_files(args: argparse.Namespace) -> None:
+    """Validate template files exist if specified.
+
+    Args:
+        args: Parsed command line arguments.
+
+    Raises:
+        ValueError: If template files do not exist.
+    """
     # Check if prompt template exists
     if args.prompt_template and not Path(args.prompt_template).exists():
         raise ValueError(f'Prompt template file does not exist: {args.prompt_template}')
@@ -87,16 +103,60 @@ def validate_arguments(args: argparse.Namespace) -> None:
         if args.batch_template and not Path(args.batch_template).exists():
             raise ValueError(f'Batch template file does not exist: {args.batch_template}')
 
+
+def _validate_async_arguments(args: argparse.Namespace) -> None:
+    """Validate async-specific arguments.
+
+    Args:
+        args: Parsed command line arguments.
+
+    Raises:
+        ApplicationError: If arguments are invalid.
+    """
+    if not getattr(args, 'async_mode', False):
+        return
+
+    max_wait_time = getattr(args, 'max_wait_time', 0)
+    if max_wait_time <= 60:
+        raise ApplicationError(
+            f'Max wait time must be at least 60 seconds for async mode, '
+            f'got {max_wait_time} seconds'
+        )
+
+    poll_interval = getattr(args, 'poll_interval', 0)
+    if poll_interval <= 5:
+        raise ApplicationError(
+            f'Poll interval must be at least 5 seconds for async mode, '
+            f'got {poll_interval} seconds'
+        )
+
+
+def validate_arguments(args: argparse.Namespace) -> None:
+    """Validate command line arguments.
+
+    Args:
+        args: Parsed command line arguments.
+
+    Raises:
+        ApplicationError: If arguments are invalid.
+    """
+    # Validate input files
+    input_file = args.input or Settings.INPUT_FILE
+    _validate_input_file(input_file)
+
+    # Validate output directories
+    output_files = [args.output_text, args.output_table]
+    _validate_output_directories(output_files)
+
+    # Validate template files
+    _validate_template_files(args)
+
     # Validate client type
-    if args.client.lower() not in ['claude', 'ollama']:
+    if args.client.lower() not in ('claude', 'ollama'):
         raise ApplicationError(f'Unsupported client type: {args.client}')
 
     # Validate async-specific arguments
-    if hasattr(args, 'async_mode') and args.async_mode:
-        if hasattr(args, 'max_wait_time') and args.max_wait_time <= 60:
-            raise ApplicationError(f'Max wait time must be at least 60 seconds for async mode, got {args.max_wait_time} seconds')
-        if hasattr(args, 'poll_interval') and args.poll_interval <= 5:
-            raise ApplicationError(f'Poll interval must be at least 5 seconds for async mode, got {args.poll_interval} seconds')
+    _validate_async_arguments(args)
 
     logging.info('Command line arguments validated successfully')
 
@@ -114,54 +174,43 @@ def validate_configuration(args: argparse.Namespace) -> None:
         raise ApplicationError(f'Configuration validation failed: {e}') from e
 
 
-def create_argument_parser() -> argparse.ArgumentParser:
-    """Create and configure the argument parser.
+def _get_example_text() -> str:
+    """Get example text for argument parser epilog."""
+    return """
+Examples:
+    # Process with sync mode
+    uv run src/ai_ner_system.main.py --client ollama \\
+        --input input/input.txt \\ 
+        --output-text output/annotated_output.txt \\
+        --output-table output/metadata_table.txt \\ 
+        --use-batch --batch-size 10 -l DEBUG
+        
+    uv run src/ai_ner_system/main.py --client ollama \\ 
+        --output-text output/annotated_output_gemma_batch_13R_B1.txt \\
+        --output-table output/metadata_table_gemma_batch_13R_B1.txt \\
+        -l DEBUG
+    
+    # Process with async batch processing
+    uv run src/ai_ner_system/main.py --client claude \\
+        --output-text output/annotated_output_claude_batch_100R_B100_async.txt \\
+        --output-table output/metadata_table_claude_batch_100R_B100_async.txt \\
+        --output-stats output/stats_claude_batch_100R_B100_async.txt  \\
+        --batch-size 100 --async -l DEBUG
+        
+    uv run src/ai_ner_system/main.py --client claude \\
+        --output-text output/annotated_output_claude_batch_13R_B2_async.txt \\
+        --output-table output/metadata_table_claude_batch_13R_B2_async.txt \\
+        --output-stats output/stats_claude_batch_13R_B2_async.txt \\
+        --batch-size 2 --async --incremental-output -l DEBUG
+"""
 
-    Returns:
-        Configured ArgumentParser instance.
+
+def _add_io_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add input/output file arguments to the parser.
+
+    Args:
+        parser: ArgumentParser instance.
     """
-    parser = argparse.ArgumentParser(
-        description='Medieval Text Processor with AI NER System - Process medieval texts using Large Language Models',
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        epilog="""
-                Examples:
-                    # Process with sync mode
-                    uv run src/ai_ner_system.main.py --client ollama \\
-                        --input input/input.txt \\ 
-                        --output-text output/annotated_output.txt \\
-                        --output-table output/metadata_table.txt \\ 
-                        --use-batch --batch-size 10 -l DEBUG
-                        
-                    uv run src/ai_ner_system/main.py --client ollama \\ 
-                        --output-text output/annotated_output_gemma_batch_13R_B1.txt \\
-                        --output-table output/metadata_table_gemma_batch_13R_B1.txt \\
-                        -l DEBUG
-
-                    # Process with async batch processing
-                    uv run src/ai_ner_system/main.py --client claude \\
-                        --output-text output/annotated_output_claude_batch_100R_B100_async.txt \\
-                        --output-table output/metadata_table_claude_batch_100R_B100_async.txt \\
-                        --output-stats output/stats_claude_batch_100R_B100_async.txt  \\
-                        --batch-size 100 --async -l DEBUG
-                        
-                    uv run src/ai_ner_system/main.py --client claude \\
-                        --output-text output/annotated_output_claude_batch_13R_B2_async.txt \\
-                        --output-table output/metadata_table_claude_batch_13R_B2_async.txt \\
-                        --output-stats output/stats_claude_batch_13R_B2_async.txt \\
-                        --batch-size 2 --async --incremental-output -l DEBUG
-                """
-    )
-
-    # Model client selection
-    parser.add_argument(
-        '--client', '-c',
-        type=str,
-        choices=['claude', 'ollama'],
-        default='claude',
-        help='Select LLM Client (default: claude)'
-    )
-
-    # IO File file arguments
     parser.add_argument(
         '--input',
         type=str,
@@ -190,7 +239,13 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Output file for processing statistics (JSON format)"
     )
 
-    # Batch processing options
+
+def _add_batch_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add batch processing arguments to the parser.
+
+    Args:
+        parser: ArgumentParser instance.
+    """
     parser.add_argument(
         '--use-batch',
         action='store_true',
@@ -204,6 +259,13 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help='Number of records to process in each batch (default: 5)'
     )
 
+
+def _add_template_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add template file arguments to the parser.
+
+    Args:
+        parser: ArgumentParser instance.
+    """
     parser.add_argument(
         '--prompt-template',
         type=str,
@@ -218,7 +280,12 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help='Path to the batch template file'
     )
 
-    # Async processing arguments
+def _add_async_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add async processing arguments to the parser.
+
+    Args:
+        parser: ArgumentParser instance.
+    """
     parser.add_argument(
         '--async-mode', '-a',
         action='store_true',
@@ -226,7 +293,6 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help='Enable asynchronous processing for batch operations'
     )
 
-    # Maximum number of concurrent batches
     parser.add_argument(
         '--max-concurrent-batches',
         type=int,
@@ -234,7 +300,6 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help='Maximum number of concurrent batches (default: 5)'
     )
 
-    # Incremental output option
     parser.add_argument(
         '--incremental-output',
         action='store_true',
@@ -255,8 +320,35 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help='Time between progress checks for async processing (default: 30s)'
     )
 
+
+def create_argument_parser() -> argparse.ArgumentParser:
+    """Create and configure the argument parser.
+
+    Returns:
+        Configured ArgumentParser instance.
+    """
+    parser = argparse.ArgumentParser(
+        description='Medieval Text Processor with AI NER System - Process medieval texts using Large Language Models',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        epilog=_get_example_text()
+    )
+
+    # Model client selection
+    parser.add_argument(
+        '--client', '-c',
+        type=str,
+        choices=['claude', 'ollama'],
+        default='claude',
+        help='Select LLM Client (default: claude)'
+    )
+
+    # Add argument groups
+    _add_io_arguments(parser)
+    _add_batch_arguments(parser)
+    _add_template_arguments(parser)
+    _add_async_arguments(parser)
+
     # Utility arguments
-    # Logging
     parser.add_argument(
         '--log-level', '-l',
         type=str,
@@ -265,7 +357,6 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help='Set logging level (default: INFO)'
     )
 
-    # Additional options
     parser.add_argument(
         '--dry-run',
         action='store_true',
@@ -273,6 +364,32 @@ def create_argument_parser() -> argparse.ArgumentParser:
     )
 
     return parser
+
+
+def _run_processor(processor: MedievalTextProcessor, args: argparse.Namespace) -> int:
+    """Run the processor in synchronous mode.
+
+    Args:
+        processor: Instance of MedievalTextProcessor.
+        args: Parsed command line arguments.
+
+    Returns:
+        Exit code (0 for success, non-zero for errors).
+    """
+    # Choose execution mode based on async_mode argument
+    async_mode = getattr(args, 'async_mode', False)
+
+    if async_mode:
+        logging.info('Using asynchronous processing mode')
+        # Create progress callback
+        progress_callback = create_progress_logger(60)  # Log every 60 seconds
+        # Run async processing
+        return asyncio.run(processor.run_async(progress_callback))
+    else:
+        logging.info('Using synchronous processing mode')
+        # Run synchronous processing
+        return processor.run()
+
 
 # ------------------------------------------------------------------------------
 # Main function
@@ -298,35 +415,12 @@ def main() -> int:
 
         # Handle dry run
         if args.dry_run:
-            print('✓ Configuration validated successfully')
-            print('✓ Command line arguments validated')
-            print('✓ Input files exist and are accessible')
-            print('Dry run completed successfully - no processing performed')
+            _print_dry_run_success()
             return 0
 
         # Initialize processor
         processor = MedievalTextProcessor(args)
-
-        # Choose execution mode based on async_mode argument
-        match getattr(args, 'async_mode', False):
-            case True:
-                logging.info('Using asynchronous processing mode')
-
-                # Create progress callback
-                progress_callback = create_progress_logger(60) # Log every 60 seconds
-
-                # Run async processing
-                return asyncio.run(processor.run_async(progress_callback))
-            case False:
-                logging.info('Using synchronous processing mode')
-                # Run synchronous processing
-                return processor.run()
-            case _:
-                logging.error(
-                    f"Invalid value for async_mode: {args.async_mode}. "
-                    "Please set it to either True or False."
-                )
-                return 1  # Non-zero exit code to indicate configuration error
+        return _run_processor(processor, args)
 
     except KeyboardInterrupt:
         logging.error('Processing interrupted by user')
@@ -337,6 +431,18 @@ def main() -> int:
     except Exception as e:
         logging.error('Unexpected error: %s', e, exc_info=True)
         return 1
+
+
+def _print_dry_run_success() -> None:
+    """Print success message for dry run."""
+    success_messages = [
+        '✓ Configuration validated successfully',
+        '✓ Command line arguments validated',
+        '✓ Input files exist and are accessible',
+        'Dry run completed successfully - no processing performed'
+    ]
+    print('\n'.join(success_messages))
+
 
 if __name__ == "__main__":
     sys.exit(main())
