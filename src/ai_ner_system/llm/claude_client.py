@@ -468,7 +468,7 @@ class ClaudeClient(Client):
                 counters["canceled"],
                 counters["expired"],
                 counters["other"],
-                counters["parse_error"],
+                counters["parse_errors"],
             )
 
             return results
