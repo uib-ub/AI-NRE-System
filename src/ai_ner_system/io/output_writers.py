@@ -1,4 +1,17 @@
-"""Output writing operations for AI NER System."""
+"""Output writing operations for AI NER System.
+
+This module provides utilities to write text-based outputs produced by the
+pipeline:
+
+* Atomic full-file writes for text and metadata (tempfile + os.replace).
+* Flock-locked appends that serialize concurrent writers (POSIX only).
+* JSON stats writing via atomic replace.
+
+Concurrency:
+* Appends use an exclusive `flock()` on the target file to avoid interleaving.
+* When appending, a header is emitted only if the file is empty at lock time.
+"""
+
 
 from __future__ import annotations
 
@@ -18,6 +31,10 @@ Pathish = str | Path  # Type alias for path-like objects
 
 class OutputWriter:
     """Output file writer for annotated text, metadata, and JSON stats.
+
+    Note: This implementation uses POSIX file locking (fcntl) and is not
+    compatible with Windows. For cross-platform support, consider using
+    portalocker or similar libraries.
 
     Notes:
         * `write_*` methods are atomic (tempfile + os.replace).
@@ -231,7 +248,7 @@ class OutputWriter:
         return size, file.read(1) == b'\n'  # Check if last byte is newline
 
     @staticmethod
-    def _compose_chuck(
+    def _compose_chunk(
         *,  # everything after this * must be passed by keyword
         header: str,
         data: list[str],
@@ -306,7 +323,7 @@ class OutputWriter:
                     needs_header = size == 0
                     needs_leading_newline = size > 0 and not ends_with_newline
 
-                    chunk: str = self._compose_chuck(
+                    chunk: str = self._compose_chunk(
                         header=header,
                         data=lines,
                         add_header=needs_header,
@@ -322,8 +339,12 @@ class OutputWriter:
 
             logging.info(f'Appended {len(lines)} {log_label} to {output_path}')
         except (OSError, UnicodeEncodeError) as e:
+            if isinstance(e, UnicodeEncodeError):
+                error_msg = f'Encoding error writing {log_label} to {output_path}: {e}'
+            else:
+                error_msg = f'I/O error writing {log_label} to {output_path}: {e}'
             raise OutputError(
-                f"Failed to append {log_label} output to {output_path}: {e}",
+                error_msg,
                 file_path=str(output_path),
                 output_type=output_type
             ) from e
