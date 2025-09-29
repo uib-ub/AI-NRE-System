@@ -5,10 +5,12 @@ for medieval text processing with proper error handling and validation.
 """
 
 from .builder import PromptBuilder, GenericPromptBuilder
-from .exceptions import PromptError
+from .exceptions import PromptError, TemplateNotFoundError, PromptBuildError
 
 __all__ = [
     "PromptBuilder",
     "GenericPromptBuilder",
     "PromptError",
+    "TemplateNotFoundError",
+    "PromptBuildError"
 ]
