@@ -3,14 +3,34 @@
 This module provides abstract and concrete implementations for building
 prompts from templates, with robust validation and error handling for
 medieval text annotation tasks.
+
+Template expectations:
+  * Single-record prompts require "Brevid" and "Tekst" placeholders.
+  * Batch prompts require "num_records" and "batch_content" placeholders.
+
+Note: Input records are expected to carry "Brevid" and "Tekst" (case-sensitive);
+they are normalized to lower-case keys internally as {"brevid", "text"}.
 """
+
+from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from string import Formatter
+from typing import ClassVar
 
-from .exceptions import PromptError
+from .exceptions import (
+    PromptError,
+    TemplateNotFoundError,
+    PromptBuildError
+)
+
+# Type aliases
+Pathish = str | Path  # for path-like objects
+RecordData = dict[str, str]
+BatchData = list[RecordData]
+PromptData = RecordData | BatchData
 
 
 class PromptBuilder(ABC):
@@ -20,55 +40,99 @@ class PromptBuilder(ABC):
     Subclasses must implement the `build` method to create a formatted prompt.
     """
 
-    def __init__(self, template_file: str) -> None:
+    DEFAULT_ENCODING: ClassVar[str] = "utf-8"
+    # External record keys (source data)
+    SRC_KEY_BREVID: ClassVar[str] = "Brevid"
+    SRC_KEY_TEXT: ClassVar[str] = "Tekst"
+
+    def __init__(self, template_file: Pathish) -> None:
         """Initialize the PromptBuilder with a template file.
 
         Args:
             template_file: Path to the template file.
         """
-        self.template_file = template_file
-        self.template: Optional[str] = None
+        self.template_file = Path(template_file)
+        self.template: str | None = None
         self._load_template()
 
     def _load_template(self) -> None:
         """Load the template from the specified file.
 
         Raises:
+            TemplateNotFoundError: If the template file doesn't exist.
             PromptError: If the template file cannot be read or is empty.
         """
+        if not self.template_file.exists():
+            raise TemplateNotFoundError(self.template_file)
+        if not self.template_file.is_file():
+            raise PromptError(
+                f'Template path is not a file: {self.template_file}',
+                template_file=self.template_file,
+                operation='load'
+            )
+
         try:
-            template_path = Path(self.template_file)
-
-            if not template_path.exists():
-                raise PromptError(
-                    f'Template file does not exist: {self.template_file}',
-                    template_file=self.template_file
-                )
-
-            if not template_path.is_file():
-                raise PromptError(
-                    f'Template path is not a file: {self.template_file}',
-                    template_file=self.template_file
-                )
-
-            self.template = template_path.read_text(encoding="utf-8")
-
+            self.template = self.template_file.read_text(
+                encoding=self.DEFAULT_ENCODING
+            )
             if not self.template.strip():
                 raise PromptError(
                     f'Template file is empty: {self.template_file}',
-                    template_file=self.template_file
+                    template_file=self.template_file,
+                    operation='load'
                 )
-
             logging.info('Template loaded successfully from %s', self.template_file)
-
         except OSError as e:
             raise PromptError(
                 f'Error reading template file {self.template_file}: {e}',
-                template_file=self.template_file
+                template_file=self.template_file,
+                operation='load'
             ) from e
 
+    @staticmethod
+    def _extract_placeholders(template: str) -> set[str]:
+        """Extracts top-level placeholder names from a format string.
+
+        Args:
+          template: The template string using str.format placeholders.
+
+        Returns:
+          A set of placeholder field names (root names only).
+        """
+        fields: set[str] = set()
+        for _, field_name, _, _ in Formatter().parse(template):
+            if field_name is None:
+                continue
+            # Strip attribute/index access: "a.b[0]" -> "a"
+            before_dot, _, _ = field_name.partition(".")
+            root, _, _ = before_dot.partition("[")
+            if root:
+                fields.add(root)
+        return fields
+
+    @staticmethod
+    def _require_template_fields(
+        present: set[str], required: set[str], template_file: Path
+    ) -> None:
+        """Ensures `required` is a subset of `present` placeholders.
+
+        Args:
+          present: Fields present in the template.
+          required: Required field names.
+          template_file: For error context.
+
+        Raises:
+          PromptBuildError: If any required fields are missing.
+        """
+        missing = required - present
+        if missing:
+            raise PromptBuildError(
+                f"Template is missing required fields: {sorted(missing)}",
+                template_file=template_file,
+            )
+
     @abstractmethod
-    def build(self, data: Union[Dict[str, str], List[Dict[str, str]]]) -> str:
+    def build(self, data: PromptData) -> str:
         """Build a formatted prompt from the template.
 
         Args:
@@ -76,107 +140,107 @@ class PromptBuilder(ABC):
 
         Returns:
             Formatted prompt string.
+
+        Raises:
+            PromptBuildError: If prompt building fails.
         """
 
 class GenericPromptBuilder(PromptBuilder):
-    """GenericPromptBuilder is responsible for constructing a prompt from a template file.
+    """Generic prompt builder for single-record and batch prompts.
 
     This class handles loading a prompt template from a file and formatting
     it with specific parameters such as Brevid and text content for medieval
     text annotation tasks.
     """
 
-    def __init__(self, prompt_template_file: str) -> None:
+    # Required template fields by mode
+    REQUIRED_SINGLE: ClassVar[set[str]] = {"brevid", "text"}
+    REQUIRED_BATCH: ClassVar[set[str]] = {"num_records", "batch_content"}
+
+    def __init__(self, template_file: Pathish) -> None:
         """Initialize the GenericPromptBuilder with a template file.
 
         Args:
-            prompt_template_file: Path to the prompt template file.
+            template_file: Path to the prompt template file.
         """
-        super().__init__(prompt_template_file)
-        logging.info("GenericPromptBuilder initialized with template: %s", prompt_template_file)
+        super().__init__(template_file)
+        logging.info(
+            'GenericPromptBuilder initialized with template: %s',
+            template_file
+        )
 
-    def build(self, data: Union[Dict[str, str], List[Dict[str, str]]]) -> str:
+    def build(self, data: PromptData) -> str:
         """Build a formatted prompt from the template with provided data.
 
         Args:
-            data: Either a single record dictionary with keys "Brevid" and "Tekst",
+            data: Either a single record dictionary with "Brevid" and "Tekst" keys,
                   or a list of such dictionaries for synchronous batch processing.
 .
         Returns:
-            Formatted prompt string based on the template and provided data.
+            Formatted prompt string.
 
         Raises:
-            TypeError: If data is not a dict or list of dicts.
+            PromptBuildError: If data format or template fields are invalid..
         """
         if isinstance(data, dict):
             return self._build_single_record_prompt(data)
         elif isinstance(data, list):
-            return self._build_sync_batch_records_prompt(data)
+            return self._build_sync_batch_prompt(data)
         else:
-            raise PromptError(
-               f'Expected Dict[str, str] or List[Dict[str, str]], got {type(data).__name__}',
-                template_file=self.template_file
+            raise PromptBuildError(
+                f"Expected dict or list, got {type(data).__name__}",
+                template_file=self.template_file,
+                data_type=type(data).__name__
             )
 
-
-    def _build_single_record_prompt(self, record: Dict[str, str]) -> str:
-        """Build a formatted prompt from the template with a single record.
+    def _build_single_record_prompt(self, record: RecordData) -> str:
+        """Build a formatted prompt for a single record.
 
         Args:
-            record: Dict with keys "Brevid" and "Tekst"
+            record: Dict with "Brevid" and "Tekst" keys
 
         Returns:
             The formatted prompt string.
 
         Raises:
-            PromptError: If the template is not loaded or is invalid.
-            ValueError: If the template is missing required placeholders.
+            PromptBuildError: If template formatting fails.
         """
         if not self.template:
-            raise PromptError(
-                'Prompt template is not loaded or is invalid.',
+            raise PromptBuildError(
+                "Template is not loaded or is invalid.",
                 template_file=self.template_file
             )
 
-        brevid = record.get('Brevid', '').strip()
-        text = record.get('Tekst', '').strip()
+        # Validate template has required fields for single-record mode.
+        present = self._extract_placeholders(self.template)
+        self._require_template_fields(
+            present, self.REQUIRED_SINGLE, self.template_file
+        )
 
-        if not brevid:
-            raise ValueError('Brevid must be a non-empty string or whitespace.')
-
-        if not text:
-            raise ValueError('Text must be a non-empty string or whitespace.')
+        # Validate and clean record data, normalize to {"brevid","text"}
+        cleaned_record = self._validate_and_clean_record(record)
 
         try:
-            prompt = self.template.format(
-                brevid=brevid.strip(),
-                text=text.strip()
-            ).strip()
-
+            prompt = self.template.format(**cleaned_record).strip()
             if not prompt:
-                raise PromptError(
+                raise PromptBuildError(
                     'Formatted prompt is empty after processing.',
                     template_file=self.template_file
                 )
-
-            logging.info('Built single prompt for brevid: %s (text length: %d)',
-                          brevid, len(text))
+            logging.info(
+                'Built single prompt for brevid: %s (text length: %d)',
+                cleaned_record['brevid'],
+                len(cleaned_record['text'])
+            )
             return prompt
-
-        except KeyError as e:
-            raise PromptError(
-                f'Template is missing required placeholders: {e}',
-                template_file=self.template_file
-            ) from e
-        except Exception as e:
-            raise PromptError(
-                f'Unexpected error during building prompt for brevid {brevid}: {e}',
+        except (KeyError, ValueError, TypeError ) as e:
+            raise PromptBuildError(
+                f'Template formatting failed: {e}',
                 template_file=self.template_file
             ) from e
 
-
-    def _build_sync_batch_records_prompt(self, records: List[Dict[str, str]]) -> str:
-        """Build a formatted prompt from the template with a batch of records synchronously.
+    def _build_sync_batch_prompt(self, records: BatchData) -> str:
+        """Build a formatted prompt for a batch of records processing synchronously.
 
         Args:
             records: List of record dictionaries with Brevid and Tekst fields.
@@ -185,60 +249,106 @@ class GenericPromptBuilder(PromptBuilder):
             Formatted batch prompt string.
 
         Raises:
-            ValueError: If records list is empty or contains invalid records.
-            PromptError: If template is not loaded or formatting fails.
+            PromptBuildError: If template or data are invalid.
         """
         if not self.template:
-            raise PromptError(
+            raise PromptBuildError(
                 'Batch prompt template is not loaded',
                 template_file=self.template_file
             )
 
         if not records:
-            raise PromptError(
+            raise PromptBuildError(
                 'Records list cannot be empty for batch processing',
                 template_file=self.template_file
             )
 
-        # Validate all records first
+        # Validate template has required fields for batch mode.
+        present = self._extract_placeholders(self.template)
+        self._require_template_fields(
+            present, self.REQUIRED_BATCH, self.template_file
+        )
+
+        # Validate and clean all records
+        cleaned_records: list[RecordData] = []
         for i, record in enumerate(records):
-            brevid = record.get('Brevid', '').strip()
-            text = record.get('Tekst', '').strip()
-
-            if not brevid or not text:
-                raise PromptError(
-                    f'Record {i + 1}: Brevid and Tekst must be non-empty',
+            try:
+                cleaned_record = self._validate_and_clean_record(record)
+                cleaned_records.append(cleaned_record)
+            except ValueError as e:
+                raise PromptBuildError(
+                    f'Record {i + 1} validation failed: {e}',
                     template_file=self.template_file
-                )
+                ) from e
 
-        # Build individual record sections
-        record_sections = []
-        for i, record in enumerate(records, 1):
-            brevid = record['Brevid'].strip()
-            text = record['Tekst'].strip()
-
-            record_sections.append(f"""RECORD {i}: 
-Brevid: {brevid}
-Text: \"\"\"{text}\"\"\"""")
-
-        # Create batch content
-        batch_content = "\n\n".join(record_sections)
+        # Build batch content
+        batch_content = self._format_batch_content(cleaned_records)
 
         logging.info('Batch content:\n%s', batch_content)
 
+        # Prepare template data
+        template_data = {
+            'num_records': len(cleaned_records),
+            'batch_content': batch_content
+        }
+
         try:
             # Format the template with actual data
-            batch_prompt = self.template.format(
-                num_records=len(records),
-                batch_content=batch_content
+            batch_prompt = self.template.format(**template_data).strip()
+            logging.info(
+                'Built batch prompt for %d records (total length: %d)',
+                len(records),
+                len(batch_prompt)
             )
-
-            logging.info('Built batch prompt for %d records (total length: %d)',
-                         len(records), len(batch_prompt))
             return batch_prompt
-
-        except (KeyError, ValueError) as e:
+        except (KeyError, ValueError, TypeError) as e:
             raise PromptError(
-                f'Failed to format batch prompt template: {e}',
+                f'Batch template formatting failed: {e}',
                 template_file=self.template_file
             ) from e
+
+    @classmethod
+    def _validate_and_clean_record(cls, record: RecordData) -> RecordData:
+        """Validates and normalizes a single record.
+
+        Args:
+            record: Raw record dictionary with 'Brevid' and 'Tekst'.
+
+        Returns:
+            Cleaned record with standardized keys: {'brevid', 'text'}.
+
+        Raises:
+            ValueError: If record validation fails.
+        """
+        raw_brevid = record.get(cls.SRC_KEY_BREVID, '')
+        raw_text = record.get(cls.SRC_KEY_TEXT, '')
+        brevid = str(raw_brevid).strip()
+        text = str(raw_text).strip()
+
+        if not brevid:
+            raise ValueError('Brevid must be a non-empty string')
+        if not text:
+            raise ValueError('Text must be a non-empty string')
+
+        return {"brevid": brevid, "text": text}
+
+    @staticmethod
+    def _format_batch_content(records: BatchData) -> str:
+        """Format multiple records into batch content.
+
+        Args:
+            records: List of cleaned record dictionaries.
+                (each with 'brevid' and 'text').
+
+        Returns:
+            A formatted batch content string.
+        """
+        record_sections: list[str] = []
+        for i, record in enumerate(records, start=1):
+            section = (
+                f'RECORD {i}:\n'
+                f'Brevid: {record["brevid"]}\n'
+                f'Text: """{record["text"]}"""'
+            )
+            record_sections.append(section)
+        return '\n\n'.join(record_sections)

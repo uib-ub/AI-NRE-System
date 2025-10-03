@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Optional
 
 
 class BatchStatus(Enum):
@@ -32,6 +31,14 @@ class BatchRequest:
     max_tokens: int = 20000
     temperature: float = 0.0
 
+    def __post_init__(self) -> None:
+        """Validate request parameters after initialization."""
+        if not self.custom_id.strip():
+            raise ValueError("custom_id cannot be empty")
+        if not self.prompt.strip():
+            raise ValueError("prompt cannot be empty")
+
+
 @dataclass
 class BatchResponse:
     """Represents a response from batch processing using Claude Batches API.
@@ -45,7 +52,17 @@ class BatchResponse:
     custom_id: str
     response_text: str
     success: bool
-    error_message: Optional[str] = None
+    error_message: str | None = None
+
+    def __post_init__(self) -> None:
+        """Validate response after initialization."""
+        if not self.custom_id:
+            raise ValueError("custom_id cannot be empty")
+        if self.success and not self.response_text.strip():
+            raise ValueError("Successful response cannot have empty response_text")
+        if not self.success and not self.error_message:
+            raise ValueError("Failed response must have error_message")
+
 
 @dataclass
 class BatchProgress:
@@ -63,6 +80,6 @@ class BatchProgress:
     batch_id: str
     status: BatchStatus
     elapsed_time: float
-    request_counts: Dict[str, int]
+    request_counts: dict[str, int]
     created_at: str
     expires_at: str

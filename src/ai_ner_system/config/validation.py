@@ -1,9 +1,10 @@
 """Configuration validation for AI NER System."""
 
+from __future__ import annotations
+
 import logging
 import os
 from pathlib import Path
-from typing import Optional
 
 from .exceptions import ConfigError, ConfigValidationError, DirectoryValidationError, FileValidationError
 from .settings import Settings
@@ -255,7 +256,7 @@ class ConfigValidator:
 
 
     @staticmethod
-    def validate_all(client_type: Optional[str] = None) -> None:
+    def validate_all(client_type: str | None = None) -> None:
         """Perform comprehensive validation of all configuration.
 
         Args:
@@ -282,7 +283,7 @@ class ConfigValidator:
             raise
 
     @staticmethod
-    def is_valid(client_type: Optional[str] = None) -> bool:
+    def is_valid(client_type: str | None = None) -> bool:
         """Check if configuration is valid without raising exceptions.
 
         Args:

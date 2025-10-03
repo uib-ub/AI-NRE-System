@@ -4,10 +4,11 @@ This module provides configuration management with environment variables loading
 validation, and error handling with type safety and client-specific validation.
 """
 
+from __future__ import annotations
+
 import logging
 import os
 from pathlib import Path
-from typing import Optional
 
 from dotenv import load_dotenv
 
@@ -38,13 +39,13 @@ class Settings:
     """
 
     # API Configuration
-    ANTHROPIC_API_KEY: Optional[str] = os.getenv('ANTHROPIC_API_KEY')
-    OPENWEBUI_TOKEN: Optional[str] = os.getenv('OPENWEBUI_TOKEN')
-    OPENWEBUI_ENDPOINT: Optional[str] = os.getenv('OPENWEBUI_ENDPOINT')
+    ANTHROPIC_API_KEY: str | None = os.getenv('ANTHROPIC_API_KEY')
+    OPENWEBUI_TOKEN: str | None = os.getenv('OPENWEBUI_TOKEN')
+    OPENWEBUI_ENDPOINT: str | None = os.getenv('OPENWEBUI_ENDPOINT')
 
     # Model Configuration
-    OLLAMA_MODEL: Optional[str] = os.getenv('OLLAMA_MODEL')
-    CLAUDE_MODEL: Optional[str] = os.getenv('CLAUDE_MODEL')
+    OLLAMA_MODEL: str | None = os.getenv('OLLAMA_MODEL')
+    CLAUDE_MODEL: str | None = os.getenv('CLAUDE_MODEL')
 
     # File I/O Configuration
     INPUT_FILE: str = os.getenv('INPUT_FILE', 'input/Brevid-DN-AI.txt')
@@ -127,7 +128,7 @@ class Settings:
             logging.info('Created output directory: %s', output_dir)
 
     @classmethod
-    def get_client_required_configs(cls, client_type: str) -> dict[str, Optional[str]]:
+    def get_client_required_configs(cls, client_type: str) -> dict[str, str | None]:
         """Get required configurations for specified client type.
 
         Args:
@@ -156,7 +157,7 @@ class Settings:
             raise ConfigError(f'Unsupported client type: {client_type}')
 
     @classmethod
-    def get_common_required_configs(cls) -> dict[str, Optional[str]]:
+    def get_common_required_configs(cls) -> dict[str, str | None]:
         """Get common required configurations for all clients.
 
         Returns:
