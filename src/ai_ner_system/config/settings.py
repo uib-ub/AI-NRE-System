@@ -4,6 +4,8 @@ This module provides configuration management with environment variables loading
 validation, and error handling with type safety and client-specific validation.
 """
 
+from __future__ import annotations
+
 import logging
 import os
 from pathlib import Path

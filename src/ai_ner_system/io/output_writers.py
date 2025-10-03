@@ -12,7 +12,6 @@ Concurrency:
 * When appending, a header is emitted only if the file is empty at lock time.
 """
 
-
 from __future__ import annotations
 
 import json

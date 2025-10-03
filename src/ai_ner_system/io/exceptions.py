@@ -1,5 +1,7 @@
 """Input/Output exceptions for AI NER System."""
 
+from __future__ import annotations
+
 class IOError(Exception):
     """Base class for all I/O related exceptions in the AI NER System."""
 

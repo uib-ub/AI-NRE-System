@@ -9,7 +9,16 @@ from .base_client import Client
 from .claude_client import ClaudeClient
 from .ollama_client import OllamaClient
 from .factory import create_llm_client
-from .exceptions import LLMClientError, APIError, BatchTimeoutError
+from .exceptions import (
+    APIError,
+    AuthenticationError,
+    BatchProcessingError,
+    BatchTimeoutError,
+    LLMClientError,
+    LLMConnectionError,
+    LLMValidationError,
+    RateLimitError,
+)
 from .batch_models import BatchStatus, BatchRequest, BatchProgress, BatchResponse
 
 __all__ = [
@@ -20,6 +29,11 @@ __all__ = [
     "LLMClientError",
     "APIError",
     "BatchTimeoutError",
+    "AuthenticationError",
+    "LLMConnectionError",
+    "LLMValidationError",
+    "RateLimitError",
+    "BatchProcessingError",
     "BatchStatus",
     "BatchRequest",
     "BatchProgress",

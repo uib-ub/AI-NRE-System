@@ -1,5 +1,6 @@
 """Configuration-related exceptions for AI NER System."""
 
+from __future__ import annotations
 
 class ConfigError(Exception):
     """Base exception for configuration-related errors."""

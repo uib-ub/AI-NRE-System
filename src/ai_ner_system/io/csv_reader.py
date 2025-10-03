@@ -1,5 +1,6 @@
 """CSV reader with validation and streaming capabilities for AI NER System."""
 
+from __future__ import annotations
 
 import csv
 import logging
