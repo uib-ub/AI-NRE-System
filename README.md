@@ -1,4 +1,4 @@
-# AI-NER Historical Text Systen With LLMs
+# AI-NER Historical Text System With LLMs
 
 The AI-NER Historical Text System processes historical text records in multiple languages (Old Norse, Latin, 
 Middle Norse, Middle Dutch) with unstandardized orthography using Large Language Models (LLMs) to extract named entities
