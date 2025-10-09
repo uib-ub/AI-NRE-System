@@ -18,7 +18,7 @@ import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
 from string import Formatter
-from typing import ClassVar
+from typing import ClassVar, Any
 
 from .exceptions import (
     PromptError,
@@ -40,10 +40,10 @@ class PromptBuilder(ABC):
     Subclasses must implement the `build` method to create a formatted prompt.
     """
 
-    DEFAULT_ENCODING: ClassVar[str] = "utf-8"
+    DEFAULT_ENCODING: ClassVar[str] = 'utf-8'
     # External record keys (source data)
-    SRC_KEY_BREVID: ClassVar[str] = "Brevid"
-    SRC_KEY_TEXT: ClassVar[str] = "Tekst"
+    SRC_KEY_BREVID: ClassVar[str] = 'Brevid'
+    SRC_KEY_TEXT: ClassVar[str] = 'Tekst'
 
     def __init__(self, template_file: Pathish) -> None:
         """Initialize the PromptBuilder with a template file.
@@ -104,8 +104,8 @@ class PromptBuilder(ABC):
             if field_name is None:
                 continue
             # Strip attribute/index access: "a.b[0]" -> "a"
-            before_dot, _, _ = field_name.partition(".")
-            root, _, _ = before_dot.partition("[")
+            before_dot, _, _ = field_name.partition('.')
+            root, _, _ = before_dot.partition('[')
             if root:
                 fields.add(root)
         return fields
@@ -127,7 +127,7 @@ class PromptBuilder(ABC):
         missing = required - present
         if missing:
             raise PromptBuildError(
-                f"Template is missing required fields: {sorted(missing)}",
+                f'Template is missing required fields: {sorted(missing)}',
                 template_file=template_file,
             )
 
@@ -154,8 +154,8 @@ class GenericPromptBuilder(PromptBuilder):
     """
 
     # Required template fields by mode
-    REQUIRED_SINGLE: ClassVar[set[str]] = {"brevid", "text"}
-    REQUIRED_BATCH: ClassVar[set[str]] = {"num_records", "batch_content"}
+    REQUIRED_SINGLE: ClassVar[set[str]] = {'brevid', 'text'}
+    REQUIRED_BATCH: ClassVar[set[str]] = {'num_records', 'batch_content'}
 
     def __init__(self, template_file: Pathish) -> None:
         """Initialize the GenericPromptBuilder with a template file.
@@ -188,7 +188,7 @@ class GenericPromptBuilder(PromptBuilder):
             return self._build_sync_batch_prompt(data)
         else:
             raise PromptBuildError(
-                f"Expected dict or list, got {type(data).__name__}",
+                f'Expected dict or list, got {type(data).__name__}',
                 template_file=self.template_file,
                 data_type=type(data).__name__
             )
@@ -207,7 +207,7 @@ class GenericPromptBuilder(PromptBuilder):
         """
         if not self.template:
             raise PromptBuildError(
-                "Template is not loaded or is invalid.",
+                'Template is not loaded or is invalid.',
                 template_file=self.template_file
             )
 
@@ -287,7 +287,7 @@ class GenericPromptBuilder(PromptBuilder):
         logging.info('Batch content:\n%s', batch_content)
 
         # Prepare template data
-        template_data = {
+        template_data: dict[str, Any] = {
             'num_records': len(cleaned_records),
             'batch_content': batch_content
         }
@@ -330,7 +330,7 @@ class GenericPromptBuilder(PromptBuilder):
         if not text:
             raise ValueError('Text must be a non-empty string')
 
-        return {"brevid": brevid, "text": text}
+        return {'brevid': brevid, 'text': text}
 
     @staticmethod
     def _format_batch_content(records: BatchData) -> str:
