@@ -34,9 +34,9 @@ class BatchRequest:
     def __post_init__(self) -> None:
         """Validate request parameters after initialization."""
         if not self.custom_id.strip():
-            raise ValueError("custom_id cannot be empty")
+            raise ValueError('custom_id cannot be empty')
         if not self.prompt.strip():
-            raise ValueError("prompt cannot be empty")
+            raise ValueError('prompt cannot be empty')
 
 
 @dataclass
@@ -57,11 +57,11 @@ class BatchResponse:
     def __post_init__(self) -> None:
         """Validate response after initialization."""
         if not self.custom_id:
-            raise ValueError("custom_id cannot be empty")
+            raise ValueError('custom_id cannot be empty')
         if self.success and not self.response_text.strip():
-            raise ValueError("Successful response cannot have empty response_text")
+            raise ValueError('Successful response cannot have empty response_text')
         if not self.success and not self.error_message:
-            raise ValueError("Failed response must have error_message")
+            raise ValueError('Failed response must have error_message')
 
 
 @dataclass

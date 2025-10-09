@@ -63,7 +63,7 @@ class ClaudeClient(Client):
         if temperature is None:
             temperature = self.DEFAULT_TEMPERATURE
         if not (0.0 <= temperature <= 1.0):
-            raise ValueError("temperature must be between 0.0 and 1.0")
+            raise ValueError('temperature must be between 0.0 and 1.0')
 
         # Initialize base class
         super().__init__(model)
@@ -140,7 +140,7 @@ class ClaudeClient(Client):
             ValueError: If prompt is empty or invalid.
         """
         if not prompt or not prompt.strip():
-            raise ValueError("Prompt must not be empty for ClaudeClient.")
+            raise ValueError('Prompt must not be empty for ClaudeClient.')
 
     def _message_payload(
         self,
@@ -160,14 +160,14 @@ class ClaudeClient(Client):
           A JSON-serializable dictionary matching the Messages API schema.
         """
         return {
-            "model": self.model,
-            "system": self._system_message(),
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": max_tokens if max_tokens is not None else self.max_tokens,
-            "temperature": temperature if temperature is not None else self.temperature,
-            "top_k": 1,
-            "top_p": 1.0,
-            "stream": False
+            'model': self.model,
+            'system': self._system_message(),
+            'messages': [{'role': 'user', 'content': prompt}],
+            'max_tokens': max_tokens if max_tokens is not None else self.max_tokens,
+            'temperature': temperature if temperature is not None else self.temperature,
+            'top_k': 1,
+            'top_p': 1.0,
+            'stream': False
         }
 
     def _handle_auth_error(self, exc: Exception, *, operation: str) -> AuthenticationError:
@@ -200,7 +200,7 @@ class ClaudeClient(Client):
             f'Claude API rate limit exceeded: {exc}',
             client_type=self.client_type,
             operation=operation,
-            limit_type="requests",
+            limit_type='requests',
         )
 
     def _handle_api_error(self, exc: Exception, *, operation: str, status_code: int | None) -> APIError:
@@ -286,7 +286,7 @@ class ClaudeClient(Client):
         except anthropic.RateLimitError as e:
             raise self._handle_rate_limit_error(e, operation='single_call') from e
         except anthropic.APIError as e:
-            sc = getattr(e, "status_code", None)
+            sc = getattr(e, 'status_code', None)
             raise self._handle_api_error(e, operation='single_call', status_code=sc) from e
         except Exception as e:
             raise LLMClientError(
@@ -359,7 +359,7 @@ class ClaudeClient(Client):
         except anthropic.RateLimitError as e:
             raise self._handle_rate_limit_error(e, operation='async_single_call') from e
         except anthropic.APIError as e:
-            status_code = getattr(e, "status_code", None)
+            status_code = getattr(e, 'status_code', None)
             raise self._handle_api_error(
                 e, operation='async_single_call', status_code=status_code
             ) from e
@@ -387,7 +387,7 @@ class ClaudeClient(Client):
             LLMClientError: If batch creation fails.
         """
         if not requests:
-            raise ValueError("Batch requests list cannot be empty")
+            raise ValueError('Batch requests list cannot be empty')
 
         try:
             # Prepare batch requests in the format expected by Claude Message Batches API
@@ -423,7 +423,9 @@ class ClaudeClient(Client):
                 requests=batch_requests
             )
             logging.info(
-                f'Created batch job with ID: {message_batch.id}, {len(requests)} requests'
+                'Created batch job with ID: %s, %d requests',
+                message_batch.id,
+                len(requests)
             )
             return message_batch.id
 
@@ -450,13 +452,14 @@ class ClaudeClient(Client):
             message_batch = await self.async_client.messages.batches.retrieve(batch_id)
 
             # Map Claude batch processing_status to our enum
-            if message_batch.processing_status == "in_progress":
+            if message_batch.processing_status == 'in_progress':
                 return BatchStatus.IN_PROGRESS
-            elif message_batch.processing_status == "ended":
+            elif message_batch.processing_status == 'ended':
                 return BatchStatus.ENDED
             else:
                 # Handle any unexpected status
-                logging.warning(f"Unexpected batch status: {message_batch.processing_status}")
+                logging.warning('Unexpected batch status: %s', message_batch.processing_status)
+                
                 return BatchStatus.ENDED
 
         except Exception as e:
@@ -483,21 +486,21 @@ class ClaudeClient(Client):
 
             # Extract detailed information from the batch object
             batch_info: dict[str, Any] = {
-                "id": message_batch.id,
-                "type": message_batch.type,
-                "processing_status": message_batch.processing_status,
-                "request_counts": {
-                    "processing": message_batch.request_counts.processing,
-                    "succeeded": message_batch.request_counts.succeeded,
-                    "errored": message_batch.request_counts.errored,
-                    "canceled": message_batch.request_counts.canceled,
-                    "expired": message_batch.request_counts.expired
+                'id': message_batch.id,
+                'type': message_batch.type,
+                'processing_status': message_batch.processing_status,
+                'request_counts': {
+                    'processing': message_batch.request_counts.processing,
+                    'succeeded': message_batch.request_counts.succeeded,
+                    'errored': message_batch.request_counts.errored,
+                    'canceled': message_batch.request_counts.canceled,
+                    'expired': message_batch.request_counts.expired
                 },
-                "created_at": message_batch.created_at,
-                "expires_at": message_batch.expires_at,
-                "ended_at": message_batch.ended_at,
-                "cancel_initiated_at": message_batch.cancel_initiated_at,
-                "results_url": message_batch.results_url
+                'created_at': message_batch.created_at,
+                'expires_at': message_batch.expires_at,
+                'ended_at': message_batch.ended_at,
+                'cancel_initiated_at': message_batch.cancel_initiated_at,
+                'results_url': message_batch.results_url
             }
             return batch_info
 
@@ -532,7 +535,7 @@ class ClaudeClient(Client):
 
             # Fatch batch information to access results_url
             batch_info = await self.get_batch_info_async(batch_id)
-            if not batch_info.get("results_url"):
+            if not batch_info.get('results_url'):
                 raise LLMClientError(
                     f'No results URL found for batch {batch_id}',
                     client_type=self.client_type,
@@ -543,12 +546,12 @@ class ClaudeClient(Client):
             results: list[BatchResponse] = []
             # counters are for logging and debug purposes
             counters = {
-                "succeeded": 0,
-                "errored": 0,
-                "canceled": 0,
-                "expired": 0,
-                "parse_errors": 0,
-                "other": 0,
+                'succeeded': 0,
+                'errored': 0,
+                'canceled': 0,
+                'expired': 0,
+                'parse_errors': 0,
+                'other': 0,
             }
 
             # Fetch the async iterator of results
@@ -556,7 +559,7 @@ class ClaudeClient(Client):
             async for result in results_iter:
                 custom_id = getattr(result, 'custom_id', 'unknown_custom_id')
                 try:
-                    result_obj = getattr(result, "result", None)
+                    result_obj = getattr(result, 'result', None)
                     if result_obj is None:
                         results.append(
                             BatchResponse(
@@ -566,14 +569,14 @@ class ClaudeClient(Client):
                                 error_message='Missing result object.'
                             )
                         )
-                        counters["other"] += 1
+                        counters['other'] += 1
                         continue
 
-                    result_type = getattr(result_obj, "type", None)
+                    result_type = getattr(result_obj, 'type', None)
 
                     # Success path
-                    if result_type == "succeeded":
-                        message = getattr(result_obj, "message", None)
+                    if result_type == 'succeeded':
+                        message = getattr(result_obj, 'message', None)
                         response_text = self._extract_response_text_from_message(message)
                         results.append(
                             BatchResponse(
@@ -583,11 +586,11 @@ class ClaudeClient(Client):
                                 error_message='' if response_text else 'Empty response content',
                             )
                         )
-                        counters["succeeded"] += 1
+                        counters['succeeded'] += 1
                         # continue
 
                     # errored, canceled, or expired path
-                    elif result_type in {"errored", "canceled", "expired"}:
+                    elif result_type in {'errored', 'canceled', 'expired'}:
                         error_message = self._extract_error_message(result_obj, result_type)
                         results.append(
                             BatchResponse(
@@ -610,12 +613,14 @@ class ClaudeClient(Client):
                                 error_message=error_message,
                             )
                         )
-                        counters["other"] += 1
+                        counters['other'] += 1
 
                 except Exception as result_exc:
                     # Never let one malformed result crash the whole batch
                     logging.error(
-                        f'Failed to parse batch result for custom_id {custom_id}: {result_exc}',
+                        'Failed to parse batch result for custom_id %s: %s', 
+                        custom_id, 
+                        result_exc, 
                         exc_info=True
                     )
                     results.append(
@@ -626,19 +631,19 @@ class ClaudeClient(Client):
                             error_message=f'Failed to parse result: {result_exc}',
                         )
                     )
-                    counters["parse_errors"] += 1
+                    counters['parse_errors'] += 1
 
             logging.info(
                 'Batch %s parsed. total=%d, succeeded=%d, errored=%d, '
                 'canceled=%d, expired=%d, other=%d, parse_errors=%d',
                 batch_id,
                 len(results),
-                counters["succeeded"],
-                counters["errored"],
-                counters["canceled"],
-                counters["expired"],
-                counters["other"],
-                counters["parse_errors"],
+                counters['succeeded'],
+                counters['errored'],
+                counters['canceled'],
+                counters['expired'],
+                counters['other'],
+                counters['parse_errors'],
             )
             return results
 
@@ -664,10 +669,10 @@ class ClaudeClient(Client):
             The extracted text content, or empty string if not found.
         """
         if msg is None:
-            return ""
+            return ''
 
         # Get content
-        content = ClaudeClient._get_field(msg, "content")
+        content = ClaudeClient._get_field(msg, 'content')
 
         # Handle string content if it is already a string, just return it.
         if isinstance(content, str):
@@ -678,21 +683,21 @@ class ClaudeClient(Client):
             text_parts: list[str] = []
             for block in content:
                 # Resolve type block
-                block_type = ClaudeClient._get_field(block, "type")
+                block_type = ClaudeClient._get_field(block, 'type')
                 # Only consume text blocks; ignore tool/thinking/etc per docs
-                if block_type == "text":
-                    text = ClaudeClient._get_field(block, "text")
+                if block_type == 'text':
+                    text = ClaudeClient._get_field(block, 'text')
                     if isinstance(text, str) and text:
                         text_parts.append(text)
             if text_parts:
-                return "".join(text_parts)
+                return ''.join(text_parts)
 
         # Fallback to direct text attribute
-        text = getattr(msg, "text", None)
+        text = getattr(msg, 'text', None)
         if isinstance(text, str):
             return text
 
-        return ""
+        return ''
 
     @staticmethod
     def _get_field(obj: Any, field_name: str) -> Any:
@@ -724,47 +729,47 @@ class ClaudeClient(Client):
         Returns:
             A human-readable error message string.
         """
-        if result_type == "canceled":
+        if result_type == 'canceled':
             # NOTE: Claude API does not provide an output result for cancellation, and
             # canceled requests “will not be billed”, since they never executed
             return 'Request was canceled before execution.'
 
-        if result_type == "expired":
+        if result_type == 'expired':
             # NOTE: Claude API does not provide an output result for expiration (request timed out), and
             # expired requests “will not be billed”, since the request expired before it could be processed.
             return 'Request expired (not processed within the batch time window).'
 
         # Generic/errored: inspect error objects.
-        error_obj = getattr(result_obj, "error", None)
+        error_obj = getattr(result_obj, 'error', None)
 
         # Dict-like error, use .get
         if isinstance(error_obj, dict):
-            msg = error_obj.get("message")
+            msg = error_obj.get('message')
             if msg:
                 return str(msg)
-            err = error_obj.get("error")
+            err = error_obj.get('error')
             if isinstance(err, dict):
-                msg = err.get("message")
+                msg = err.get('message')
                 if msg:
                     return str(msg)
             return str(error_obj)
 
         # SDK/Pydantic path: use attribute access
-        msg =  getattr(error_obj, "message", None)
+        msg =  getattr(error_obj, 'message', None)
         if msg:
             return str(msg)
-        err = getattr(error_obj, "error", None)
+        err = getattr(error_obj, 'error', None)
         if isinstance(err, dict):
-            msg = err.get("message")
+            msg = err.get('message')
             if msg:
                 return str(msg)
         else:
-            msg = getattr(err, "message", None)
+            msg = getattr(err, 'message', None)
             if msg:
                 return str(msg)
 
         # Direct message at result level
-        msg = getattr(result_obj, "message", None)
+        msg = getattr(result_obj, 'message', None)
         if msg:
             return str(msg)
 
@@ -784,7 +789,7 @@ class ClaudeClient(Client):
         """
         try:
             await self.async_client.messages.batches.cancel(batch_id)
-            logging.info(f'Batch {batch_id} cancelled successfully')
+            logging.info('Batch %s cancelled successfully', batch_id)
             return True
         except Exception as e:
             raise LLMClientError(
@@ -820,7 +825,7 @@ class ClaudeClient(Client):
             ValueError: If poll_interval is not positive.
         """
         if poll_interval <= 0:
-            raise ValueError("poll_interval must be > 0.")
+            raise ValueError('poll_interval must be > 0.')
 
         start_time = time.monotonic()
 
@@ -851,9 +856,7 @@ class ClaudeClient(Client):
 
                 # Check for terminal state
                 if status == BatchStatus.ENDED:
-                    logging.info(
-                        f'Batch {batch_id} reached terminal state: {status.value}'
-                    )
+                    logging.info('Batch %s reached terminal state: %s', batch_id, status.value)
                     # break
                     return
 
@@ -861,15 +864,15 @@ class ClaudeClient(Client):
                 await asyncio.sleep(poll_interval)
 
             except Exception as e:
-                logging.error(f"Error monitoring batch {batch_id}: {e}", exc_info=True)
+                logging.error('Error monitoring batch %s: %s', batch_id, e, exc_info=True)
                 # Emit a final ended state so the caller can unwind cleanly.
                 yield BatchProgress(
                     batch_id=batch_id,
                     status=BatchStatus.ENDED,
                     elapsed_time=time.monotonic() - start_time,
                     request_counts={},
-                    created_at="",
-                    expires_at=""
+                    created_at='',
+                    expires_at=''
                 )
                 # break
                 return

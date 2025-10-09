@@ -46,7 +46,7 @@ class Client(ABC):
 
         self.model = model
         logging.info(
-            f'Initializing LLM client {self.__class__.__name__} with model {self.model}'
+            'Initializing LLM client %s with model %s', self.__class__.__name__, self.model
         )
 
     # ----------------------------------------------------------------------
@@ -249,9 +249,9 @@ class Client(ABC):
             )
 
         if poll_interval <= 0:
-            raise ValueError("poll_interval must be > 0.")
+            raise ValueError('poll_interval must be > 0.')
         if max_wait_time <= 0:
-            raise ValueError("max_wait_time must be > 0.")
+            raise ValueError('max_wait_time must be > 0.')
 
         start_time = time.monotonic()
 
@@ -264,7 +264,7 @@ class Client(ABC):
                 try:
                     progress_callback(progress)
                 except Exception as e:
-                    logging.debug(f'Progress callback raised: {e}', exc_info=True)
+                    logging.debug('Progress callback raised: %s', e, exc_info=True)
 
             # Check for completion
             if progress.status == BatchStatus.ENDED:
@@ -322,7 +322,7 @@ class Client(ABC):
             # Create batch job.
             batch_id = await self.create_batch_async(requests)
             logging.info(
-                f'Created batch job {batch_id} with {len(requests)} requests'
+                'Created batch job %s with %d requests', batch_id, len(requests)
             )
 
             # Wait for completion with progress monitoring
@@ -337,7 +337,7 @@ class Client(ABC):
                 # Get and return results
                 results = await self.get_batch_results_async(batch_id)
                 logging.info(
-                    f'Batch job {batch_id} completed successfully with {len(results)} results'
+                    'Batch job %s completed successfully with %d results', batch_id, len(results)
                 )
                 return results
             else:

@@ -30,7 +30,7 @@ def create_llm_client(client_type: str, **kwargs: Any) -> Client:
         LLMClientError: If client type is unsupported or initialization fails.
     """
     if not client_type:
-        raise ValueError("client_type must be provided")
+        raise ValueError('client_type must be provided')
 
     client_type = client_type.lower().strip()
     try:
@@ -46,7 +46,7 @@ def create_llm_client(client_type: str, **kwargs: Any) -> Client:
                 model=Settings.OLLAMA_MODEL
             )
         else:
-            supported_types = ["claude", "ollama"]
+            supported_types = ['claude', 'ollama']
             raise LLMClientError(
                 f'Unsupported client type: {client_type}.'
                 f'Supported types: {", ".join(supported_types)}',
@@ -56,7 +56,7 @@ def create_llm_client(client_type: str, **kwargs: Any) -> Client:
     except Exception as e:
         # Wrap unexpected exceptions in LLMClientError
         logging.error(
-            "Unexpected error creating %s client: %s",
+            'Unexpected error creating %s client: %s',
             client_type,
             e,
             exc_info=True,
