@@ -4,10 +4,13 @@ This module provides data classes representing entities, processing results,
 and batch processing outcomes for medieval text annotation tasks.
 """
 
+from __future__ import annotations
+
 import io
 import csv
-from typing import List, Dict, Optional, Any
 from dataclasses import dataclass, field
+from typing import Any, ClassVar
+
 from .exceptions import ValidationError
 
 @dataclass
@@ -16,7 +19,7 @@ class EntityRecord:
 
     Attributes:
         name: The proper noun itself.
-        type: Type of proper noun (Person Name, Place Name, etc.).
+        entity_type: Type of proper noun (Person Name, Place Name, etc.).
         preposition: Preposition used with the proper noun (if applicable, otherwise use “N/A”),
         order: Order of occurrence in the text.
         brevid: The Brevid identifier from the source record.
@@ -24,55 +27,148 @@ class EntityRecord:
         gender: Gender information, "Male", "Female", or "N/A" for non-persons.
         language: Language code (ISO 639-3) (e.g., "lat", "non").
     """
+
+    ALLOWED_GENDERS: ClassVar[frozenset[str]] = frozenset({'Male', 'Female', 'N/A'})
+
     name: str
-    type: str
-    preposition: str = "N/A"
+    entity_type: str
+    preposition: str = 'N/A'
     order: int = 0
-    brevid: str = ""
-    description: str = ""
-    gender: str = "N/A"
-    language: str = ""
+    brevid: str = ''
+    description: str = ''
+    gender: str = 'N/A'
+    language: str = ''
+
+    def __post_init__(self) -> None:
+        """Validate field values after initialization.
+
+        Raises:
+            ValidationError: If any field contains invalid data.
+        """
+        # Required textual fields must be non-blank strings.
+        if not isinstance(self.name, str) or not self.name.strip():  # type: ignore[reportUnnecessaryIsInstance]
+            raise ValidationError(
+                'Entity "name" cannot be a non-empty string', 
+                brevid=self.brevid, 
+                operation='entity_validation'
+            )
+
+        if not isinstance(self.entity_type, str) or not self.entity_type.strip():  # type: ignore[reportUnnecessaryIsInstance]
+            raise ValidationError(
+                'Entity "entity_type" cannot be a non-empty string', 
+                brevid=self.brevid, 
+                operation='entity_validation'
+            )
+
+        if not isinstance(self.preposition, str) or not self.preposition.strip():  # type: ignore[reportUnnecessaryIsInstance]
+            # Allow exactly "N/A" for not-applicable.
+            if self.preposition.strip() != 'N/A':
+                raise ValidationError(
+                    'Entity "preposition" must be a non-empty string or "N/A"',
+                    brevid=self.brevid,
+                    operation='entity_validation',
+                )
+        
+        # order must be non-negative integer.
+        if not isinstance(self.order, int) or self.order < 0:  # type: ignore[reportUnnecessaryIsInstance]
+            raise ValidationError(
+                f'Entity "order" must be non-negative, got {self.order}', 
+                brevid=self.brevid, 
+                operation='entity_validation'
+            )
+
+        # gender must be in allowed set (case-sensitive to keep a single canonical form).
+        if self.gender not in self.ALLOWED_GENDERS:
+            raise ValidationError(
+                f'Invalid gender {self.gender}. Must be one of: {self.ALLOWED_GENDERS}',
+                brevid=self.brevid,
+                operation='entity_validation',
+            )
 
     def to_csv_row(self) -> str:
-        """Semicolon-separated row with proper quoting.
+        """Convert entity to semicolon-separated CSV row with proper quoting.
 
         Returns:
-            Semicolon-separated string representation.
+            Semicolon-separated string representation suitable for CSV output.
         """
         buf = io.StringIO()
-        csv.writer(buf, delimiter=';', quoting=csv.QUOTE_MINIMAL).writerow([
-            self.name, self.type, self.preposition, self.order,
-            self.brevid, self.description, self.gender, self.language
+        writer = csv.writer(buf, delimiter=';', quoting=csv.QUOTE_MINIMAL)
+        writer.writerow([
+            self.name, 
+            self.entity_type,
+            self.preposition, 
+            self.order,
+            self.brevid, 
+            self.description, 
+            self.gender, 
+            self.language,
         ])
-        return buf.getvalue().rstrip("\r\n")
+        return buf.getvalue().rstrip('\r\n')
 
     @classmethod
-    def create_entity_record(cls, entity_data: Dict[str, str], brevid: str) -> 'EntityRecord':
-        """Create an EntityRecord from dictionary data.
+    def create_entity_record(
+        cls, 
+        entity_data: dict[str, Any], 
+        brevid: str
+    ) -> EntityRecord:
+        """Create an EntityRecord from dictionary data with validation.
 
         Args:
-            entity_data: Dictionary containing entity information.
+            entity_data: Dictionary containing entity information with keys:
+                - name: Entity name
+                - type: Entity type. Will be mapped to entity_type.
+                - preposition: Preposition, defaults to "N/A"
+                - order: Order number, defaults to 0
+                - brevid: Overrides the brevid parameter
+                - description: Entity description
+                - gender: Gender, defaults to "N/A"
+                - language: Language code
             brevid: Brevid identifier for the record.
 
         Returns:
             An instance of EntityRecord.
 
         Raises:
-            ValidationError: If required fields are missing or invalid.
+            ValidationError: If required fields are missing, invalid, 
+            or type conversion fails.
         """
         try:
+            # Extract and normalize string fields
+            name = str(entity_data.get('name', '')).strip()
+            entity_type = str(entity_data.get('type', '')).strip()
+            preposition = str(entity_data.get('preposition', 'N/A')).strip()
+            description = str(entity_data.get('description', '')).strip()
+            gender = str(entity_data.get('gender', '')).strip()
+            language = str(entity_data.get('language', '')).strip()
+
+            # Extract numeric field with validation
+            order_raw = entity_data.get('order', 0)
+            if isinstance(order_raw, str):
+                order_raw = order_raw.strip()
+                order = int(order_raw) if order_raw else 0
+            else:
+                order = int(order_raw)
+
+            # Use provided brevid or override from entity_data
+            record_brevid = str(entity_data.get('brevid', brevid)).strip()
+
             return cls(
-                name=str(entity_data.get("name", "")).strip(),
-                type=str(entity_data.get("type", "")).strip(),
-                preposition=str(entity_data.get("preposition", "N/A")).strip(),
-                order=int(entity_data.get("order", 0)),
-                brevid=str(entity_data.get("brevid", brevid)).strip(),
-                description=str(entity_data.get("description", "")).strip(),
-                gender=str(entity_data.get("gender", "")).strip(),
-                language=str(entity_data.get("language", "")).strip()
+                name=name,
+                entity_type=entity_type,
+                preposition=preposition,
+                order=order,
+                brevid=record_brevid,
+                description=description,
+                gender=gender,
+                language=language
             )
         except (ValueError, TypeError) as e:
-            raise ValidationError(f'Invalid entity data: {e}') from e
+            raise ValidationError(
+                f'Invalid entity data: {e}',
+                brevid=brevid,
+                operation='create_entity_record'
+            ) from e
+
 
 @dataclass
 class ProcessingResult:
@@ -89,16 +185,47 @@ class ProcessingResult:
     """
     record_id: str
     brevid: str
-    annotated_text: str = ""
-    entities: List[EntityRecord] = field(default_factory=list)
+    annotated_text: str = ''
+    entities: list[EntityRecord] = field(default_factory=lambda: [])  # Creates NEW list for each instance
     processing_time: float = 0.0
     success: bool = True
-    error_message: Optional[str] = None
+    error_message: str | None = None
+
+    def __post_init__(self) -> None:
+        """Validate processing result after initialization.
+
+        Raises:
+            ValidationError: If validation fails.
+        """
+        if not isinstance(self.record_id, str) or not self.record_id:  # type: ignore[reportUnnecessaryIsInstance]
+            raise ValidationError(
+                'ProcessingResult record_id cannot be empty',
+                brevid=self.brevid,
+                operation='processing_result_validation',
+            )
+
+        if not isinstance(self.brevid, str) or not self.brevid:  # type: ignore[reportUnnecessaryIsInstance]
+            raise ValidationError(
+                'ProcessingResult brevid cannot be empty',
+                brevid=self.brevid,
+                operation='processing_result_validation',
+            )
+
+        if not isinstance(self.processing_time, (int, float)) or self.processing_time < 0:  # type: ignore[reportUnnecessaryIsInstance]
+            raise ValidationError(
+                f'Processing time must be non-negative, got {self.processing_time}',
+                brevid=self.brevid,
+                operation='processing_result_validation',
+            )
 
 
 @dataclass
 class BatchProcessingResult:
     """Represents the result of processing a batch of records (for async methods).
+
+    This class encapsulates the output of batch processing operations,
+    aggregating results from multiple records and providing batch-level
+    statistics and metadata.
 
     Attributes:
         batch_id: Unique identifier for the batch.
@@ -109,8 +236,32 @@ class BatchProcessingResult:
         batch_info: Additional batch information from the API.
     """
     batch_id: str
-    results: List[ProcessingResult] = field(default_factory=list)
+    results: list[ProcessingResult] = field(default_factory=lambda: [])  # Creates NEW list for each instance
     total_processing_time: float = 0.0
     successful_count: int = 0
     failed_count: int = 0
-    batch_info: Optional[Dict[str, Any]] = None
+    batch_info: dict[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        """Validate batch processing result after initialization.
+
+        Raises:
+            ValidationError: If validation fails.
+        """
+        if not isinstance(self.batch_id, str) or not self.batch_id:  # type: ignore[reportUnnecessaryIsInstance]
+            raise ValidationError(
+                'BatchProcessingResult batch_id cannot be empty',
+                operation='batch_result_validation',
+            )
+
+        if not isinstance(self.total_processing_time, (int, float)) or self.total_processing_time < 0:  # type: ignore[reportUnnecessaryIsInstance]
+            raise ValidationError(
+                f'Total processing time must be non-negative, got {self.total_processing_time}',
+                operation='batch_result_validation',
+            )
+
+        if self.successful_count < 0 or self.failed_count < 0:
+            raise ValidationError(
+                f'Counts must be non-negative: successful={self.successful_count}, failed={self.failed_count}',
+                operation='batch_result_validation',
+            )

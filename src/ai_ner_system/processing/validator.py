@@ -1,48 +1,94 @@
 """Input validation for AI NER System processing.
 
-This module provides validation functions for records and data structures
-used in medieval text processing with LLM services.
+This module provides validation utilities for ensuring record data integrity
+before processing with LLM services.
 """
 
-from typing import Dict, List
+from __future__ import annotations
+
+from typing import ClassVar
+
 from .exceptions import ValidationError
 
 class RecordValidator:
-    """Validates record data for processing."""
+    """Validates record data for processing.
+    
+    This validator ensures that records contain all required fields and
+    have valid data before being processed by LLM services.
+
+    Attributes:
+        REQUIRED_FIELDS: Frozenset of field names that must be present
+            and non-empty in each record.
+    """
+
+    REQUIRED_FIELDS: ClassVar[frozenset[str]] = frozenset({'Bindnr', 'Brevid', 'Tekst'})
 
     @staticmethod
-    def validate_record(record: Dict[str, str]) -> None:
-        """Validate a single record for processing
+    def _is_missing_or_blank(value: object) -> bool:
+        """Check if a value is missing, non-string, or blank.
 
         Args:
-            record: Dictionary containing record data.
+            value: The value to check.
+
+        Returns:
+            True if the value is None, not a string, or a blank string.
+        """
+        if not isinstance(value, str):
+            return True 
+        return not value.strip()
+
+    @classmethod
+    def validate_record(cls, record: dict[str, str]) -> None:
+        """Validate a single record for processing.
+
+        Args:
+            record: Dictionary containing record data with string keys and values.
 
         Raises:
-            ValidationError: If record validation fails.
+            ValidationError: If record validation fails. The exception includes
+                the brevid and list of missing/invalid fields.
         """
-        if not isinstance(record, dict):
-            raise ValidationError("Record must be a dictionary")
-
-        # Check required fields
-        required_fields = ["Bindnr", "Brevid", "Tekst"]
-        missing_fields = []
-
-        for field in required_fields:
-            if field not in record:
-                missing_fields.append(field)
-            elif not str(record[field]).strip():
-                missing_fields.append(f'{field} (empty)')
-
-        if missing_fields:
+        # Runtime validation for defensive programming
+        if not isinstance(record, dict):  # type: ignore[reportUnnecessaryIsInstance]
             raise ValidationError(
-                f'Missing required fields: {missing_fields}',
-                brevid=record.get("Brevid", "Unknown"),
-                missing_fields=missing_fields
+                f'Record must be a dict, got {type(record).__name__}',
+                operation='validate_record',
             )
 
+        brevid_raw = record.get('Brevid')
+        brevid = brevid_raw.strip() if isinstance(brevid_raw, str) else 'unknown'
 
-    @staticmethod
-    def validate_records(records: List[Dict[str, str]]) -> None:
+        # Check for missing fields
+        missing_fields = cls.REQUIRED_FIELDS.difference(record)
+        # missing_fields: frozenset[str] = RecordValidator.REQUIRED_FIELDS - record.keys()
+
+        if missing_fields:
+            missing = sorted(missing_fields)
+            raise ValidationError(
+                f'Record missing required fields: {missing}',
+                brevid=brevid,
+                operation='validate_record',
+                missing_fields=missing,
+            )
+
+        # Check for empty or non-string values for required fields
+        invalid_fields: list[str] = []
+        for field in cls.REQUIRED_FIELDS:
+            value = record.get(field)
+            if cls._is_missing_or_blank(value):
+                invalid_fields.append(field)
+
+        if invalid_fields:
+            invalid_sorted = sorted(invalid_fields)
+            raise ValidationError(
+                f'Record has empty or invalid required fields: {invalid_sorted}',
+                brevid=brevid,
+                operation='validate_record',
+                missing_fields=invalid_sorted
+            )
+
+    @classmethod
+    def validate_records(cls, records: list[dict[str, str]]) -> None:
         """Validate a list of records
 
         Args:
@@ -51,24 +97,32 @@ class RecordValidator:
         Raises:
             ValidationError: If any record validation fails.
         """
-        if not isinstance(records, list):
-            raise ValidationError("Records must be a list")
+        # Runtime validation for defensive programming
+        if not isinstance(records, list):  # type: ignore[reportUnnecessaryIsInstance]
+            raise ValidationError(
+                f'Records must be a sequence, got {type(records).__name__}',
+                operation='validate_records',
+            )
 
         if not records:
-            raise ValidationError("Records list cannot be empty")
+            raise ValidationError(
+                f'Records list cannot be empty',
+                operation='validate_records',
+            )
 
         # Validate each record
         for i, record in enumerate(records):
             try:
-                RecordValidator.validate_record(record)
+                cls.validate_record(record)
             except ValidationError as e:
+                if isinstance(record, dict):  # type: ignore[reportUnnecessaryIsInstance]
+                    brevid_raw = record.get('Brevid')
+                    brevid = brevid_raw.strip() if isinstance(brevid_raw, str) else 'unknown'
+                else:
+                    brevid = 'unknown'
                 raise ValidationError(
-                    f'Error in record at index {i}: {e}',
-                    brevid=record.get("Brevid", "Unknown"),
-                    missing_fields=e.missing_fields
+                    f'Validation failed at index {i}: {e}',
+                    brevid=brevid,
+                    operation='validate_records',
+                    missing_fields=getattr(e, 'missing_fields', []),
                 ) from e
-
-
-
-
-
