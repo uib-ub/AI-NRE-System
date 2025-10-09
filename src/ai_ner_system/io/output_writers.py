@@ -54,7 +54,7 @@ class OutputWriter:
             encoding: Text encoding used for all writes.
         """
         self.encoding = encoding
-        logging.debug(f'OutputWriter initialized with encoding: {self.encoding}')
+        logging.debug('OutputWriter initialized with encoding: %s', self.encoding)
 
     @staticmethod
     def _ensure_output_directory(file_path: Pathish) -> Path:
@@ -73,11 +73,11 @@ class OutputWriter:
         directory = path.parent
         try:
             directory.mkdir(parents=True, exist_ok=True)
-            logging.debug(f'Ensured output directory exists: {directory}')
+            logging.debug('Ensured output directory exists: %s', directory)
             return path
         except OSError as e:
             raise OutputError(
-                f"Failed to create output directory {directory}: {e}",
+                f'Failed to create output directory {directory}: {e}',
                 file_path=str(file_path),
             ) from e
 
@@ -170,10 +170,10 @@ class OutputWriter:
         # Ensure output directory exists
         output_path = self._ensure_output_directory(file_path)
         try:
-            logging.info(f'Writing {log_label} output to {output_path}')
+            logging.info('Writing %s output to %s', log_label, output_path)
             content = self._build_content(header, lines)
             self._atomic_write(output_path, content, self.encoding)
-            logging.info(f'{log_label.capitalize()} output written to {output_path} successfully')
+            logging.info('%s output written to %s successfully', log_label.capitalize(), output_path)
         except (OSError, UnicodeEncodeError) as e:
             raise OutputError(
                 f'Failed to write {log_label} output to {output_path}: {e}',
@@ -315,7 +315,7 @@ class OutputWriter:
         output_path = self._ensure_output_directory(file_path)
         try:
             # Open/create in binary append/update so we can check last byte reliably.
-            with cast(BinaryIO, open(output_path, "a+b")) as file:
+            with cast(BinaryIO, open(output_path, 'a+b')) as file:
                 fcntl.flock(file.fileno(), fcntl.LOCK_EX)
                 try:
                     size, ends_with_newline = self._file_size_and_trailing_newline(file)
@@ -336,7 +336,7 @@ class OutputWriter:
                 finally:
                     fcntl.flock(file.fileno(), fcntl.LOCK_UN)
 
-            logging.info(f'Appended {len(lines)} {log_label} to {output_path}')
+            logging.info('Appended %d %s to %s', len(lines), log_label, output_path)
         except (OSError, UnicodeEncodeError) as e:
             if isinstance(e, UnicodeEncodeError):
                 error_msg = f'Encoding error writing {log_label} to {output_path}: {e}'
@@ -411,17 +411,17 @@ class OutputWriter:
         # Ensure output directory exists
         output_path = OutputWriter._ensure_output_directory(file_path)
         try:
-            logging.info(f'Writing processing statistics to {output_path}')
+            logging.info('Writing processing statistics to %s', output_path)
             content = json.dumps(stats_data, indent=2, ensure_ascii=False)
             OutputWriter._atomic_write(output_path, content, OutputWriter.DEFAULT_ENCODING)
-            logging.info(f'Processing statistics written to: {output_path}')
+            logging.info('Processing statistics written to: %s', output_path)
         except (OSError, UnicodeEncodeError, TypeError) as e:
             logging.error(
-                f"Error writing stats output to {file_path}: {e}", exc_info=True)
+                'Error writing stats output to %s: %s', file_path, e, exc_info=True)
             raise OutputError(
-                f"Failed to write stats output to {file_path}: {e}",
+                f'Failed to write stats output to {file_path}: {e}',
                 file_path=str(file_path),
-                output_type="stats"
+                output_type='stats'
             ) from e
 
     @staticmethod
@@ -441,10 +441,10 @@ class OutputWriter:
                 path = Path(file_path)
                 if path.exists() and path.is_file():
                     path.unlink()
-                    logging.info(f'Cleaned up existing output file: {file_path}')
+                    logging.info('Cleaned up existing output file: %s', file_path)
                 else:
-                    logging.debug(f'Output file does not exist, skipping cleanup: {file_path}')
+                    logging.debug('Output file does not exist, skipping cleanup: %s', file_path)
             except OSError as e:
                 # Log error but don't fail the entire process for file cleanup issues
-                logging.debug(f'Failed to clean up output file {file_path}: {e}')
+                logging.debug('Failed to clean up output file %s: %s', file_path, e, exc_info=True)
         logging.info('Output file cleanup completed')

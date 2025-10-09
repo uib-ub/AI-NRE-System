@@ -45,8 +45,8 @@ class CSVReader:
 
         self._validate_file()
         logging.info(
-            f'Initialized CSV reader for {self.file_path} '
-            f'with delimiter {self.delimiter} and encoding {self.encoding}'
+            'Initialized CSV reader for %s with delimiter %s and encoding %s',
+            self.file_path, self.delimiter, self.encoding
         )
 
     def _validate_file(self) -> None:
@@ -85,7 +85,7 @@ class CSVReader:
         Raises:
             CSVError: If reading fails.
         """
-        logging.info(f'Starting to stream records from: {self.file_path}')
+        logging.info('Starting to stream records from: %s', self.file_path)
         record_count = 0
 
         try:
@@ -101,7 +101,7 @@ class CSVReader:
                     )
 
                 self._headers = list(reader.fieldnames)
-                logging.debug(f'CSV headers detected: {self._headers}')
+                logging.debug('CSV headers detected: %s', self._headers)
 
                 # Stream records with proper error handling
                 # Start at 2 (header is row 1)
@@ -109,8 +109,7 @@ class CSVReader:
                     try:
                         # skip empty rows but log them
                         if self._is_empty_row(row):
-                            logging.warning(
-                                f'Skipping empty row at line {row_number}')
+                            logging.warning('Skipping empty row at line %d', row_number)
                             continue
 
                         # Validate row data
@@ -128,7 +127,7 @@ class CSVReader:
                             line_number=row_number
                         ) from e
 
-                logging.info(f'Successfully streamed {record_count} records from: {self.file_path}')
+                logging.info('Successfully streamed %d records from: %s', record_count, self.file_path)
 
         except UnicodeDecodeError as e:
             raise EncodingError(
