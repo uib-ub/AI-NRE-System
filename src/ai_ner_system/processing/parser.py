@@ -201,6 +201,9 @@ class ResponseParser:
         all_annotated_records: list[str] = []
         all_metadata_records: list[str] = []
 
+        # TODO: DEBUG: log full response for now
+        logging.debug('Full batch response:\n%s', raw_response)
+
         try:
             # Split response by RECORD markers
             # record_sections = raw_response.split('RECORD ')[1:]  # Skip empty first element

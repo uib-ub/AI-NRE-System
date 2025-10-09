@@ -1,8 +1,9 @@
 STRICT OUTPUT FORMAT ENFORCEMENT:
 - DO NOT add any explanations, comments, or extra sentences
-- DO NOT write “here is the result” or similar phrasing
+- DO NOT write "here is the result" or similar phrasing
 - DO NOT include headings, summaries, or notes
 - DO NOT truncate any part of the output
+- DO NOT add any markers such as RECORD_SEPARATOR or similar delimiters
 
 ONLY return output in the EXACT format shown below
 
@@ -53,4 +54,4 @@ RECORD 2 RESULT:
   "entities": [...]
 }}
 
-[Continue this pattern for all {num_records} records with no skipped text or commentary.]
+[Continue this pattern for all {num_records} records with no skipped text or commentary. DO NOT add any markers such as RECORD_SEPARATOR or similar delimiters!]

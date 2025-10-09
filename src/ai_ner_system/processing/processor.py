@@ -12,12 +12,11 @@ import io
 import logging
 import time
 from collections.abc import Callable
-from typing import ClassVar, TYPE_CHECKING
+from typing import ClassVar
 
-if TYPE_CHECKING:
-    from ..llm.base_client import Client
-    from ..llm.batch_models import BatchProgress, BatchRequest, BatchResponse
-    from ..prompt.builder import PromptBuilder
+from ..llm.base_client import Client
+from ..llm.batch_models import BatchProgress, BatchRequest, BatchResponse
+from ..prompt.builder import PromptBuilder
 
 from .entities import EntityRecord, ProcessingResult, BatchProcessingResult
 from .validator import RecordValidator
@@ -305,6 +304,7 @@ class RecordProcessor:
             # Processing batch using LLM client
             batch_responses = await self.llm_client.process_batch_requests_async(
                 batch_requests,
+                batch_num,
                 max_wait_time=max_wait_time,
                 poll_interval=poll_interval,
                 progress_callback=progress_callback
@@ -683,8 +683,10 @@ def create_progress_logger(
         if current_time - last_log_time > log_interval:
             counts = progress.request_counts
             logging.info(
-                'Batch %s progress: %s (Processing: %d), Succeeded: %d, Errored: %d, Elapsed: %.1fs',
+                'Batch %d (ID: %s) progress updates every %.1fs: %s - Processing: %d, Succeeded: %d, Errored: %d, Elapsed: %.1fs',
+                progress.batch_num,
                 progress.batch_id,
+                log_interval,
                 progress.status.value,
                 counts.get('processing', 0),
                 counts.get('succeeded', 0),

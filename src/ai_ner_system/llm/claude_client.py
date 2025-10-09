@@ -422,11 +422,6 @@ class ClaudeClient(Client):
             message_batch = await self.async_client.messages.batches.create(
                 requests=batch_requests
             )
-            logging.info(
-                'Created batch job with ID: %s, %d requests',
-                message_batch.id,
-                len(requests)
-            )
             return message_batch.id
 
         except Exception as e:
@@ -634,7 +629,7 @@ class ClaudeClient(Client):
                     counters['parse_errors'] += 1
 
             logging.info(
-                'Batch %s parsed. total=%d, succeeded=%d, errored=%d, '
+                'Batch (ID: %s) parsed. total=%d, succeeded=%d, errored=%d, '
                 'canceled=%d, expired=%d, other=%d, parse_errors=%d',
                 batch_id,
                 len(results),
@@ -804,6 +799,7 @@ class ClaudeClient(Client):
     # ------------------------------------------------------------------ #
     async def monitor_batch_progress_async(
         self,
+        batch_num: int,
         batch_id: str,
         poll_interval: float = Client.DEFAULT_POLL_INTERVAL
     ) -> AsyncIterator[BatchProgress]:
@@ -846,6 +842,7 @@ class ClaudeClient(Client):
 
                 # Create and yield progress to the caller
                 yield BatchProgress(
+                    batch_num=batch_num,
                     batch_id=batch_id,
                     status=status,
                     elapsed_time=elapsed_time,
@@ -867,6 +864,7 @@ class ClaudeClient(Client):
                 logging.error('Error monitoring batch %s: %s', batch_id, e, exc_info=True)
                 # Emit a final ended state so the caller can unwind cleanly.
                 yield BatchProgress(
+                    batch_num=batch_num,
                     batch_id=batch_id,
                     status=BatchStatus.ENDED,
                     elapsed_time=time.monotonic() - start_time,

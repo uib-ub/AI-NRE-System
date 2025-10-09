@@ -186,6 +186,7 @@ class Client(ABC):
     # Abstract batch orchestration methods - must be implemented by concrete classes
     def monitor_batch_progress_async(
         self,
+        batch_num: int,
         batch_id: str,
         poll_interval: float = DEFAULT_POLL_INTERVAL
     ) -> AsyncIterator[BatchProgress]:
@@ -215,6 +216,7 @@ class Client(ABC):
     # ----------------------------------------------------------------------
     async def wait_for_batch_completion_async(
         self,
+        batch_num: int,
         batch_id: str,
         *,
         max_wait_time: float = DEFAULT_MAX_WAIT_TIME,  # 24-hours default (batch expires after 24h)
@@ -256,6 +258,7 @@ class Client(ABC):
         start_time = time.monotonic()
 
         async for progress in self.monitor_batch_progress_async(
+            batch_num,
             batch_id,
             poll_interval
         ):
@@ -284,6 +287,7 @@ class Client(ABC):
     async def process_batch_requests_async(
         self,
         requests: list[BatchRequest],
+        batch_num: int,
         *,
         max_wait_time: float = DEFAULT_MAX_WAIT_TIME,  # 24 hours default
         poll_interval: float = DEFAULT_POLL_INTERVAL,
@@ -322,11 +326,12 @@ class Client(ABC):
             # Create batch job.
             batch_id = await self.create_batch_async(requests)
             logging.info(
-                'Created batch job %s with %d requests', batch_id, len(requests)
+                'Created batch %d (ID: %s) with %d requests', batch_num, batch_id, len(requests)
             )
 
             # Wait for completion with progress monitoring
             final_status = await self.wait_for_batch_completion_async(
+                batch_num,
                 batch_id,
                 max_wait_time=max_wait_time,
                 poll_interval=poll_interval,
@@ -337,12 +342,12 @@ class Client(ABC):
                 # Get and return results
                 results = await self.get_batch_results_async(batch_id)
                 logging.info(
-                    'Batch job %s completed successfully with %d results', batch_id, len(results)
+                    'Batch %d (ID: %s) completed successfully with %d results', batch_num, batch_id, len(results)
                 )
                 return results
             else:
                 raise LLMClientError(
-                    f'Batch job {batch_id} failed with status {final_status.value}',
+                    f'Batch {batch_num} (ID: {batch_id}) failed with status {final_status.value}',
                     client_type=self.client_type,
                     operation = 'batch_processing'
                 )

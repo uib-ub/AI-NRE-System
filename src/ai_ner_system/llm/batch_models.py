@@ -77,6 +77,7 @@ class BatchProgress:
         created_at: When the batch was created.
         expires_at: When the batch will expire (24 hours from creation).
     """
+    batch_num: int
     batch_id: str
     status: BatchStatus
     elapsed_time: float

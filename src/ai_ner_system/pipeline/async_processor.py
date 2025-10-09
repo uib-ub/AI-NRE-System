@@ -284,6 +284,7 @@ class AsyncProcessor:
             # Process batch asynchronously
             batch_result = await self.processor.process_batch_async(
                 batch_records,
+                batch_num,
                 progress_callback=batch_progress_callback,
                 max_wait_time=max_wait_time,
                 poll_interval=poll_interval
@@ -604,7 +605,7 @@ class AsyncProcessor:
                 batch_info = f'Batch {batch_num}'
 
             logging.info(
-                f'{batch_info} ({progress.batch_id}): {progress.status.value} - '
+                f'{batch_info} (ID: {progress.batch_id}): {progress.status.value} - '
                 f'Processing: {counts.get("processing", 0)}, '
                 f'Succeeded: {counts.get("succeeded", 0)}, '
                 f'Errored: {counts.get("errored", 0)}, '
