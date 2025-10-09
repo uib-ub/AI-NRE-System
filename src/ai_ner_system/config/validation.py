@@ -276,10 +276,10 @@ class ConfigValidator:
             if client_type:
                 ConfigValidator.validate_for_client(client_type)
 
-            logging.info("Comprehensive configuration validation completed successfully")
+            logging.info('Comprehensive configuration validation completed successfully')
 
         except (ConfigError, ConfigValidationError, FileValidationError, DirectoryValidationError) as e:
-            logging.error("Configuration validation failed: %s", e)
+            logging.error('Configuration validation failed: %s', e)
             raise
 
     @staticmethod

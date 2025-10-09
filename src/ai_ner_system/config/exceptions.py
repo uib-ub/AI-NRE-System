@@ -5,7 +5,7 @@ from __future__ import annotations
 class ConfigError(Exception):
     """Base exception for configuration-related errors."""
 
-    def __init__(self, message: str, config_key: str = None) -> None:
+    def __init__(self, message: str, config_key: str | None = None) -> None:
         """Initialize ConfigError.
 
         Args:
@@ -18,7 +18,7 @@ class ConfigError(Exception):
 class ConfigValidationError(ConfigError):
     """Exception raised when configuration validation fails."""
 
-    def __init__(self, message: str, missing_keys: list[str] = None) -> None:
+    def __init__(self, message: str, missing_keys: list[str] | None = None) -> None:
         """Initialize ConfigValidationError.
 
         Args:
@@ -33,7 +33,7 @@ class ConfigValidationError(ConfigError):
 class FileValidationError(ConfigError):
     """Exception raised when file validation fails."""
 
-    def __init__(self, message: str, file_path: str, config_key: str = None) -> None:
+    def __init__(self, message: str, file_path: str, config_key: str | None = None) -> None:
         """Initialize FileValidationError.
 
         Args:
@@ -48,7 +48,7 @@ class FileValidationError(ConfigError):
 class DirectoryValidationError(ConfigError):
     """Exception raised when directory validation fails."""
 
-    def __init__(self, message: str, directory_path: str, config_key: str = None) -> None:
+    def __init__(self, message: str, directory_path: str, config_key: str | None = None) -> None:
         """Initialize DirectoryValidationError.
 
         Args:
