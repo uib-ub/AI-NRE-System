@@ -6,12 +6,14 @@ configuration, and provides the main entry points for both synchronous and
 asynchronous processing workflows.
 """
 
+from __future__ import annotations
+
 import argparse
 import asyncio
 import logging
 import time
 from pathlib import Path
-from typing import Callable, Optional, List
+from collections.abc import Callable
 
 from ai_ner_system.config import Settings
 from ai_ner_system.io import CSVReader, OutputWriter, CSVError, OutputError
@@ -43,11 +45,11 @@ class MedievalTextProcessor:
         self.args = args
 
         # Initialize components
-        self.llm_client: Optional[Client] = None
-        self.prompt_builder: Optional[PromptBuilder] = None
-        self.processor: Optional[RecordProcessor] = None
-        self.reader: Optional[CSVReader] = None
-        self.writer: Optional[OutputWriter] = None
+        self.llm_client: Client | None = None
+        self.prompt_builder: PromptBuilder | None = None
+        self.processor: RecordProcessor | None = None
+        self.reader: CSVReader | None = None
+        self.writer: OutputWriter | None = None
 
         # Initialize incremental mode based on args
         self.incremental_mode = getattr(args, 'incremental_output', False)
@@ -130,7 +132,7 @@ class MedievalTextProcessor:
             input_file = self.args.input or Settings.INPUT_FILE
 
             if not Path(input_file).exists():
-                raise ApplicationError(f"Input file does not exist: {input_file}")
+                raise ApplicationError(f'Input file does not exist: {input_file}')
 
             reader = CSVReader(input_file, delimiter=';', encoding='utf-8')
             logging.info('CSV reader initialized for input file: %s', input_file)
@@ -139,7 +141,7 @@ class MedievalTextProcessor:
         except CSVError as e:
             raise ApplicationError(f'Failed to initialize CSV reader: {e}') from e
         except Exception as e:
-            raise ApplicationError(f"Unexpected error initializing CSV reader: {e}") from e
+            raise ApplicationError(f'Unexpected error initializing CSV reader: {e}') from e
 
 
     def _cleanup_output_files(self) -> None:
@@ -165,7 +167,7 @@ class MedievalTextProcessor:
             # Don't fail the entire process for cleanup issues
 
 
-    def write_output(self, annotations: List[str], metadata: List[str]) -> None:
+    def write_output(self, annotations: list[str], metadata: list[str]) -> None:
         """Write processed data to output files.
 
         Args:
@@ -182,7 +184,7 @@ class MedievalTextProcessor:
 
             # Write annotated text output
             if annotations:
-                annotated_header = "Bindnr;Brevid;Tekst"
+                annotated_header = 'Bindnr;Brevid;Tekst'
                 self.writer.write_text_output(output_text, annotated_header, annotations)
                 logging.info('Annotated text written to: %s (%d records)', output_text, len(annotations))
             else:
@@ -191,8 +193,8 @@ class MedievalTextProcessor:
             # Write metadata table output
             if metadata:
                 metadata_header = (
-                    "Proper Noun;Type of Proper Noun;Preposition;Order of Occurrence in Doc;"
-                    "Brevid;Status/Occupation/Description;Gender;Language"
+                    'Proper Noun;Type of Proper Noun;Preposition;Order of Occurrence in Doc;'
+                    'Brevid;Status/Occupation/Description;Gender;Language'
                 )
                 self.writer.write_metadata_output(output_table, metadata_header, metadata)
                 logging.info('Metadata written to: %s (%d records)', output_table, len(metadata))
@@ -230,10 +232,10 @@ class MedievalTextProcessor:
             output_table = self.args.output_table or Settings.OUTPUT_TABLE_FILE
 
             # Define headers
-            annotated_header = "Bindnr;Brevid;Tekst"
+            annotated_header = 'Bindnr;Brevid;Tekst'
             metadata_header = (
-                "Proper Noun;Type of Proper Noun;Preposition;Order of Occurrence in Doc;"
-                "Brevid;Status/Occupation/Description;Gender;Language"
+                'Proper Noun;Type of Proper Noun;Preposition;Order of Occurrence in Doc;'
+                'Brevid;Status/Occupation/Description;Gender;Language'
             )
 
             # Extract annotated texts and metadata from results
@@ -268,8 +270,8 @@ class MedievalTextProcessor:
                 # Write processing statistics, ASYNC method, no asyncio.to_thread needed
                 tg.create_task(self._write_stats_async(stats))
 
-            logging.info(f'Text output written to: {output_text} ({len(annotated_records)} records)')
-            logging.info(f'Metadata output written to: {output_table} ({len(metadata_records)} records)')
+            logging.info('Text output written to: %s (%d records)', output_text, len(annotated_records))
+            logging.info('Metadata output written to: %s (%d records)', output_table, len(metadata_records))
 
         except* Exception as eg:  # Exception groups handling
             # Handle exception group
@@ -287,17 +289,17 @@ class MedievalTextProcessor:
             stats_output_file = self.args.output_stats or Settings.OUTPUT_STATS_FILE
 
             stats_data = {
-                "total_records": stats.total_records,
-                "processed_records": stats.processed_records,
-                "failed_records": stats.failed_records,
-                "success_rate": stats.success_rate,
-                "processing_time": stats.processing_time,
-                "throughput": stats.throughput,
-                "batch_info": stats.batch_info,
-                "start_time": stats.start_time,
-                "end_time": stats.end_time,
-                "timestamp": time.time(),
-                "processing_mode": "async" if hasattr(self.args, 'async_mode') and self.args.async_mode else "sync"
+                'total_records': stats.total_records,
+                'processed_records': stats.processed_records,
+                'failed_records': stats.failed_records,
+                'success_rate': stats.success_rate,
+                'processing_time': stats.processing_time,
+                'throughput': stats.throughput,
+                'batch_info': stats.batch_info,
+                'start_time': stats.start_time,
+                'end_time': stats.end_time,
+                'timestamp': time.time(),
+                'processing_mode': 'async' if hasattr(self.args, 'async_mode') and self.args.async_mode else 'sync'
             }
 
             await asyncio.to_thread(
@@ -306,7 +308,7 @@ class MedievalTextProcessor:
                 stats_data
             )
         except Exception as e:
-            logging.warning(f"Failed to write processing statistics: {e}")
+            logging.warning('Failed to write processing statistics: %s', e)
             # Don't raise the exception - stats writing is not critical
 
 
@@ -357,7 +359,7 @@ class MedievalTextProcessor:
 
     async def run_async(
         self,
-        progress_callback: Optional[Callable[[BatchProgress], None]] = None,
+        progress_callback: Callable[[BatchProgress], None] | None = None,
     ) -> int:
         """Run the medieval text processor asynchronously
 
@@ -371,7 +373,7 @@ class MedievalTextProcessor:
             Exit code (0 for success, 1 for failure).
         """
         try:
-            logging.info("Starting async medieval text processing...")
+            logging.info('Starting async medieval text processing...')
 
             # Clean up existing output files first
             self._cleanup_output_files()
@@ -387,14 +389,16 @@ class MedievalTextProcessor:
                 await self.write_output_async(stats)
 
             logging.info(
-                'Async processing completed successfully: '
-                f'{stats.processed_records}/{stats.total_records} records '
-                f'({stats.success_rate:.1f}% success) in {stats.processing_time:.2f}s'
+                'Async processing completed successfully: %d/%d records (%d%% success) in %.2fs',
+                stats.processed_records, 
+                stats.total_records, 
+                stats.success_rate, 
+                stats.processing_time
             )
             return 0
 
         except asyncio.TimeoutError:
-            logging.error("Processing timed out after 24 hours")
+            logging.error('Processing timed out after 24 hours')
             return 1
         except ApplicationError as e:
             logging.error('Application error: %s', e, exc_info=True)

@@ -8,23 +8,20 @@ The pipeline supports both individual record processing and batch processing mod
 with automatic fallback mechanisms and comprehensive progress monitoring.
 """
 
-from .main_processor import MedievalTextProcessor
+from __future__ import annotations
+
 from .sync_processor import SyncProcessor
+from .main_processor import MedievalTextProcessor
+from .stats import ApplicationError, AsyncProcessingStats
 from .async_processor import AsyncProcessor
-from .stats import (
-    ApplicationError,
-    AsyncProcessingStats,
-)
 
 __all__ = [
     # Main processor class
-    "MedievalTextProcessor",
-
+    'MedievalTextProcessor',
     # Processing workflow classes
-    "SyncProcessor",
-    "AsyncProcessor",
-
+    'AsyncProcessor',
+    'SyncProcessor',
     # Statistics and error handling
-    "ApplicationError",
-    "AsyncProcessingStats",
+    'ApplicationError',
+    'AsyncProcessingStats',
 ]
