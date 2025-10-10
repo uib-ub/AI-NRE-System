@@ -188,7 +188,7 @@ class Client(ABC):
         self,
         batch_num: int,
         batch_id: str,
-        poll_interval: float = DEFAULT_POLL_INTERVAL
+        poll_interval: float | None = None
     ) -> AsyncIterator[BatchProgress]:
         # """Monitor batch progress asynchronously with real-time updates.
         """Yields progress updates for a batch job.
@@ -219,8 +219,8 @@ class Client(ABC):
         batch_num: int,
         batch_id: str,
         *,
-        max_wait_time: float = DEFAULT_MAX_WAIT_TIME,  # 24-hours default (batch expires after 24h)
-        poll_interval: float = DEFAULT_POLL_INTERVAL,
+        max_wait_time: float | None = None,
+        poll_interval: float | None = None,
         progress_callback: ProgressCallback | None = None,
     ) -> BatchStatus:
         """Waits asynchronously for a batch job to complete.
@@ -249,6 +249,12 @@ class Client(ABC):
                 client_type=self.client_type,
                 operation='batch_waiting'
             )
+
+        # Resolve defaults from class constants
+        if max_wait_time is None:
+            max_wait_time = self.DEFAULT_MAX_WAIT_TIME
+        if poll_interval is None:
+            poll_interval = self.DEFAULT_POLL_INTERVAL
 
         if poll_interval <= 0:
             raise ValueError('poll_interval must be > 0.')
@@ -289,8 +295,8 @@ class Client(ABC):
         requests: list[BatchRequest],
         batch_num: int,
         *,
-        max_wait_time: float = DEFAULT_MAX_WAIT_TIME,  # 24 hours default
-        poll_interval: float = DEFAULT_POLL_INTERVAL,
+        max_wait_time: float | None = None,
+        poll_interval: float | None = None,
         progress_callback: ProgressCallback | None = None,
     ) -> list[BatchResponse]:
         """Process batch requests end-to-end (create → wait → fetch results) asynchronously.
@@ -300,8 +306,8 @@ class Client(ABC):
 
         Args:
             requests: List of batch requests to process.
-            max_wait_time: Maximum time to wait for completion in seconds.
-            poll_interval: Time between status checks in seconds.
+            max_wait_time: Maximum time to wait for completion in seconds (default: 24 hours).
+            poll_interval: Time between status checks in seconds (default: 30 seconds).
             progress_callback: Optional callback for progress updates.
 
         Returns:
@@ -321,6 +327,12 @@ class Client(ABC):
 
         if not requests:
             raise ValueError('Request list cannot be empty')
+
+        # Resolve defaults from class constants
+        if max_wait_time is None:
+            max_wait_time = self.DEFAULT_MAX_WAIT_TIME
+        if poll_interval is None:
+            poll_interval = self.DEFAULT_POLL_INTERVAL
 
         try:
             # Create batch job.

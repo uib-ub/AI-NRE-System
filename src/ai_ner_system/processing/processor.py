@@ -104,7 +104,6 @@ class RecordProcessor:
                 brevid=brevid,
                 operation='process_record',
             ) from e
-            # return [], []
 
     # ---------------------------------------------------------------------
     # Synchronous batch processing (single LLM call)
@@ -198,7 +197,6 @@ class RecordProcessor:
             annotated_text, entities = ResponseParser.parse_llm_response(brevid, response)
 
             # Build annotated text for result
-            # formatted_text = f'{bindnr};{brevid};{annotated_text}'
             formatted_text = self._build_annotated_record(bindnr, brevid, annotated_text)
 
             processing_time = time.monotonic() - start_time
@@ -478,7 +476,6 @@ class RecordProcessor:
                 continue
 
             # Success path: 
-            # if response.response_text:
             try:
                 annotated_text, entities = ResponseParser.parse_llm_response(
                     brevid, 
@@ -513,15 +510,6 @@ class RecordProcessor:
                         ),
                     )
                 )
-            # else:
-            #     results.append(
-            #         ProcessingResult(
-            #             record_id=response.custom_id,
-            #             brevid=brevid,
-            #             success=False,
-            #             error_message=response.error_message
-            #         )
-            #     )
         return results
 
     def _call_llm(self, identifier: str, prompt: str) -> str:
@@ -575,7 +563,6 @@ class RecordProcessor:
         writer = csv.writer(buf, delimiter=';', quoting=csv.QUOTE_MINIMAL)
         writer.writerow([bindnr, brevid, annotated_text])
         return buf.getvalue().rstrip('\r\n')
-        # return [";".join([bindnr, brevid, annotated_text])]
 
     @staticmethod
     def _build_metadata_record(entities: list[EntityRecord], brevid: str) -> list[str]:

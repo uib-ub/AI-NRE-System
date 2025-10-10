@@ -46,21 +46,21 @@ class EntityRecord:
             ValidationError: If any field contains invalid data.
         """
         # Required textual fields must be non-blank strings.
-        if not isinstance(self.name, str) or not self.name.strip():  # type: ignore[reportUnnecessaryIsInstance]
+        if not self.name.strip():
             raise ValidationError(
-                'Entity "name" cannot be a non-empty string', 
-                brevid=self.brevid, 
+                'Entity "name" cannot be empty',
+                brevid=self.brevid,
                 operation='entity_validation'
             )
 
-        if not isinstance(self.entity_type, str) or not self.entity_type.strip():  # type: ignore[reportUnnecessaryIsInstance]
+        if not self.entity_type.strip():
             raise ValidationError(
-                'Entity "entity_type" cannot be a non-empty string', 
-                brevid=self.brevid, 
+                'Entity "entity_type" cannot be empty',
+                brevid=self.brevid,
                 operation='entity_validation'
             )
 
-        if not isinstance(self.preposition, str) or not self.preposition.strip():  # type: ignore[reportUnnecessaryIsInstance]
+        if not self.preposition.strip():
             # Allow exactly "N/A" for not-applicable.
             if self.preposition.strip() != 'N/A':
                 raise ValidationError(
@@ -70,10 +70,10 @@ class EntityRecord:
                 )
         
         # order must be non-negative integer.
-        if not isinstance(self.order, int) or self.order < 0:  # type: ignore[reportUnnecessaryIsInstance]
+        if self.order < 0:
             raise ValidationError(
-                f'Entity "order" must be non-negative, got {self.order}', 
-                brevid=self.brevid, 
+                f'Entity "order" must be non-negative, got {self.order}',
+                brevid=self.brevid,
                 operation='entity_validation'
             )
 
@@ -197,21 +197,21 @@ class ProcessingResult:
         Raises:
             ValidationError: If validation fails.
         """
-        if not isinstance(self.record_id, str) or not self.record_id:  # type: ignore[reportUnnecessaryIsInstance]
+        if not self.record_id:
             raise ValidationError(
                 'ProcessingResult record_id cannot be empty',
                 brevid=self.brevid,
                 operation='processing_result_validation',
             )
 
-        if not isinstance(self.brevid, str) or not self.brevid:  # type: ignore[reportUnnecessaryIsInstance]
+        if not self.brevid:
             raise ValidationError(
                 'ProcessingResult brevid cannot be empty',
                 brevid=self.brevid,
                 operation='processing_result_validation',
             )
 
-        if not isinstance(self.processing_time, (int, float)) or self.processing_time < 0:  # type: ignore[reportUnnecessaryIsInstance]
+        if self.processing_time < 0:
             raise ValidationError(
                 f'Processing time must be non-negative, got {self.processing_time}',
                 brevid=self.brevid,
@@ -248,13 +248,13 @@ class BatchProcessingResult:
         Raises:
             ValidationError: If validation fails.
         """
-        if not isinstance(self.batch_id, str) or not self.batch_id:  # type: ignore[reportUnnecessaryIsInstance]
+        if not self.batch_id:
             raise ValidationError(
                 'BatchProcessingResult batch_id cannot be empty',
                 operation='batch_result_validation',
             )
 
-        if not isinstance(self.total_processing_time, (int, float)) or self.total_processing_time < 0:  # type: ignore[reportUnnecessaryIsInstance]
+        if self.total_processing_time < 0:
             raise ValidationError(
                 f'Total processing time must be non-negative, got {self.total_processing_time}',
                 operation='batch_result_validation',

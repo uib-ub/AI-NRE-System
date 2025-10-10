@@ -35,11 +35,18 @@ def create_llm_client(client_type: str, **kwargs: Any) -> Client:
     client_type = client_type.lower().strip()
     try:
         if client_type == 'claude':
+            # Type assertions: ConfigValidator ensures these are not None before factory is called
+            assert Settings.ANTHROPIC_API_KEY is not None, 'ANTHROPIC_API_KEY must be set'
+            assert Settings.CLAUDE_MODEL is not None, 'CLAUDE_MODEL must be set'
             return ClaudeClient(
                 api_key=Settings.ANTHROPIC_API_KEY,
                 model=Settings.CLAUDE_MODEL
             )
         elif client_type == 'ollama':
+            # Type assertions: ConfigValidator ensures these are not None before factory is called
+            assert Settings.OPENWEBUI_ENDPOINT is not None, 'OPENWEBUI_ENDPOINT must be set'
+            assert Settings.OPENWEBUI_TOKEN is not None, 'OPENWEBUI_TOKEN must be set'
+            assert Settings.OLLAMA_MODEL is not None, 'OLLAMA_MODEL must be set'
             return OllamaClient(
                 endpoint=Settings.OPENWEBUI_ENDPOINT,
                 token=Settings.OPENWEBUI_TOKEN,

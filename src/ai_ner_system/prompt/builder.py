@@ -184,14 +184,8 @@ class GenericPromptBuilder(PromptBuilder):
         """
         if isinstance(data, dict):
             return self._build_single_record_prompt(data)
-        elif isinstance(data, list):
+        else:  # data is list[RecordData]
             return self._build_sync_batch_prompt(data)
-        else:
-            raise PromptBuildError(
-                f'Expected dict or list, got {type(data).__name__}',
-                template_file=self.template_file,
-                data_type=type(data).__name__
-            )
 
     def _build_single_record_prompt(self, record: RecordData) -> str:
         """Build a formatted prompt for a single record.

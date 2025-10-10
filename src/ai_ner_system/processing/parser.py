@@ -130,15 +130,20 @@ class ResponseParser:
             # Cast to dict for type checker (runtime check done above)
             data = cast(dict[str, Any], data)
 
-            # Extract entities list
-            entities_data: list[Any] = data.get('entities', [])
-            if not isinstance(entities_data, list):  # type: ignore[reportUnnecessaryIsInstance]
+            # Extract entities list with default empty list
+            entities_data: Any = data.get('entities', [])
+            
+            # Validate it's a list (could be different type if JSON is malformed)
+            if not isinstance(entities_data, list):
                 raise ParseError(
                     f'Entities must be a list, got {type(entities_data).__name__}',
                     brevid=brevid,
                     operation='parse_entities_json',
                     parse_type='entities_structure',
                 )
+            
+            # Type narrow after validation
+            entities_data = cast(list[Any], entities_data)
 
             logging.debug('Parsed %d entities for Brevid=%s', len(entities_data), brevid)
 
@@ -206,7 +211,6 @@ class ResponseParser:
 
         try:
             # Split response by RECORD markers
-            # record_sections = raw_response.split('RECORD ')[1:]  # Skip empty first element
             parts = raw_response.split(ResponseParser.RECORD_MARKER)
             record_sections = [part for part in parts if part.strip()]
 
@@ -270,10 +274,6 @@ class ResponseParser:
 
                 except Exception as e:
                     logging.error('Error parsing record %d in batch: %s', i + 1, e, exc_info=True)
-                    # # Add empty record to maintain order
-                    # record = records[i]
-                    # empty_record = f"{record['Bindnr']};{record['Brevid']};{record['Tekst']}"
-                    # all_annotated_records.append(empty_record)
                     # Add fallback record to maintain order
                     fallback_record = ResponseParser._format_csv_row(
                         record.get('Bindnr', 'unknown'),
@@ -288,11 +288,6 @@ class ResponseParser:
             logging.error(f'Critical error parsing batch response: {e}', exc_info=True)
             # Return original records as fallback
             return ResponseParser._create_fallback_records(records)
-            # fallback_records = []
-            # for record in records:
-            #     fallback_record = f"{record['Bindnr']};{record['Brevid']};{record['Tekst']}"
-            #     fallback_records.append(fallback_record)
-            # return fallback_records, []
 
     @staticmethod
     def _format_csv_row(bindnr: str, brevid: str, text: str) -> str:

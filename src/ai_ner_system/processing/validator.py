@@ -48,19 +48,11 @@ class RecordValidator:
             ValidationError: If record validation fails. The exception includes
                 the brevid and list of missing/invalid fields.
         """
-        # Runtime validation for defensive programming
-        if not isinstance(record, dict):  # type: ignore[reportUnnecessaryIsInstance]
-            raise ValidationError(
-                f'Record must be a dict, got {type(record).__name__}',
-                operation='validate_record',
-            )
-
         brevid_raw = record.get('Brevid')
         brevid = brevid_raw.strip() if isinstance(brevid_raw, str) else 'unknown'
 
         # Check for missing fields
         missing_fields = cls.REQUIRED_FIELDS.difference(record)
-        # missing_fields: frozenset[str] = RecordValidator.REQUIRED_FIELDS - record.keys()
 
         if missing_fields:
             missing = sorted(missing_fields)
@@ -97,13 +89,6 @@ class RecordValidator:
         Raises:
             ValidationError: If any record validation fails.
         """
-        # Runtime validation for defensive programming
-        if not isinstance(records, list):  # type: ignore[reportUnnecessaryIsInstance]
-            raise ValidationError(
-                f'Records must be a sequence, got {type(records).__name__}',
-                operation='validate_records',
-            )
-
         if not records:
             raise ValidationError(
                 f'Records list cannot be empty',
@@ -115,11 +100,10 @@ class RecordValidator:
             try:
                 cls.validate_record(record)
             except ValidationError as e:
-                if isinstance(record, dict):  # type: ignore[reportUnnecessaryIsInstance]
-                    brevid_raw = record.get('Brevid')
-                    brevid = brevid_raw.strip() if isinstance(brevid_raw, str) else 'unknown'
-                else:
-                    brevid = 'unknown'
+                # Extract brevid for error reporting
+                brevid_raw = record.get('Brevid')
+                brevid = brevid_raw.strip() if isinstance(brevid_raw, str) else 'unknown'
+                
                 raise ValidationError(
                     f'Validation failed at index {i}: {e}',
                     brevid=brevid,

@@ -6,12 +6,18 @@ import asyncio
 import logging
 import time
 from collections.abc import AsyncIterator
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
 import anthropic
 import tiktoken
+from anthropic.types import Message
 from anthropic.types.message_create_params import MessageCreateParamsNonStreaming
 from anthropic.types.messages.batch_create_params import Request
+from anthropic.types.messages import (
+    MessageBatch,
+    MessageBatchResult,
+    MessageBatchErroredResult,
+)
 
 from .base_client import Client
 from .batch_models import BatchRequest, BatchResponse, BatchProgress, BatchStatus
@@ -246,31 +252,7 @@ class ClaudeClient(Client):
             logging.info('Prompt Token Count: %d ', token_count)
 
             payload = self._message_payload(prompt)
-            response = self.client.messages.create(**payload)
-
-            # messages = [{"role": "user", "content": prompt}]
-
-            # response = self.client.messages.create(
-            #     model=self.model,
-            #     system=self._system_message(),
-            #     messages=messages,
-            #     max_tokens=self.max_tokens,
-            #     temperature=self.temperature,
-            #     top_k=1,
-            #     top_p=1.0,
-            #     stream=False,
-            # )
-
-            # if not response.content or not response.content[0].text:
-            #     # logging.error('Empty response received from Claude API')
-            #     # return 'Claude API call failed'
-            #     raise APIError(
-            #         'Empty response received from Claude API',
-            #         client_type=self.client_type,
-            #         operation='single_call'
-            #     )
-
-            # return response.content[0].text
+            response: Message = cast(Message, self.client.messages.create(**payload))
 
             text = self._extract_response_text_from_message(response)
             if not text:
@@ -321,29 +303,7 @@ class ClaudeClient(Client):
             logging.info('Async prompt Token Count: %d ', token_count)
 
             payload = self._message_payload(prompt)
-            response = await self.async_client.messages.create(**payload)
-
-            # messages = [{"role": "user", "content": prompt}]
-
-            # response = await self.async_client.messages.create(
-            #     model=self.model,
-            #     system=self._system_message(),
-            #     messages=messages,
-            #     max_tokens=self.max_tokens,
-            #     temperature=self.temperature,
-            #     top_k=1,
-            #     top_p=1.0,
-            #     stream=False
-            # )
-
-            # if not response.content or not response.content[0].text:
-            #     raise APIError(
-            #         'Empty response received from Claude API',
-            #         client_type=self.client_type,
-            #         operation='async_single_call'
-            #     )
-
-            # return response.content[0].text
+            response: Message = cast(Message, await self.async_client.messages.create(**payload))
 
             text = self._extract_response_text_from_message(response)
             if not text:
@@ -399,20 +359,6 @@ class ClaudeClient(Client):
                     temperature=request.temperature,
                 )
                 message_params = MessageCreateParamsNonStreaming(**payload)
-
-                # message_params = MessageCreateParamsNonStreaming(
-                #     model=self.model,
-                #     system=self._system_message(),
-                #     messages=[{
-                #         "role": "user",
-                #         "content": request.prompt,
-                #     }],
-                #     max_tokens=request.max_tokens,
-                #     temperature=request.temperature,
-                #     top_k=1,
-                #     top_p=1.0,
-                #     stream=False
-                # )
 
                 # Create properly typed batch request
                 batch_requests.append(
@@ -477,7 +423,7 @@ class ClaudeClient(Client):
             LLMClientError: If info retrieval fails.
         """
         try:
-            message_batch = await self.async_client.messages.batches.retrieve(batch_id)
+            message_batch: MessageBatch = await self.async_client.messages.batches.retrieve(batch_id)
 
             # Extract detailed information from the batch object
             batch_info: dict[str, Any] = {
@@ -519,127 +465,21 @@ class ClaudeClient(Client):
             LLMClientError: If the batch is not completed or retrieval fails.
         """
         try:
-            # Ensure the batch is actually completed
-            status = await self.get_batch_status_async(batch_id)
-            if status != BatchStatus.ENDED:
-                raise LLMClientError(
-                    f'Batch {batch_id} is not completed yet, current status: {status.value}',
-                    client_type=self.client_type,
-                    operation='async_get_batch_results'
-                )
-
-            # Fatch batch information to access results_url
-            batch_info = await self.get_batch_info_async(batch_id)
-            if not batch_info.get('results_url'):
-                raise LLMClientError(
-                    f'No results URL found for batch {batch_id}',
-                    client_type=self.client_type,
-                    operation='async_get_batch_results'
-                )
+            # Validate batch is completed and has results
+            await self._validate_batch_ready(batch_id)
 
             # Process results from the async iterator
             results: list[BatchResponse] = []
-            # counters are for logging and debug purposes
-            counters = {
-                'succeeded': 0,
-                'errored': 0,
-                'canceled': 0,
-                'expired': 0,
-                'parse_errors': 0,
-                'other': 0,
-            }
+            counters = self._create_result_counters()
 
-            # Fetch the async iterator of results
-            results_iter  = await self.async_client.messages.batches.results(batch_id)
+            # Fetch and process each result
+            results_iter = await self.async_client.messages.batches.results(batch_id)
             async for result in results_iter:
-                custom_id = getattr(result, 'custom_id', 'unknown_custom_id')
-                try:
-                    result_obj = getattr(result, 'result', None)
-                    if result_obj is None:
-                        results.append(
-                            BatchResponse(
-                                custom_id=custom_id,
-                                response_text='',
-                                success=False,
-                                error_message='Missing result object.'
-                            )
-                        )
-                        counters['other'] += 1
-                        continue
+                custom_id: str = getattr(result, 'custom_id', 'unknown_custom_id')
+                batch_response = self._process_single_batch_result(result, custom_id, counters)
+                results.append(batch_response)
 
-                    result_type = getattr(result_obj, 'type', None)
-
-                    # Success path
-                    if result_type == 'succeeded':
-                        message = getattr(result_obj, 'message', None)
-                        response_text = self._extract_response_text_from_message(message)
-                        results.append(
-                            BatchResponse(
-                                custom_id=custom_id,
-                                response_text=response_text,
-                                success=bool(response_text),
-                                error_message='' if response_text else 'Empty response content',
-                            )
-                        )
-                        counters['succeeded'] += 1
-                        # continue
-
-                    # errored, canceled, or expired path
-                    elif result_type in {'errored', 'canceled', 'expired'}:
-                        error_message = self._extract_error_message(result_obj, result_type)
-                        results.append(
-                            BatchResponse(
-                                custom_id=custom_id,
-                                response_text='',
-                                success=False,
-                                error_message=error_message,
-                            )
-                        )
-                        counters[str(result_type)] += 1
-
-                    # Unknown/undocumented type: treat as failure but attempt to extract.
-                    else:
-                        error_message = self._extract_error_message(result_obj, result_type)
-                        results.append(
-                            BatchResponse(
-                                custom_id=custom_id,
-                                response_text='',
-                                success=False,
-                                error_message=error_message,
-                            )
-                        )
-                        counters['other'] += 1
-
-                except Exception as result_exc:
-                    # Never let one malformed result crash the whole batch
-                    logging.error(
-                        'Failed to parse batch result for custom_id %s: %s', 
-                        custom_id, 
-                        result_exc, 
-                        exc_info=True
-                    )
-                    results.append(
-                        BatchResponse(
-                            custom_id=custom_id,
-                            response_text='',
-                            success=False,
-                            error_message=f'Failed to parse result: {result_exc}',
-                        )
-                    )
-                    counters['parse_errors'] += 1
-
-            logging.info(
-                'Batch (ID: %s) parsed. total=%d, succeeded=%d, errored=%d, '
-                'canceled=%d, expired=%d, other=%d, parse_errors=%d',
-                batch_id,
-                len(results),
-                counters['succeeded'],
-                counters['errored'],
-                counters['canceled'],
-                counters['expired'],
-                counters['other'],
-                counters['parse_errors'],
-            )
+            self._log_batch_summary(batch_id, results, counters)
             return results
 
         except Exception as e:
@@ -649,126 +489,238 @@ class ClaudeClient(Client):
                 operation='async_get_batch_results',
             ) from e
 
+    async def _validate_batch_ready(self, batch_id: str) -> None:
+        """Validate that a batch is completed and ready for result retrieval.
+
+        Args:
+            batch_id: The batch job ID to validate.
+
+        Raises:
+            LLMClientError: If batch is not ready or missing results URL.
+        """
+        # Ensure the batch is actually completed
+        status = await self.get_batch_status_async(batch_id)
+        if status != BatchStatus.ENDED:
+            raise LLMClientError(
+                f'Batch {batch_id} is not completed yet, current status: {status.value}',
+                client_type=self.client_type,
+                operation='async_get_batch_results'
+            )
+
+        # Fetch batch information to access results_url
+        batch_info = await self.get_batch_info_async(batch_id)
+        if not batch_info.get('results_url'):
+            raise LLMClientError(
+                f'No results URL found for batch {batch_id}',
+                client_type=self.client_type,
+                operation='async_get_batch_results'
+            )
+
+    @staticmethod
+    def _create_result_counters() -> dict[str, int]:
+        """Create a dictionary for tracking result type counts.
+
+        Returns:
+            Dictionary with counters initialized to 0.
+        """
+        return {
+            'succeeded': 0,
+            'errored': 0,
+            'canceled': 0,
+            'expired': 0,
+            'parse_errors': 0,
+            'other': 0,
+        }
+
+    def _process_single_batch_result(
+        self,
+        result: Any,
+        custom_id: str,
+        counters: dict[str, int]
+    ) -> BatchResponse:
+        """Process a single batch result item.
+
+        Args:
+            result: Raw result item from the batch results iterator.
+            custom_id: The custom ID for this result.
+            counters: Dictionary to update with result type counts.
+
+        Returns:
+            A BatchResponse object for this result.
+        """
+        try:
+            result_obj: MessageBatchResult | None = getattr(result, 'result', None)
+            if result_obj is None:
+                counters['other'] += 1
+                return BatchResponse(
+                    custom_id=custom_id,
+                    response_text='',
+                    success=False,
+                    error_message='Missing result object.'
+                )
+
+            return self._create_batch_response_for_result_type(result_obj, custom_id, counters)
+
+        except Exception as result_exc:
+            # Never let one malformed result crash the whole batch
+            logging.error(
+                'Failed to parse batch result for custom_id %s: %s',
+                custom_id,
+                result_exc,
+                exc_info=True
+            )
+            counters['parse_errors'] += 1
+            return BatchResponse(
+                custom_id=custom_id,
+                response_text='',
+                success=False,
+                error_message=f'Failed to parse result: {result_exc}',
+            )
+
+    def _create_batch_response_for_result_type(
+        self,
+        result_obj: MessageBatchResult,
+        custom_id: str,
+        counters: dict[str, int]
+    ) -> BatchResponse:
+        """Create a BatchResponse based on the result type.
+
+        Uses type narrowing with Literal types from MessageBatchResult union.
+
+        Args:
+            result_obj: The result object with a discriminated type field.
+            custom_id: The custom ID for this result.
+            counters: Dictionary to update with result type counts.
+
+        Returns:
+            A BatchResponse object appropriate for the result type.
+        """
+        # Success path: MessageBatchSucceededResult
+        if result_obj.type == 'succeeded':
+            counters['succeeded'] += 1
+            response_text = self._extract_response_text_from_message(result_obj.message)
+            return BatchResponse(
+                custom_id=custom_id,
+                response_text=response_text,
+                success=bool(response_text),
+                error_message='' if response_text else 'Empty response content',
+            )
+
+        # Errored path: MessageBatchErroredResult
+        elif result_obj.type == 'errored':
+            counters['errored'] += 1
+            error_message = self._extract_error_from_errored_result(result_obj)
+            return BatchResponse(
+                custom_id=custom_id,
+                response_text='',
+                success=False,
+                error_message=error_message,
+            )
+
+        # Canceled path: MessageBatchCanceledResult
+        elif result_obj.type == 'canceled':
+            counters['canceled'] += 1
+            return BatchResponse(
+                custom_id=custom_id,
+                response_text='',
+                success=False,
+                error_message='Request was canceled before execution.',
+            )
+
+        # Expired path: MessageBatchExpiredResult
+        elif result_obj.type == 'expired':
+            counters['expired'] += 1
+            return BatchResponse(
+                custom_id=custom_id,
+                response_text='',
+                success=False,
+                error_message='Request expired (not processed within the batch time window).',
+            )
+
+        # Unknown/undocumented type: fallback
+        else:
+            counters['other'] += 1
+            return BatchResponse(
+                custom_id=custom_id,
+                response_text='',
+                success=False,
+                error_message=f'Unknown result type: {result_obj.type}',
+            )
+
+    @staticmethod
+    def _log_batch_summary(
+        batch_id: str,
+        results: list[BatchResponse],
+        counters: dict[str, int]
+    ) -> None:
+        """Log a summary of batch processing results.
+
+        Args:
+            batch_id: The batch job ID.
+            results: List of all batch responses.
+            counters: Dictionary with result type counts.
+        """
+        logging.info(
+            'Batch (ID: %s) parsed. total=%d, succeeded=%d, errored=%d, '
+            'canceled=%d, expired=%d, other=%d, parse_errors=%d',
+            batch_id,
+            len(results),
+            counters['succeeded'],
+            counters['errored'],
+            counters['canceled'],
+            counters['expired'],
+            counters['other'],
+            counters['parse_errors'],
+        )
+
     # ------------------------------------------------------------------ #
     # Message parsing helpers
     # ------------------------------------------------------------------ #
     @staticmethod
-    def _extract_response_text_from_message(msg: Any) -> str:
-        """Extract plain text from an Anthropic message object.
+    def _extract_response_text_from_message(msg: Message) -> str:
+        """Extract plain text from an Anthropic Message object.
         
         Args:
-            msg: Anthropic message object from a successful batch result.
-            response_text = message.content[0].text
+            msg: Anthropic Message object from a successful batch result.
 
         Returns:
-            The extracted text content, or empty string if not found.
+            The extracted text content from all text blocks.
         """
-        if msg is None:
-            return ''
-
-        # Get content
-        content = ClaudeClient._get_field(msg, 'content')
-
-        # Handle string content if it is already a string, just return it.
-        if isinstance(content, str):
-            return content
-
-        # If content is a list of blocks, collect text from blocks with type == "text".
-        if isinstance(content, list):
-            text_parts: list[str] = []
-            for block in content:
-                # Resolve type block
-                block_type = ClaudeClient._get_field(block, 'type')
-                # Only consume text blocks; ignore tool/thinking/etc per docs
-                if block_type == 'text':
-                    text = ClaudeClient._get_field(block, 'text')
-                    if isinstance(text, str) and text:
-                        text_parts.append(text)
-            if text_parts:
-                return ''.join(text_parts)
-
-        # Fallback to direct text attribute
-        text = getattr(msg, 'text', None)
-        if isinstance(text, str):
-            return text
-
-        return ''
+        # Message.content is a list of content blocks
+        # Collect text from blocks with type == "text"
+        text_parts: list[str] = []
+        
+        for block in msg.content:
+            # Each block has a 'type' field (Literal type from SDK)
+            # Only consume text blocks; ignore tool_use, thinking, and other blocks
+            if block.type == 'text':
+                # Text blocks have a 'text' attribute
+                if hasattr(block, 'text') and block.text:
+                    text_parts.append(block.text)
+        
+        return ''.join(text_parts)
 
     @staticmethod
-    def _get_field(obj: Any, field_name: str) -> Any:
-        """Helper to safely retrieve a field from an object or dict.
-
-        Tries attribute access first (SDK/Pydantic objects),
-        then dict key lookup.
+    def _extract_error_from_errored_result(errored_result: MessageBatchErroredResult) -> str:
+        """Extract error message from MessageBatchErroredResult.
 
         Args:
-            obj: The object or dict to extract from.
-            field_name: The field name to get.
-
-        Returns:
-            The field value, or None if not found.
-        """
-        val = getattr(obj, field_name, None)
-        if val is None and isinstance(obj, dict):
-            val = obj.get(field_name)
-        return val
-
-    @staticmethod
-    def _extract_error_message(result_obj: Any, result_type: str | None) -> str:
-        """Extract an error message for errored/canceled/expired/other cases.
-
-        Args:
-            result_obj: The result object from a batch-response result.
-            result_type: The type of the result (e.g., "errored", "canceled", "expired".)
+            errored_result: The errored result from batch processing.
 
         Returns:
             A human-readable error message string.
         """
-        if result_type == 'canceled':
-            # NOTE: Claude API does not provide an output result for cancellation, and
-            # canceled requests “will not be billed”, since they never executed
-            return 'Request was canceled before execution.'
-
-        if result_type == 'expired':
-            # NOTE: Claude API does not provide an output result for expiration (request timed out), and
-            # expired requests “will not be billed”, since the request expired before it could be processed.
-            return 'Request expired (not processed within the batch time window).'
-
-        # Generic/errored: inspect error objects.
-        error_obj = getattr(result_obj, 'error', None)
-
-        # Dict-like error, use .get
-        if isinstance(error_obj, dict):
-            msg = error_obj.get('message')
-            if msg:
-                return str(msg)
-            err = error_obj.get('error')
-            if isinstance(err, dict):
-                msg = err.get('message')
-                if msg:
-                    return str(msg)
-            return str(error_obj)
-
-        # SDK/Pydantic path: use attribute access
-        msg =  getattr(error_obj, 'message', None)
-        if msg:
-            return str(msg)
-        err = getattr(error_obj, 'error', None)
-        if isinstance(err, dict):
-            msg = err.get('message')
-            if msg:
-                return str(msg)
-        else:
-            msg = getattr(err, 'message', None)
-            if msg:
-                return str(msg)
-
-        # Direct message at result level
-        msg = getattr(result_obj, 'message', None)
-        if msg:
-            return str(msg)
-
-        return f'Request failed with unknown error type: {result_type}'
+        # MessageBatchErroredResult has an 'error' attribute of type ErrorResponse
+        error = errored_result.error
+        
+        # Try to extract message from the error response
+        # ErrorResponse has an 'error' attribute of type ErrorObject, which is an Union type,
+        # so use defensive access
+        if hasattr(error, 'error') and hasattr(error.error, 'message'):
+            return str(error.error.message)  
+        
+        # Fallback to string representation
+        return f'Batch request failed: {error}'
 
     async def cancel_batch_async(self, batch_id: str) -> bool:
         """Cancel a batch job asynchronously.
@@ -801,7 +753,7 @@ class ClaudeClient(Client):
         self,
         batch_num: int,
         batch_id: str,
-        poll_interval: float = Client.DEFAULT_POLL_INTERVAL
+        poll_interval: float | None = None
     ) -> AsyncIterator[BatchProgress]:
         """Yield progress updates for a batch job.
 
@@ -812,7 +764,7 @@ class ClaudeClient(Client):
 
         Args:
             batch_id: The batch job ID to monitor.
-            poll_interval: Time between status checks in seconds.
+            poll_interval: Time between status checks in seconds (default: 30 seconds).
 
         Yields:
             BatchProgress instances with current status and timing information.
@@ -820,6 +772,9 @@ class ClaudeClient(Client):
         Raises:
             ValueError: If poll_interval is not positive.
         """
+        if poll_interval is None:
+            poll_interval = self.DEFAULT_POLL_INTERVAL # base class constant
+
         if poll_interval <= 0:
             raise ValueError('poll_interval must be > 0.')
 
@@ -829,13 +784,11 @@ class ClaudeClient(Client):
             try:
                 # Get current status and detailed information
                 status = await self.get_batch_status_async(batch_id)
-                batch_info = await self.get_batch_info_async(batch_id)
+                batch_info: dict[str, Any] = await self.get_batch_info_async(batch_id)
 
                 elapsed_time = time.monotonic() - start_time
                 # Defensive extraction/typing
-                req_counts = batch_info.get('request_counts') or {}
-                if not isinstance(req_counts, dict):
-                    req_counts = {}
+                req_counts: dict[str, int] = batch_info.get('request_counts') or {}
 
                 created_at = str(batch_info.get('created_at', ''))
                 expires_at = str(batch_info.get('expires_at', ''))

@@ -47,7 +47,7 @@ class OutputWriter:
     DEFAULT_ENCODING: ClassVar[str] = 'utf-8'
     NEWLINE: ClassVar[str] = '\n'
 
-    def __init__(self, encoding: str = DEFAULT_ENCODING) -> None:
+    def __init__(self, encoding: str = 'utf-8') -> None:
         """Initialize the OutputWriter.
 
         Args:
@@ -93,6 +93,7 @@ class OutputWriter:
         Raises:
             OutputError: If the atomic write fails.
         """
+        temp_path: Path | None = None
         try:
             with tempfile.NamedTemporaryFile(
                     mode='w',
@@ -109,7 +110,7 @@ class OutputWriter:
             logging.debug('Atomic write completed for: %s', file_path)
         except(OSError, UnicodeEncodeError) as e:
             # Clean up temp file if it exists
-            if 'temp_path' in locals() and temp_path.exists():
+            if temp_path is not None and temp_path.exists():
                 try:
                     temp_path.unlink()
                 except OSError:
@@ -403,11 +404,8 @@ class OutputWriter:
             stats_data: Dictionary containing processing statistics.
 
         Raises:
-            ValueError: If stats_data is not a dictionary.
             OutputError: If writing to the file fails.
         """
-        if not isinstance(stats_data, dict):
-            raise ValueError('Stats data must be a dictionary.')
         # Ensure output directory exists
         output_path = OutputWriter._ensure_output_directory(file_path)
         try:
