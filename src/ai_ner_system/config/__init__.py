@@ -6,7 +6,12 @@ variables loading, validation, and error handling for medieval text processing.
 
 from __future__ import annotations
 
-from .exceptions import ConfigError, ConfigValidationError, FileValidationError, DirectoryValidationError
+from .exceptions import (
+    ConfigError, 
+    ConfigValidationError, 
+    FileValidationError, 
+    DirectoryValidationError
+)
 from .settings import Settings
 from .validation import ConfigValidator
 
