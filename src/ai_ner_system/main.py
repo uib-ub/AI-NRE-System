@@ -6,15 +6,37 @@ synchronous and asynchronous processing modes with comprehensive error handling
 and progress monitoring.
 """
 
+from __future__ import annotations
+
 import argparse
 import asyncio
 import logging
 import sys
 from pathlib import Path
+from typing import Final, Literal
 
 from ai_ner_system.config import ConfigValidator, ConfigError, Settings
 from ai_ner_system.pipeline import ApplicationError, MedievalTextProcessor
 from ai_ner_system.processing import create_progress_logger
+
+# ============================================================================
+# Constants
+# ============================================================================
+
+# Validation thresholds for async mode
+MIN_MAX_WAIT_TIME: Final[int] = 60      # Minimum max wait time in seconds
+MIN_POLL_INTERVAL: Final[int] = 5       # Minimum poll interval in seconds
+
+# Default values for processing
+DEFAULT_BATCH_SIZE: Final[int] = 5             # Records per batch
+DEFAULT_MAX_CONCURRENT_BATCHES: Final[int] = 5  # Max concurrent batches in async mode
+
+# Default values for async arguments
+DEFAULT_MAX_WAIT_TIME: Final[int] = 86400  # 24 hours in seconds
+DEFAULT_POLL_INTERVAL: Final[int] = 30     # 30 seconds
+
+# Progress logging interval
+PROGRESS_LOG_INTERVAL: Final[int] = 60   # Log progress every 60 seconds
 
 
 # ============================================================================
@@ -24,7 +46,8 @@ def setup_logging(level: str = 'INFO') -> None:
     """Set up application logging.
 
     Args:
-        level: Logging level ('DEBUG', 'INFO', 'WARNING', 'ERROR')
+        level: Logging level ('DEBUG', 'INFO', 'WARNING', 'ERROR').
+        Defaults to 'INFO'.
     """
     # Convert string level to logging constant
     numeric_level = getattr(logging, level.upper(), logging.INFO)
@@ -64,6 +87,13 @@ def _validate_input_file(input_file: str) -> None:
     if not input_path.is_file():
         raise ApplicationError(f'Input path is not a file: {input_path}')
 
+    # Check if file is readable
+    try:
+        with input_path.open('rb'):
+            pass
+    except OSError as e:
+        raise ApplicationError(f'Input file is not readable: {e}') from e
+
 
 def _validate_output_directories(output_files: list[str]) -> None:
     """Validate and create output directories if they do not exist.
@@ -75,14 +105,18 @@ def _validate_output_directories(output_files: list[str]) -> None:
         ApplicationError: If an output directory cannot be created.
     """
     for output_file in output_files:
+
         output_path = Path(output_file)
         output_dir = output_path.parent
+
         if not output_dir.exists():
             try:
                 output_dir.mkdir(parents=True, exist_ok=True)
                 logging.info('Created output directory: %s', output_dir)
             except OSError as e:
-                raise ApplicationError(f'Failed to create output directory {output_dir}: {e}') from e
+                raise ApplicationError(
+                    f'Failed to create output directory {output_dir}: {e}'
+                ) from e
 
 
 def _validate_template_files(args: argparse.Namespace) -> None:
@@ -96,12 +130,16 @@ def _validate_template_files(args: argparse.Namespace) -> None:
     """
     # Check if prompt template exists
     if args.prompt_template and not Path(args.prompt_template).exists():
-        raise ValueError(f'Prompt template file does not exist: {args.prompt_template}')
+        raise ApplicationError(
+            f'Prompt template file does not exist: {args.prompt_template}'
+        )
 
     # Check batch template if batch processing is enabled
     if args.use_batch:
         if args.batch_template and not Path(args.batch_template).exists():
-            raise ValueError(f'Batch template file does not exist: {args.batch_template}')
+            raise ApplicationError(
+                f'Batch template file does not exist: {args.batch_template}'
+            )
 
 
 def _validate_async_arguments(args: argparse.Namespace) -> None:
@@ -117,16 +155,16 @@ def _validate_async_arguments(args: argparse.Namespace) -> None:
         return
 
     max_wait_time = getattr(args, 'max_wait_time', 0)
-    if max_wait_time <= 60:
+    if max_wait_time <= MIN_MAX_WAIT_TIME:
         raise ApplicationError(
-            f'Max wait time must be at least 60 seconds for async mode, '
+            f'Max wait time must be at least {MIN_MAX_WAIT_TIME} seconds for async mode, '
             f'got {max_wait_time} seconds'
         )
 
     poll_interval = getattr(args, 'poll_interval', 0)
-    if poll_interval <= 5:
+    if poll_interval <= MIN_POLL_INTERVAL:
         raise ApplicationError(
-            f'Poll interval must be at least 5 seconds for async mode, '
+            f'Poll interval must be at least {MIN_POLL_INTERVAL} seconds for async mode, '
             f'got {poll_interval} seconds'
         )
 
@@ -145,15 +183,23 @@ def validate_arguments(args: argparse.Namespace) -> None:
     _validate_input_file(input_file)
 
     # Validate output directories
-    output_files = [args.output_text, args.output_table]
+    output_files = [
+        args.output_text or Settings.OUTPUT_TEXT_FILE, 
+        args.output_table or Settings.OUTPUT_TABLE_FILE,
+        args.output_stats or Settings.OUTPUT_STATS_FILE,
+    ]
     _validate_output_directories(output_files)
 
     # Validate template files
     _validate_template_files(args)
 
-    # Validate client type
-    if args.client.lower() not in ('claude', 'ollama'):
-        raise ApplicationError(f'Unsupported client type: {args.client}')
+    # Validate client type using constant from Settings
+    if args.client.lower() not in Settings.SUPPORTED_CLIENTS:
+        supported = ', '.join(sorted(Settings.SUPPORTED_CLIENTS))
+        raise ApplicationError(
+            f'Unsupported client type: {args.client}. '
+            f'Supported types: {supported}'
+        )
 
     # Validate async-specific arguments
     _validate_async_arguments(args)
@@ -163,6 +209,9 @@ def validate_arguments(args: argparse.Namespace) -> None:
 
 def validate_configuration(args: argparse.Namespace) -> None:
     """Validate application configuration.
+
+    Args:
+        args: Parsed command line arguments.
 
     Raises:
         ConfigError: If configuration is invalid.
@@ -175,7 +224,11 @@ def validate_configuration(args: argparse.Namespace) -> None:
 
 
 def _get_example_text() -> str:
-    """Get example text for argument parser epilog."""
+    """Get example text for argument parser epilog.
+
+    Returns:
+        Formatted example text with usage examples.
+    """
     return """
 Examples:
     # Process with sync mode
@@ -209,34 +262,34 @@ def _add_io_arguments(parser: argparse.ArgumentParser) -> None:
     """Add input/output file arguments to the parser.
 
     Args:
-        parser: ArgumentParser instance.
+        parser: ArgumentParser instance to modify.
     """
     parser.add_argument(
         '--input',
         type=str,
-        default=Settings.INPUT_FILE,
-        help='Path to the input file'
+        default=None,
+        help='Path to the input file (default: from .env or Settings.INPUT_FILE)'
     )
 
     parser.add_argument(
         '--output-text',
         type=str,
-        default=Settings.OUTPUT_TEXT_FILE,
-        help='Path for annotated text output'
+        default=None,
+        help='Path for annotated text output (default: from .env or Settings.OUTPUT_TEXT_FILE)'
     )
 
     parser.add_argument(
         '--output-table',
         type=str,
-        default=Settings.OUTPUT_TABLE_FILE,
-        help='Path for metadata table output'
+        default=None,
+        help='Path for metadata table output (default: from .env or Settings.OUTPUT_TABLE_FILE)'
     )
 
     parser.add_argument(
         "--output-stats",
         type=str,
-        default=Settings.OUTPUT_STATS_FILE,
-        help="Output file for processing statistics (JSON format)"
+        default=None,
+        help="Output file for processing statistics (default: from .env or Settings.OUTPUT_STATS_FILE)"
     )
 
 
@@ -255,8 +308,8 @@ def _add_batch_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         '--batch-size',
         type=int,
-        default=5,
-        help='Number of records to process in each batch (default: 5)'
+        default=DEFAULT_BATCH_SIZE,
+        help=f'Number of records to process in each batch (default: {DEFAULT_BATCH_SIZE})'
     )
 
 
@@ -269,15 +322,15 @@ def _add_template_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         '--prompt-template',
         type=str,
-        default=Settings.PROMPT_TEMPLATE_FILE,
-        help='Path to the prompt template file'
+        default=None,
+        help='Path to the prompt template file (default: from .env or Settings.PROMPT_TEMPLATE_FILE)'
     )
 
     parser.add_argument(
         '--batch-template',
         type=str,
-        default=Settings.BATCH_TEMPLATE_FILE,
-        help='Path to the batch template file'
+        default=None,
+        help='Path to the batch template file (default: from .env or Settings.BATCH_TEMPLATE_FILE)'
     )
 
 def _add_async_arguments(parser: argparse.ArgumentParser) -> None:
@@ -296,8 +349,8 @@ def _add_async_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         '--max-concurrent-batches',
         type=int,
-        default=5,
-        help='Maximum number of concurrent batches (default: 5)'
+        default=DEFAULT_MAX_CONCURRENT_BATCHES,
+        help=f'Maximum number of concurrent batches (default: {DEFAULT_MAX_CONCURRENT_BATCHES})'
     )
 
     parser.add_argument(
@@ -309,15 +362,15 @@ def _add_async_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         '--max-wait-time',
         type=int,
-        default=86400,  # 24 hours
-        help='Maximum time to wait for async batch completion (default: 86400 seconds, i.e. 24 hours)'
+        default=DEFAULT_MAX_WAIT_TIME,
+        help=f'Maximum time to wait for async batch completion (default: {DEFAULT_MAX_WAIT_TIME} seconds, i.e. 24 hours)'
     )
 
     parser.add_argument(
         '--poll-interval',
         type=int,
-        default=30,
-        help='Time between progress checks for async processing (default: 30s)'
+        default=DEFAULT_POLL_INTERVAL,
+        help=f'Time between progress checks for async processing (default: {DEFAULT_POLL_INTERVAL}s)'
     )
 
 
@@ -366,15 +419,15 @@ def create_argument_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _run_processor(processor: MedievalTextProcessor, args: argparse.Namespace) -> int:
-    """Run the processor in synchronous mode.
+def _run_processor(processor: MedievalTextProcessor, args: argparse.Namespace) -> Literal[0, 1]:
+    """Run the processor in the appropriate mode (sync or async).
 
     Args:
         processor: Instance of MedievalTextProcessor.
         args: Parsed command line arguments.
 
     Returns:
-        Exit code (0 for success, non-zero for errors).
+        Exit code: 0 for success, 1 for failure.
     """
     # Choose execution mode based on async_mode argument
     async_mode = getattr(args, 'async_mode', False)
@@ -382,7 +435,7 @@ def _run_processor(processor: MedievalTextProcessor, args: argparse.Namespace) -
     if async_mode:
         logging.info('Using asynchronous processing mode')
         # Create progress callback
-        progress_callback = create_progress_logger(60)  # Log every 60 seconds
+        progress_callback = create_progress_logger(PROGRESS_LOG_INTERVAL)  # Log every 60 seconds
         # Run async processing
         return asyncio.run(processor.run_async(progress_callback))
     else:
@@ -391,14 +444,29 @@ def _run_processor(processor: MedievalTextProcessor, args: argparse.Namespace) -
         return processor.run()
 
 
+def _print_dry_run_success() -> None:
+    """Print success message for dry run mode.
+    
+    Logs validation success to both console and logs.
+    """
+    success_messages = [
+        '✓ Configuration validated successfully',
+        '✓ Command line arguments validated',
+        '✓ Input files exist and are accessible',
+        'Dry run completed successfully - no processing performed'
+    ]
+    message = '\n'.join(success_messages)
+    print(message)
+    logging.info('Dry run validation completed successfully')
+
 # ------------------------------------------------------------------------------
 # Main function
 # ------------------------------------------------------------------------------
-def main() -> int:
+def main() -> Literal[0, 1]:
     """Main application entry point.
 
     Returns:
-        Exit code (0 for success, non-zero for errors).
+        Exit code: 0 for success, 1 for failure.
     """
     try:
         # Parse command line arguments
@@ -408,6 +476,9 @@ def main() -> int:
         # Setup logging
         setup_logging(args.log_level)
         logging.info('AI NER System - Medieval Text Processing started')
+
+        # Initialize settings (load .env file and create directories)
+        Settings.initialize()
 
         # Validate configuration and arguments
         validate_arguments(args)
@@ -429,19 +500,9 @@ def main() -> int:
         logging.error('Application error: %s', e)
         return 1
     except Exception as e:
+        # Unexpected errors - log with full traceback
         logging.error('Unexpected error: %s', e, exc_info=True)
         return 1
-
-
-def _print_dry_run_success() -> None:
-    """Print success message for dry run."""
-    success_messages = [
-        '✓ Configuration validated successfully',
-        '✓ Command line arguments validated',
-        '✓ Input files exist and are accessible',
-        'Dry run completed successfully - no processing performed'
-    ]
-    print('\n'.join(success_messages))
 
 
 if __name__ == "__main__":

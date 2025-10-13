@@ -13,6 +13,7 @@ import asyncio
 import logging
 import time
 from pathlib import Path
+from typing import Any, ClassVar, Literal
 from collections.abc import Callable
 
 from ai_ner_system.config import Settings
@@ -33,6 +34,16 @@ class MedievalTextProcessor:
     comprehensive error handling.
     """
 
+    # Class constants for output headers
+    ANNOTATED_HEADER: ClassVar[str] = 'Bindnr;Brevid;Tekst'
+    METADATA_HEADER: ClassVar[str] = (
+        'Proper Noun;Type of Proper Noun;Preposition;Order of Occurrence in Doc;'
+        'Brevid;Status/Occupation/Description;Gender;Language'
+    )
+
+    # Default timeout for async processing (24 hours in seconds)
+    DEFAULT_ASYNC_TIMEOUT: ClassVar[int] = 3600 * 24
+
     def __init__(self, args: argparse.Namespace) -> None:
         """Initialize the medieval text processor.
 
@@ -44,23 +55,16 @@ class MedievalTextProcessor:
         """
         self.args = args
 
-        # Initialize components
-        self.llm_client: Client | None = None
-        self.prompt_builder: PromptBuilder | None = None
-        self.processor: RecordProcessor | None = None
-        self.reader: CSVReader | None = None
-        self.writer: OutputWriter | None = None
-
         # Initialize incremental mode based on args
         self.incremental_mode = getattr(args, 'incremental_output', False)
 
         try:
-            self.llm_client = self._initialize_llm_client()
-            self.prompt_builder = self._initialize_prompt_builder()
-            self.processor = RecordProcessor(self.llm_client, self.prompt_builder)
-
-            self.reader = self._initialize_csv_reader()
-            self.writer = OutputWriter()
+            # Initialize all components (these will always be non-None after successful init)
+            self.llm_client: Client = self._initialize_llm_client()
+            self.prompt_builder: PromptBuilder = self._initialize_prompt_builder()
+            self.processor: RecordProcessor = RecordProcessor(self.llm_client, self.prompt_builder)
+            self.reader: CSVReader = self._initialize_csv_reader()
+            self.writer: OutputWriter = OutputWriter()
 
             logging.info('MedievalTextProcessor initialized successfully')
             logging.info('Incremental output mode: %s', self.incremental_mode)
@@ -81,18 +85,26 @@ class MedievalTextProcessor:
         try:
             client_type = self.args.client.lower()
 
-            if client_type not in ['claude', 'ollama']:
-                raise ApplicationError(f'Unsupported client type: {client_type}')
+            # Use constant from Settings for supported clients validation
+            if client_type not in Settings.SUPPORTED_CLIENTS:
+                supported = ', '.join(sorted(Settings.SUPPORTED_CLIENTS))
+                raise ApplicationError(
+                    f'Unsupported client type: {client_type}. '
+                    f'Supported types: {supported}'
+                )
 
             llm_client = create_llm_client(client_type)
             logging.info('LLM client initialized: %s', client_type)
             return llm_client
 
         except LLMClientError as e:
-            raise ApplicationError(f'Failed to initialize LLM client "{self.args.client}": {e}') from e
+            raise ApplicationError(
+                f'Failed to initialize LLM client "{self.args.client}": {e}'
+            ) from e
         except Exception as e:
-            raise ApplicationError(f'Unexpected error initializing LLM client: {e}') from e
-
+            raise ApplicationError(
+                f'Unexpected error initializing LLM client: {e}'
+            ) from e
 
     def _initialize_prompt_builder(self) -> PromptBuilder:
         """Initialize the prompt builder with template file.
@@ -184,20 +196,34 @@ class MedievalTextProcessor:
 
             # Write annotated text output
             if annotations:
-                annotated_header = 'Bindnr;Brevid;Tekst'
-                self.writer.write_text_output(output_text, annotated_header, annotations)
-                logging.info('Annotated text written to: %s (%d records)', output_text, len(annotations))
+                # annotated_header = 'Bindnr;Brevid;Tekst'
+                annotated_header = self.ANNOTATED_HEADER
+                self.writer.write_text_output(
+                    output_text, 
+                    annotated_header, 
+                    annotations
+                )
+                logging.info(
+                    'Annotated text written to: %s (%d records)', 
+                    output_text, 
+                    len(annotations)
+                )
             else:
                 logging.warning('No annotated text output to write')
 
             # Write metadata table output
             if metadata:
-                metadata_header = (
-                    'Proper Noun;Type of Proper Noun;Preposition;Order of Occurrence in Doc;'
-                    'Brevid;Status/Occupation/Description;Gender;Language'
+                metadata_header = self.METADATA_HEADER
+                self.writer.write_metadata_output(
+                    output_table, 
+                    metadata_header, 
+                    metadata
                 )
-                self.writer.write_metadata_output(output_table, metadata_header, metadata)
-                logging.info('Metadata written to: %s (%d records)', output_table, len(metadata))
+                logging.info(
+                    'Metadata written to: %s (%d records)', 
+                    output_table, 
+                    len(metadata)
+                )
             else:
                 logging.warning('No metadata output to write')
 
@@ -231,16 +257,9 @@ class MedievalTextProcessor:
             output_text = self.args.output_text or Settings.OUTPUT_TEXT_FILE
             output_table = self.args.output_table or Settings.OUTPUT_TABLE_FILE
 
-            # Define headers
-            annotated_header = 'Bindnr;Brevid;Tekst'
-            metadata_header = (
-                'Proper Noun;Type of Proper Noun;Preposition;Order of Occurrence in Doc;'
-                'Brevid;Status/Occupation/Description;Gender;Language'
-            )
-
             # Extract annotated texts and metadata from results
-            annotated_records = []
-            metadata_records = []
+            annotated_records: list[str] = []
+            metadata_records: list[str] = []
 
             for result in stats.results:
                 if result.success and result.annotated_text:
@@ -249,8 +268,12 @@ class MedievalTextProcessor:
                     for entity in result.entities:
                         metadata_records.append(entity.to_csv_row())
 
-            # Use TaskGroup for better async task management, and it
-            # automatically waits for all tasks to complete when exiting the context manager
+            # Define headers
+            annotated_header = self.ANNOTATED_HEADER 
+            metadata_header = self.METADATA_HEADER
+
+            # Use TaskGroup for better async task management
+            # It automatically waits for all tasks to complete when exiting the context manager
             async with asyncio.TaskGroup() as tg:
                 # write output files asynchronously using OutputWriter methods
                 tg.create_task(asyncio.to_thread(
@@ -270,13 +293,30 @@ class MedievalTextProcessor:
                 # Write processing statistics, ASYNC method, no asyncio.to_thread needed
                 tg.create_task(self._write_stats_async(stats))
 
-            logging.info('Text output written to: %s (%d records)', output_text, len(annotated_records))
-            logging.info('Metadata output written to: %s (%d records)', output_table, len(metadata_records))
+            logging.info(
+                'Text output written to: %s (%d records)', 
+                output_text, 
+                len(annotated_records)
+            )
+            logging.info(
+                'Metadata output written to: %s (%d records)', 
+                output_table, 
+                len(metadata_records)
+            )
 
-        except* Exception as eg:  # Exception groups handling
-            # Handle exception group
-            errors = [str(e) for e in eg.exceptions]
-            raise ApplicationError(f'Failed to write async output. Errors: {errors}') from eg
+        except* (OutputError, OSError) as eg:
+            # Handle expected exception types specifically
+            errors = [f'{type(e).__name__}: {e}' for e in eg.exceptions]
+            raise ApplicationError(
+                f'Failed to write async output. Errors: {"; ".join(errors)}'
+            ) from eg
+        except* Exception as eg:
+            # Handle unexpected exceptions
+            errors = [f'{type(e).__name__}: {e}' for e in eg.exceptions]
+            logging.error('Unexpected errors during async output: %s', errors)
+            raise ApplicationError(
+                f'Unexpected errors writing async output: {"; ".join(errors)}'
+            ) from eg
 
 
     async def _write_stats_async(self, stats: AsyncProcessingStats) -> None:
@@ -284,11 +324,15 @@ class MedievalTextProcessor:
 
         Args:
             stats: Processing statistics to write.
+
+        Note:
+            Failures in stats writing are logged but not raised, as statistics
+            writing is not critical to the main processing pipeline.
         """
         try:
             stats_output_file = self.args.output_stats or Settings.OUTPUT_STATS_FILE
 
-            stats_data = {
+            stats_data: dict[str, Any] = {
                 'total_records': stats.total_records,
                 'processed_records': stats.processed_records,
                 'failed_records': stats.failed_records,
@@ -307,19 +351,21 @@ class MedievalTextProcessor:
                 stats_output_file,
                 stats_data
             )
+            logging.info('Statistics written to: %s', stats_output_file)
+
         except Exception as e:
             logging.warning('Failed to write processing statistics: %s', e)
             # Don't raise the exception - stats writing is not critical
 
 
-    def run(self) -> int:
-        """Run the complete processing pipeline.
+    def run(self) -> Literal[0, 1]:
+        """Run the complete processing pipeline synchronously.
+
+        Returns:
+            Exit code: 0 for success, 1 for failure.
 
         Raises:
             ApplicationError: If any step of the pipeline fails.
-
-        Returns:
-            Exit code (0 for success, 1 for failure).
         """
         try:
             logging.info('Starting medieval text processing...')
@@ -360,17 +406,22 @@ class MedievalTextProcessor:
     async def run_async(
         self,
         progress_callback: Callable[[BatchProgress], None] | None = None,
-    ) -> int:
-        """Run the medieval text processor asynchronously
+        *,
+        timeout: int | None = None,
+    ) -> Literal[0, 1]:
+        """Run the medieval text processor asynchronously.
 
         This method provides the async entry point for the application,
         with comprehensive error handling and progress monitoring.
 
         Args:
             progress_callback: Optional callback for batch progress updates.
+                Called with BatchProgress objects during processing.
+            timeout: Optional timeout in seconds. Defaults to 24 hours.
+                Set to None for no timeout.
 
-        returns:
-            Exit code (0 for success, 1 for failure).
+        Returns:
+            Exit code: 0 for success, 1 for failure.
         """
         try:
             logging.info('Starting async medieval text processing...')
@@ -378,8 +429,11 @@ class MedievalTextProcessor:
             # Clean up existing output files first
             self._cleanup_output_files()
 
+            # Use timeout if specified (default to 24 hours)
+            timeout_seconds = timeout if timeout is not None else self.DEFAULT_ASYNC_TIMEOUT
+
             # Use async context manager for better resource cleanup with timeout
-            async with asyncio.timeout(3600 * 24):  # 24-hour timeout
+            async with asyncio.timeout(timeout_seconds):  # 24-hour timeout
                 # Process all records asynchronously using async processor
                 from .async_processor import AsyncProcessor
                 async_processor = AsyncProcessor(self)
