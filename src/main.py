@@ -15,9 +15,9 @@ import sys
 from pathlib import Path
 from typing import Final, Literal
 
-from .config import ConfigValidator, ConfigError, Settings
-from .pipeline import ApplicationError, MedievalTextProcessor
-from .processing import create_progress_logger
+from src.config import ConfigValidator, ConfigError, Settings
+from src.pipeline import ApplicationError, MedievalTextProcessor
+from src.processing import create_progress_logger
 
 # ============================================================================
 # Constants
