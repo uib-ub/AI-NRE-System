@@ -15,7 +15,7 @@ from ..processing import ProcessingResult
 
 class ApplicationError(Exception):
     """Custom exception for application-level errors.
-    
+
     This exception is raised for high-level application errors that don't
     fit into more specific exception categories.
     """
@@ -55,13 +55,21 @@ class AsyncProcessingStats:
         """
         # Validate non-negative values
         if self.total_records < 0:
-            raise ValueError(f'Total records cannot be negative, got {self.total_records}')
+            raise ValueError(
+                f'Total records cannot be negative, got {self.total_records}'
+            )
         if self.processed_records < 0:
-            raise ValueError(f'Processed records cannot be negative, got {self.processed_records}')
+            raise ValueError(
+                f'Processed records cannot be negative, got {self.processed_records}'
+            )
         if self.failed_records < 0:
-            raise ValueError(f'Failed records cannot be negative, got {self.failed_records}')
+            raise ValueError(
+                f'Failed records cannot be negative, got {self.failed_records}'
+            )
         if self.processing_time < 0:
-            raise ValueError(f'Processing time cannot be negative, got {self.processing_time}')
+            raise ValueError(
+                f'Processing time cannot be negative, got {self.processing_time}'
+            )
 
     @property
     def success_rate(self) -> float:

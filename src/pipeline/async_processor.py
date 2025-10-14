@@ -32,7 +32,7 @@ class AsyncProcessor:
     output, and comprehensive progress monitoring.
     """
 
-    def  __init__(self, main_processor: 'MedievalTextProcessor') -> None:
+    def __init__(self, main_processor: 'MedievalTextProcessor') -> None:
         """Initialize async processor with reference to main processor.
 
         Args:
@@ -74,11 +74,10 @@ class AsyncProcessor:
         """Check if incremental output mode is enabled."""
         return self.main_processor.incremental_mode
 
-
     async def process_all_records_async(
         self,
         progress_callback: Callable[[BatchProgress], None] | None = None,
-        max_batch_wait_time: int = 86400, # 24 hours
+        max_batch_wait_time: int = 86400,  # 24 hours
         poll_interval: int = 30
     ) -> AsyncProcessingStats:
         """Process all records asynchronously with batch operations.
@@ -99,7 +98,9 @@ class AsyncProcessor:
             ApplicationError: If processing fails completely.
         """
         if not self.reader or not self.processor:
-            raise ApplicationError('Components not properly initialized for async processing')
+            raise ApplicationError(
+                'Components not properly initialized for async processing'
+            )
 
         # Initialize statistics
         stats = AsyncProcessingStats(start_time=time.time())
@@ -123,9 +124,9 @@ class AsyncProcessor:
 
             logging.info(
                 'Async streaming processing completed: %d/%d records (%.1f%% success rate) in %.2fs',
-                stats.processed_records, 
-                stats.total_records, 
-                stats.success_rate, 
+                stats.processed_records,
+                stats.total_records,
+                stats.success_rate,
                 stats.processing_time
             )
 
@@ -153,9 +154,13 @@ class AsyncProcessor:
             max_wait_time: Maximum time to wait for batch completion.
             poll_interval: Time between progress checks.
         """
-        logging.info('Starting async streaming with batch processing, batch size: %d', self.args.batch_size)
+        logging.info(
+            'Starting async streaming with batch processing, batch size: %d',
+            self.args.batch_size
+        )
 
-        batch_records: list[dict[str, str]] = [] # a batch of records to process together
+        # a batch of records to process together
+        batch_records: list[dict[str, str]] = []
         record_count = 0
         batch_num = 0
 
@@ -176,13 +181,13 @@ class AsyncProcessor:
 
                 # Process batch when it reaches the specified size, eg: 10, 100
                 if len(batch_records) >= self.args.batch_size:
-                    batch_num += 1 # batch_num starts from 1
+                    batch_num += 1  # batch_num starts from 1
 
                     # Create and start coroutine task with batch number tracking
                     batch_task = asyncio.create_task(
                         self._process_batch_with_order_async(
                             batch_records.copy(),
-                            batch_num, # Use batch_num for tracking the order
+                            batch_num,  # Use batch_num for tracking the order
                             progress_callback,
                             max_wait_time,
                             poll_interval
@@ -191,7 +196,7 @@ class AsyncProcessor:
 
                     # Add the task to the tracking dictionary
                     batch_tasks[batch_num] = batch_task
-                    batch_records = [] # Clear batch records after processing a batch
+                    batch_records = []  # Clear batch records after processing a batch
 
                     # Limit concurrent batch processing tasks by
                     # keep up max_concurrent_batches (5) tasks running at any time
@@ -231,7 +236,10 @@ class AsyncProcessor:
             if self._incremental_mode:
                 await self._flush_queued_batch_results_async()
 
-            logging.info('Async streaming processing completed with preserved order: %d records', record_count)
+            logging.info(
+                'Async streaming processing completed with preserved order: %d records',
+                record_count
+            )
 
         except Exception as e:
             # Cancel remaining tasks
@@ -283,7 +291,8 @@ class AsyncProcessor:
 
         # Create progress callback for this batch
         batch_progress_callback = self._create_batch_progress_callback(
-            batch_num, None, progress_callback  # None for total_batches since we don't know yet
+            # None for total_batches since we don't know yet
+            batch_num, None, progress_callback
         )
 
         try:
@@ -298,9 +307,9 @@ class AsyncProcessor:
 
             logging.info(
                 'Async batch %d completed: %d successful, %d failed in %.2fs',
-                batch_num, 
-                batch_result.successful_count, 
-                batch_result.failed_count, 
+                batch_num,
+                batch_result.successful_count,
+                batch_result.failed_count,
                 batch_result.total_processing_time
             )
 
@@ -314,7 +323,7 @@ class AsyncProcessor:
 
             # Convert to BatchProcessingResult format
             fallback_batch_result = BatchProcessingResult(
-                batch_id = f'fallback_batch_{batch_num}',
+                batch_id=f'fallback_batch_{batch_num}',
                 results=fallback_stats.results,
                 total_processing_time=0.0,
                 successful_count=fallback_stats.processed_records,
@@ -339,7 +348,7 @@ class AsyncProcessor:
 
         logging.info(
             'Adding results for batch %d (expected: %d)',
-            batch_num, 
+            batch_num,
             self._next_expected_batch_num
         )
 
@@ -355,12 +364,15 @@ class AsyncProcessor:
             # Add results in batch order (they're already in record order within batch)
             if batch_result.results:
                 stats.results.extend(batch_result.results)
-            logging.info('Added results from batch %d to stats in order', batch_num)
+            logging.info(
+                'Added results from batch %d to stats in order',
+                batch_num
+            )
 
         logging.info(
             'Added batch %d results: %d successful, %d failed',
-            batch_num, 
-            batch_result.successful_count, 
+            batch_num,
+            batch_result.successful_count,
             batch_result.failed_count
         )
 
@@ -369,7 +381,9 @@ class AsyncProcessor:
 
         while self._next_expected_batch_num in self._batch_result_queue:
             # pop the next expected batch result
-            batch_result = self._batch_result_queue.pop(self._next_expected_batch_num)
+            batch_result = self._batch_result_queue.pop(
+                self._next_expected_batch_num
+            )
             # Write this batch's results immediately
             await self._write_batch_results_incremental_async(
                 batch_result,
@@ -377,7 +391,10 @@ class AsyncProcessor:
             )
             self._next_expected_batch_num += 1
 
-            logging.info('Flushed batch %d results to output files', self._next_expected_batch_num - 1)
+            logging.info(
+                'Flushed batch %d results to output files',
+                self._next_expected_batch_num - 1
+            )
 
     async def _write_batch_results_incremental_async(
         self,
@@ -391,10 +408,16 @@ class AsyncProcessor:
             batch_num: The batch number for tracking.
         """
         try:
-            successful_results = [r for r in batch_result.results if r.success and r.annotated_text.strip()]
+            successful_results = [
+                r for r in batch_result.results
+                if r.success and r.annotated_text.strip()
+            ]
 
             if not successful_results:
-                logging.info('Batch %d: No successful results to write', batch_num)
+                logging.info(
+                    'Batch %d: No successful results to write',
+                    batch_num
+                )
                 return
 
             # Prepare annotated data and entity metadata
@@ -424,12 +447,12 @@ class AsyncProcessor:
                 # write output files asynchronously using OutputWriter methods
                 # Write annotated text output
                 tg.create_task(
-                   asyncio.to_thread(
-                       self.writer.append_text_output,
-                       output_text_file,
-                       annotated_header,
-                       annotated_rows
-                   )
+                    asyncio.to_thread(
+                        self.writer.append_text_output,
+                        output_text_file,
+                        annotated_header,
+                        annotated_rows
+                    )
                 )
 
                 # Write metadata if we have entities
@@ -442,8 +465,10 @@ class AsyncProcessor:
                             metadata_rows
                         )
                     )
-            logging.info('Batch %d: Wrote %d annotations and %d entities incrementally',
-                     batch_num, len(annotated_rows), len(metadata_rows))
+            logging.info(
+                'Batch %d: Wrote %d annotations and %d entities incrementally',
+                batch_num, len(annotated_rows), len(metadata_rows)
+            )
 
         except Exception as e:
             logging.error('Failed to write batch %d results incrementally: %s',
@@ -460,7 +485,7 @@ class AsyncProcessor:
 
         try:
             # Process records with limited concurrency to avoid overwhelming the API
-            semaphore = asyncio.Semaphore(5) # Limit to 5 concurrent requests
+            semaphore = asyncio.Semaphore(5)  # Limit to 5 concurrent requests
 
             async def process_single_record(record: dict[str, str]) -> ProcessingResult:
                 async with semaphore:
@@ -480,7 +505,7 @@ class AsyncProcessor:
                 current_chunk_records.append(record)
 
                 # Process in chunks to avoid memory issues with large files
-                if len(tasks) >= 50: # Process 50 records at a time
+                if len(tasks) >= 50:  # Process 50 records at a time
                     await self._process_task_chunk(tasks, current_chunk_records, stats)
                     tasks.clear()
                     current_chunk_records.clear()
@@ -490,8 +515,13 @@ class AsyncProcessor:
                 await self._process_task_chunk(tasks, current_chunk_records, stats)
 
         except Exception as e:
-            logging.error('Individual async streaming processing failed: %s', e, exc_info=True)
-            raise ApplicationError(f'Individual async streaming processing failed: {e}') from e
+            logging.error(
+                'Individual async streaming processing failed: %s',
+                e, exc_info=True
+            )
+            raise ApplicationError(
+                f'Individual async streaming processing failed: {e}'
+            ) from e
 
     async def _process_task_chunk(
         self,
@@ -512,7 +542,8 @@ class AsyncProcessor:
 
             # Process results in the same order as input
             for i, result in enumerate(results):
-                original_record = chunk_records[i]  # Get original record by index
+                # Get original record by index
+                original_record = chunk_records[i]
                 brevid = original_record.get('Brevid', '')  # Extract brevid
 
                 if isinstance(result, Exception):
@@ -526,7 +557,10 @@ class AsyncProcessor:
                         error_message=f'Processing failed for Brevid {brevid}: {result}'
                     )
                     stats.results.append(failed_result)
-                    logging.error('Task failed for Brevid %s with exception: %s', brevid, result)
+                    logging.error(
+                        'Task failed for Brevid %s with exception: %s',
+                        brevid, result
+                    )
                 elif isinstance(result, ProcessingResult):
                     # Handle successful task
                     stats.results.append(result)
@@ -534,7 +568,10 @@ class AsyncProcessor:
                         stats.processed_records += 1
                     else:
                         stats.failed_records += 1
-                        logging.warning('Record %s and Brevid %s failed: %s', result.record_id, result.brevid, result.error_message)
+                        logging.warning(
+                            'Record %s and Brevid %s failed: %s',
+                            result.record_id, result.brevid, result.error_message
+                        )
 
             logging.info('Processed chunk: %d tasks completed', len(results))
 
@@ -555,10 +592,13 @@ class AsyncProcessor:
             batch_records: Records to process individually.
             stats: Statistics object to update.
         """
-        logging.info('Falling back to individual async processing for %d records', len(batch_records))
+        logging.info(
+            'Falling back to individual async processing for %d records',
+            len(batch_records)
+        )
 
         # Process records with limited concurrency
-        semaphore = asyncio.Semaphore(3) # Lower concurrency for fallback
+        semaphore = asyncio.Semaphore(3)  # Lower concurrency for fallback
 
         async def process_single_record(record: dict[str, str]) -> ProcessingResult:
             async with semaphore:
@@ -572,7 +612,7 @@ class AsyncProcessor:
 
         # Process results in original order and update statistics
         for i, result in enumerate(results):
-            original_record = batch_records[i] # Get original record by index
+            original_record = batch_records[i]  # Get original record by index
             brevid = original_record.get('Brevid', '')  # Extract brevid
 
             if isinstance(result, Exception):
@@ -586,18 +626,21 @@ class AsyncProcessor:
                     error_message=f'Processing failed for Brevid {brevid}: {result}'
                 )
                 stats.results.append(failed_result)
-                logging.warning('Fallback processing exception for Brevid %s: %s', brevid, result)
+                logging.warning(
+                    'Fallback processing exception for Brevid %s: %s',
+                    brevid, result
+                )
             elif isinstance(result, ProcessingResult):
                 # Handle successful task
-                stats.results.append(result) # Results added in original order
+                stats.results.append(result)  # Results added in original order
                 if result.success:
                     stats.processed_records += 1
                 else:
                     stats.failed_records += 1
                     logging.warning(
                         'Fallback processing failed for record %s and Brevid %s: %s',
-                        result.record_id, 
-                        result.brevid, 
+                        result.record_id,
+                        result.brevid,
                         result.error_message
                     )
 
@@ -645,7 +688,9 @@ class AsyncProcessor:
                 try:
                     user_callback(progress)
                 except Exception as e:
-                    logging.warning('Error in user progress callback: %s', e, exc_info=True)
+                    logging.warning(
+                        'Error in user progress callback: %s',
+                        e, exc_info=True
+                    )
 
         return progress_callback
-

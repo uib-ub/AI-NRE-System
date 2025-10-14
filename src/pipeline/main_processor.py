@@ -62,7 +62,9 @@ class MedievalTextProcessor:
             # Initialize all components (these will always be non-None after successful init)
             self.llm_client: Client = self._initialize_llm_client()
             self.prompt_builder: PromptBuilder = self._initialize_prompt_builder()
-            self.processor: RecordProcessor = RecordProcessor(self.llm_client, self.prompt_builder)
+            self.processor: RecordProcessor = RecordProcessor(
+                self.llm_client, self.prompt_builder
+            )
             self.reader: CSVReader = self._initialize_csv_reader()
             self.writer: OutputWriter = OutputWriter()
 
@@ -70,8 +72,9 @@ class MedievalTextProcessor:
             logging.info('Incremental output mode: %s', self.incremental_mode)
 
         except Exception as e:
-            raise ApplicationError(f'Failed to initialize MedievalTextProcessor: {e}') from e
-
+            raise ApplicationError(
+                f'Failed to initialize MedievalTextProcessor: {e}'
+            ) from e
 
     def _initialize_llm_client(self) -> Client:
         """Initialize the LLM client based on command line arguments.
@@ -125,11 +128,15 @@ class MedievalTextProcessor:
                 logging.info('Using single prompt template: %s', template_file)
 
             prompt_builder = GenericPromptBuilder(template_file)
-            logging.info('Prompt builder initialized with template: %s', template_file)
+            logging.info(
+                'Prompt builder initialized with template: %s', 
+                template_file
+            )
             return prompt_builder
         except PromptError as e:
-            raise ApplicationError(f'Failed to initialize PromptBuilder: {e}') from e
-
+            raise ApplicationError(
+                f'Failed to initialize PromptBuilder: {e}'
+            ) from e
 
     def _initialize_csv_reader(self) -> CSVReader:
         """Initialize the CSV reader for input file.
@@ -144,17 +151,25 @@ class MedievalTextProcessor:
             input_file = self.args.input or Settings.INPUT_FILE
 
             if not Path(input_file).exists():
-                raise ApplicationError(f'Input file does not exist: {input_file}')
+                raise ApplicationError(
+                    f'Input file does not exist: {input_file}'
+                )
 
             reader = CSVReader(input_file, delimiter=';', encoding='utf-8')
-            logging.info('CSV reader initialized for input file: %s', input_file)
+            logging.info(
+                'CSV reader initialized for input file: %s',
+                input_file
+            )
             return reader
 
         except CSVError as e:
-            raise ApplicationError(f'Failed to initialize CSV reader: {e}') from e
+            raise ApplicationError(
+                f'Failed to initialize CSV reader: {e}'
+            ) from e
         except Exception as e:
-            raise ApplicationError(f'Unexpected error initializing CSV reader: {e}') from e
-
+            raise ApplicationError(
+                f'Unexpected error initializing CSV reader: {e}'
+            ) from e
 
     def _cleanup_output_files(self) -> None:
         """Cleanup existing output files before processing.
@@ -178,7 +193,6 @@ class MedievalTextProcessor:
             logging.warning('Error during output file cleanup: %s', e)
             # Don't fail the entire process for cleanup issues
 
-
     def write_output(self, annotations: list[str], metadata: list[str]) -> None:
         """Write processed data to output files.
 
@@ -199,13 +213,13 @@ class MedievalTextProcessor:
                 # annotated_header = 'Bindnr;Brevid;Tekst'
                 annotated_header = self.ANNOTATED_HEADER
                 self.writer.write_text_output(
-                    output_text, 
-                    annotated_header, 
+                    output_text,
+                    annotated_header,
                     annotations
                 )
                 logging.info(
-                    'Annotated text written to: %s (%d records)', 
-                    output_text, 
+                    'Annotated text written to: %s (%d records)',
+                    output_text,
                     len(annotations)
                 )
             else:
@@ -215,13 +229,13 @@ class MedievalTextProcessor:
             if metadata:
                 metadata_header = self.METADATA_HEADER
                 self.writer.write_metadata_output(
-                    output_table, 
-                    metadata_header, 
+                    output_table,
+                    metadata_header,
                     metadata
                 )
                 logging.info(
-                    'Metadata written to: %s (%d records)', 
-                    output_table, 
+                    'Metadata written to: %s (%d records)',
+                    output_table,
                     len(metadata)
                 )
             else:
@@ -230,8 +244,9 @@ class MedievalTextProcessor:
         except OutputError as e:
             raise ApplicationError(f'Failed to write outputs: {e}') from e
         except Exception as e:
-            raise ApplicationError(f'Unexpected error during output writing: {e}') from e
-
+            raise ApplicationError(
+                f'Unexpected error during output writing: {e}'
+            ) from e
 
     async def write_output_async(self, stats: AsyncProcessingStats) -> None:
         """Write processing results from async operations
@@ -269,7 +284,7 @@ class MedievalTextProcessor:
                         metadata_records.append(entity.to_csv_row())
 
             # Define headers
-            annotated_header = self.ANNOTATED_HEADER 
+            annotated_header = self.ANNOTATED_HEADER
             metadata_header = self.METADATA_HEADER
 
             # Use TaskGroup for better async task management
@@ -294,13 +309,13 @@ class MedievalTextProcessor:
                 tg.create_task(self._write_stats_async(stats))
 
             logging.info(
-                'Text output written to: %s (%d records)', 
-                output_text, 
+                'Text output written to: %s (%d records)',
+                output_text,
                 len(annotated_records)
             )
             logging.info(
-                'Metadata output written to: %s (%d records)', 
-                output_table, 
+                'Metadata output written to: %s (%d records)',
+                output_table,
                 len(metadata_records)
             )
 
@@ -317,7 +332,6 @@ class MedievalTextProcessor:
             raise ApplicationError(
                 f'Unexpected errors writing async output: {"; ".join(errors)}'
             ) from eg
-
 
     async def _write_stats_async(self, stats: AsyncProcessingStats) -> None:
         """Write processing statistics to file
@@ -356,7 +370,6 @@ class MedievalTextProcessor:
         except Exception as e:
             logging.warning('Failed to write processing statistics: %s', e)
             # Don't raise the exception - stats writing is not critical
-
 
     def run(self) -> Literal[0, 1]:
         """Run the complete processing pipeline synchronously.
@@ -402,7 +415,6 @@ class MedievalTextProcessor:
             logging.error('Unexpected error: %s', e, exc_info=True)
             return 1
 
-
     async def run_async(
         self,
         progress_callback: Callable[[BatchProgress], None] | None = None,
@@ -444,9 +456,9 @@ class MedievalTextProcessor:
 
             logging.info(
                 'Async processing completed successfully: %d/%d records (%.1f%% success) in %.2fs',
-                stats.processed_records, 
-                stats.total_records, 
-                stats.success_rate, 
+                stats.processed_records,
+                stats.total_records,
+                stats.success_rate,
                 stats.processing_time
             )
             return 0
@@ -461,5 +473,8 @@ class MedievalTextProcessor:
             logging.info('Processing interrupted by user.')
             return 1
         except Exception as e:
-            logging.error('Unexpected error during async processing: %s', e, exc_info=True)
+            logging.error(
+                'Unexpected error during async processing: %s',
+                e, exc_info=True
+            )
             return 1
