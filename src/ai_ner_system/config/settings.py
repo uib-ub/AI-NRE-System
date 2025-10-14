@@ -136,7 +136,7 @@ class Settings:
 
         # Cache Configuration
         cache_dir_str = os.getenv('CACHE_DIR', cls.DEFAULT_CACHE_DIR)
-        cls.CACHE_DIR = Path(cache_dir_str)
+        cls.CACHE_DIR = Path(cache_dir_str).expanduser()
 
     @classmethod
     def _create_cache_directory(cls) -> None:

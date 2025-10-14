@@ -443,7 +443,7 @@ class MedievalTextProcessor:
                 await self.write_output_async(stats)
 
             logging.info(
-                'Async processing completed successfully: %d/%d records (%d%% success) in %.2fs',
+                'Async processing completed successfully: %d/%d records (%.1f%% success) in %.2fs',
                 stats.processed_records, 
                 stats.total_records, 
                 stats.success_rate, 
