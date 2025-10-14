@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 from tqdm import tqdm
 
-from ai_ner_system.processing import ValidationError, ProcessingError, LLMResponseError
+from ..processing import ValidationError, ProcessingError, LLMResponseError
 
 from .stats import ApplicationError
 

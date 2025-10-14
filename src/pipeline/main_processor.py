@@ -16,11 +16,11 @@ from pathlib import Path
 from typing import Any, ClassVar, Literal
 from collections.abc import Callable
 
-from ai_ner_system.config import Settings
-from ai_ner_system.io import CSVReader, OutputWriter, CSVError, OutputError
-from ai_ner_system.llm import create_llm_client, Client, LLMClientError, BatchProgress
-from ai_ner_system.prompt import PromptBuilder, GenericPromptBuilder, PromptError
-from ai_ner_system.processing import RecordProcessor
+from ..config import Settings
+from ..file_io import CSVReader, OutputWriter, CSVError, OutputError
+from ..llm import create_llm_client, Client, LLMClientError, BatchProgress
+from ..prompt import PromptBuilder, GenericPromptBuilder, PromptError
+from ..processing import RecordProcessor
 
 from .stats import ApplicationError, AsyncProcessingStats
 
