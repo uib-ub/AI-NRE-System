@@ -16,6 +16,7 @@ class BatchStatus(Enum):
     ENDED = 'ended'
     CANCELING = 'canceling'
 
+
 @dataclass
 class BatchRequest:
     """Represents a single request in a batch using Claude Batches API.
@@ -59,7 +60,9 @@ class BatchResponse:
         if not self.custom_id:
             raise ValueError('custom_id cannot be empty')
         if self.success and not self.response_text.strip():
-            raise ValueError('Successful response cannot have empty response_text')
+            raise ValueError(
+                'Successful response cannot have empty response_text'
+            )
         if not self.success and not self.error_message:
             raise ValueError('Failed response must have error_message')
 

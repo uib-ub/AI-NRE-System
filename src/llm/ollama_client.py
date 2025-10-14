@@ -137,7 +137,7 @@ class OllamaClient(Client):
         if not isinstance(text, str) or not text:
             raise APIError(
                 'Invalid or empty response payload.',
-                client_type = self.client_type,
+                client_type=self.client_type,
                 status_code=None,
             )
         return text
@@ -184,7 +184,10 @@ class OllamaClient(Client):
 
             response_text = self._extract_text_from_json(response_data)
 
-            logging.info('Received Ollama response (length: %d)', len(response_text))
+            logging.info(
+                'Received Ollama response (length: %d)',
+                len(response_text)
+            )
             return response_text
 
         except requests.exceptions.Timeout as e:
@@ -254,7 +257,9 @@ class OllamaClient(Client):
 
         # Configure proper timeout for aiohttp, annotated only for type-checkers;
         # thanks to postponed annotations, OK at runtime.
-        timeout_config: ClientTimeout = aiohttp.ClientTimeout(total=self.timeout)
+        timeout_config: ClientTimeout = aiohttp.ClientTimeout(
+            total=self.timeout
+        )
 
         logging.info(
             'Sending async request to Ollama (prompt length: %d)',

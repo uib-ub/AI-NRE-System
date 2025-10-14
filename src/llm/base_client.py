@@ -29,8 +29,10 @@ class Client(ABC):
     """
 
     # Sensible defaults for polling APIs (seconds)
-    DEFAULT_MAX_WAIT_TIME: ClassVar[float] = 86400.0   # 24 hours timeout default
-    DEFAULT_POLL_INTERVAL: ClassVar[float] = 30.0      # 30 seconds polling default
+    # 24 hours timeout default
+    DEFAULT_MAX_WAIT_TIME: ClassVar[float] = 86400.0
+    # 30 seconds polling default
+    DEFAULT_POLL_INTERVAL: ClassVar[float] = 30.0
 
     def __init__(self, model: str) -> None:
         """Initialize the client with the LLM name.
@@ -273,7 +275,10 @@ class Client(ABC):
                 try:
                     progress_callback(progress)
                 except Exception as e:
-                    logging.debug('Progress callback raised: %s', e, exc_info=True)
+                    logging.debug(
+                        'Progress callback raised: %s',
+                        e, exc_info=True
+                    )
 
             # Check for completion
             if progress.status == BatchStatus.ENDED:
@@ -338,7 +343,8 @@ class Client(ABC):
             # Create batch job.
             batch_id = await self.create_batch_async(requests)
             logging.info(
-                'Created batch %d (ID: %s) with %d requests', batch_num, batch_id, len(requests)
+                'Created batch %d (ID: %s) with %d requests', 
+                batch_num, batch_id, len(requests)
             )
 
             # Wait for completion with progress monitoring
@@ -354,14 +360,15 @@ class Client(ABC):
                 # Get and return results
                 results = await self.get_batch_results_async(batch_id)
                 logging.info(
-                    'Batch %d (ID: %s) completed successfully with %d results', batch_num, batch_id, len(results)
+                    'Batch %d (ID: %s) completed successfully with %d results', 
+                    batch_num, batch_id, len(results)
                 )
                 return results
             else:
                 raise LLMClientError(
                     f'Batch {batch_num} (ID: {batch_id}) failed with status {final_status.value}',
                     client_type=self.client_type,
-                    operation = 'batch_processing'
+                    operation='batch_processing'
                 )
         except (LLMClientError, BatchTimeoutError):
             # Preserve domain-specific exceptions.

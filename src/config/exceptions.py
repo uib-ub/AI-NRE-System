@@ -6,6 +6,7 @@ from pathlib import Path
 
 Pathish = str | Path  # Type alias for path-like objects
 
+
 class ConfigError(Exception):
     """Base exception for configuration-related errors."""
 
@@ -24,6 +25,7 @@ class ConfigError(Exception):
         if self.config_key:
             return f'{base_message} | config_key={self.config_key}'
         return base_message
+
 
 class ConfigValidationError(ConfigError):
     """Exception raised when configuration validation fails."""
@@ -51,8 +53,8 @@ class FileValidationError(ConfigError):
     """Exception raised when file validation fails."""
 
     def __init__(
-        self, 
-        message: str, 
+        self,
+        message: str,
         *,
         config_key: str | None = None,
         file_path: Pathish
@@ -76,11 +78,11 @@ class DirectoryValidationError(ConfigError):
     """Exception raised when directory validation fails."""
 
     def __init__(
-        self, 
+        self,
         message: str,
         *,
         config_key: str | None = None,
-        directory_path: Pathish 
+        directory_path: Pathish
     ) -> None:
         """Initialize DirectoryValidationError.
 

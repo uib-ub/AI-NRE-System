@@ -145,6 +145,7 @@ class PromptBuilder(ABC):
             PromptBuildError: If prompt building fails.
         """
 
+
 class GenericPromptBuilder(PromptBuilder):
     """Generic prompt builder for single-record and batch prompts.
 
@@ -227,7 +228,7 @@ class GenericPromptBuilder(PromptBuilder):
                 len(cleaned_record['text'])
             )
             return prompt
-        except (KeyError, ValueError, TypeError ) as e:
+        except (KeyError, ValueError, TypeError) as e:
             raise PromptBuildError(
                 f'Template formatting failed: {e}',
                 template_file=self.template_file

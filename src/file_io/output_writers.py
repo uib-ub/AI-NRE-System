@@ -54,7 +54,9 @@ class OutputWriter:
             encoding: Text encoding used for all writes.
         """
         self.encoding = encoding
-        logging.debug('OutputWriter initialized with encoding: %s', self.encoding)
+        logging.debug(
+            'OutputWriter initialized with encoding: %s', self.encoding
+        )
 
     @staticmethod
     def _ensure_output_directory(file_path: Pathish) -> Path:
@@ -108,7 +110,7 @@ class OutputWriter:
             # Atomically replace the target file
             temp_path.replace(file_path)
             logging.debug('Atomic write completed for: %s', file_path)
-        except(OSError, UnicodeEncodeError) as e:
+        except (OSError, UnicodeEncodeError) as e:
             # Clean up temp file if it exists
             if temp_path is not None and temp_path.exists():
                 try:
@@ -174,7 +176,10 @@ class OutputWriter:
             logging.info('Writing %s output to %s', log_label, output_path)
             content = self._build_content(header, lines)
             self._atomic_write(output_path, content, self.encoding)
-            logging.info('%s output written to %s successfully', log_label.capitalize(), output_path)
+            logging.info(
+                '%s output written to %s successfully',
+                log_label.capitalize(), output_path
+            )
         except (OSError, UnicodeEncodeError) as e:
             raise OutputError(
                 f'Failed to write {log_label} output to {output_path}: {e}',
@@ -337,7 +342,10 @@ class OutputWriter:
                 finally:
                     fcntl.flock(file.fileno(), fcntl.LOCK_UN)
 
-            logging.info('Appended %d %s to %s', len(lines), log_label, output_path)
+            logging.info(
+                'Appended %d %s to %s',
+                len(lines), log_label, output_path
+            )
         except (OSError, UnicodeEncodeError) as e:
             if isinstance(e, UnicodeEncodeError):
                 error_msg = f'Encoding error writing {log_label} to {output_path}: {e}'
@@ -411,7 +419,9 @@ class OutputWriter:
         try:
             logging.info('Writing processing statistics to %s', output_path)
             content = json.dumps(stats_data, indent=2, ensure_ascii=False)
-            OutputWriter._atomic_write(output_path, content, OutputWriter.DEFAULT_ENCODING)
+            OutputWriter._atomic_write(
+                output_path, content, OutputWriter.DEFAULT_ENCODING
+            )
             logging.info('Processing statistics written to: %s', output_path)
         except (OSError, UnicodeEncodeError, TypeError) as e:
             logging.error(
@@ -439,10 +449,17 @@ class OutputWriter:
                 path = Path(file_path)
                 if path.exists() and path.is_file():
                     path.unlink()
-                    logging.info('Cleaned up existing output file: %s', file_path)
+                    logging.info(
+                        'Cleaned up existing output file: %s', file_path
+                    )
                 else:
-                    logging.debug('Output file does not exist, skipping cleanup: %s', file_path)
+                    logging.debug(
+                        'Output file does not exist, skipping cleanup: %s', file_path
+                    )
             except OSError as e:
                 # Log error but don't fail the entire process for file cleanup issues
-                logging.debug('Failed to clean up output file %s: %s', file_path, e, exc_info=True)
+                logging.debug(
+                    'Failed to clean up output file %s: %s',
+                    file_path, e, exc_info=True
+                )
         logging.info('Output file cleanup completed')

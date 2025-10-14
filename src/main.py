@@ -28,8 +28,9 @@ MIN_MAX_WAIT_TIME: Final[int] = 60      # Minimum max wait time in seconds
 MIN_POLL_INTERVAL: Final[int] = 5       # Minimum poll interval in seconds
 
 # Default values for processing
-DEFAULT_BATCH_SIZE: Final[int] = 5             # Records per batch
-DEFAULT_MAX_CONCURRENT_BATCHES: Final[int] = 5  # Max concurrent batches in async mode
+DEFAULT_BATCH_SIZE: Final[int] = 5      # Records per batch
+# Max concurrent batches in async mode
+DEFAULT_MAX_CONCURRENT_BATCHES: Final[int] = 5
 
 # Default values for async arguments
 DEFAULT_MAX_WAIT_TIME: Final[int] = 86400  # 24 hours in seconds
@@ -184,7 +185,7 @@ def validate_arguments(args: argparse.Namespace) -> None:
 
     # Validate output directories
     output_files = [
-        args.output_text or Settings.OUTPUT_TEXT_FILE, 
+        args.output_text or Settings.OUTPUT_TEXT_FILE,
         args.output_table or Settings.OUTPUT_TABLE_FILE,
         args.output_stats or Settings.OUTPUT_STATS_FILE,
     ]
@@ -233,23 +234,23 @@ def _get_example_text() -> str:
 Examples:
     # Process with sync mode
     uv run src/ai_ner_system.main.py --client ollama \\
-        --input input/input.txt \\ 
+        --input input/input.txt \\
         --output-text output/annotated_output.txt \\
-        --output-table output/metadata_table.txt \\ 
+        --output-table output/metadata_table.txt \\
         --use-batch --batch-size 10 -l DEBUG
-        
-    uv run src/ai_ner_system/main.py --client ollama \\ 
+
+    uv run src/ai_ner_system/main.py --client ollama \\
         --output-text output/annotated_output_gemma_batch_13R_B1.txt \\
         --output-table output/metadata_table_gemma_batch_13R_B1.txt \\
         -l DEBUG
-    
+
     # Process with async batch processing
     uv run src/ai_ner_system/main.py --client claude \\
         --output-text output/annotated_output_claude_batch_100R_B100_async.txt \\
         --output-table output/metadata_table_claude_batch_100R_B100_async.txt \\
         --output-stats output/stats_claude_batch_100R_B100_async.txt  \\
         --batch-size 100 --async -l DEBUG
-        
+
     uv run src/ai_ner_system/main.py --client claude \\
         --output-text output/annotated_output_claude_batch_13R_B2_async.txt \\
         --output-table output/metadata_table_claude_batch_13R_B2_async.txt \\
@@ -332,6 +333,7 @@ def _add_template_arguments(parser: argparse.ArgumentParser) -> None:
         default=None,
         help='Path to the batch template file (default: from .env or Settings.BATCH_TEMPLATE_FILE)'
     )
+
 
 def _add_async_arguments(parser: argparse.ArgumentParser) -> None:
     """Add async processing arguments to the parser.
@@ -435,7 +437,9 @@ def _run_processor(processor: MedievalTextProcessor, args: argparse.Namespace) -
     if async_mode:
         logging.info('Using asynchronous processing mode')
         # Create progress callback
-        progress_callback = create_progress_logger(PROGRESS_LOG_INTERVAL)  # Log every 60 seconds
+        progress_callback = create_progress_logger(
+            PROGRESS_LOG_INTERVAL  # Log every 60 seconds
+        )
         # Run async processing
         return asyncio.run(processor.run_async(progress_callback))
     else:
@@ -446,7 +450,7 @@ def _run_processor(processor: MedievalTextProcessor, args: argparse.Namespace) -
 
 def _print_dry_run_success() -> None:
     """Print success message for dry run mode.
-    
+
     Logs validation success to both console and logs.
     """
     success_messages = [
@@ -458,6 +462,7 @@ def _print_dry_run_success() -> None:
     message = '\n'.join(success_messages)
     print(message)
     logging.info('Dry run validation completed successfully')
+
 
 # ------------------------------------------------------------------------------
 # Main function

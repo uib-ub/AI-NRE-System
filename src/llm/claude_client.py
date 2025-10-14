@@ -10,6 +10,7 @@ from typing import Any, ClassVar, cast
 
 import anthropic
 import tiktoken
+from anthropic import Anthropic, AsyncAnthropic
 from anthropic.types import Message
 from anthropic.types.message_create_params import MessageCreateParamsNonStreaming
 from anthropic.types.messages.batch_create_params import Request
@@ -81,9 +82,9 @@ class ClaudeClient(Client):
 
         try:
             # Initialize Synchronous client
-            self.client = anthropic.Anthropic(api_key=api_key)
+            self.client = Anthropic(api_key=api_key)
             # Initialize Asynchronous client
-            self.async_client = anthropic.AsyncAnthropic(api_key=api_key)
+            self.async_client = AsyncAnthropic(api_key=api_key)
             # Initialize tokenizer for token counting
             self.tokenizer = tiktoken.get_encoding('cl100k_base')
         except Exception as e:
@@ -252,7 +253,9 @@ class ClaudeClient(Client):
             logging.info('Prompt Token Count: %d ', token_count)
 
             payload = self._message_payload(prompt)
-            response: Message = cast(Message, self.client.messages.create(**payload))
+            response: Message = cast(
+                Message, self.client.messages.create(**payload)
+            )
 
             text = self._extract_response_text_from_message(response)
             if not text:
@@ -266,10 +269,14 @@ class ClaudeClient(Client):
         except anthropic.AuthenticationError as e:
             raise self._handle_auth_error(e, operation='single_call') from e
         except anthropic.RateLimitError as e:
-            raise self._handle_rate_limit_error(e, operation='single_call') from e
+            raise self._handle_rate_limit_error(
+                e, operation='single_call'
+            ) from e
         except anthropic.APIError as e:
             sc = getattr(e, 'status_code', None)
-            raise self._handle_api_error(e, operation='single_call', status_code=sc) from e
+            raise self._handle_api_error(
+                e, operation='single_call', status_code=sc
+            ) from e
         except Exception as e:
             raise LLMClientError(
                 f'Claude API call failed: {e}',
@@ -315,9 +322,13 @@ class ClaudeClient(Client):
             return text
 
         except anthropic.AuthenticationError as e:
-            raise self._handle_auth_error(e, operation='async_single_call') from e
+            raise self._handle_auth_error(
+                e, operation='async_single_call'
+            ) from e
         except anthropic.RateLimitError as e:
-            raise self._handle_rate_limit_error(e, operation='async_single_call') from e
+            raise self._handle_rate_limit_error(
+                e, operation='async_single_call'
+            ) from e
         except anthropic.APIError as e:
             status_code = getattr(e, 'status_code', None)
             raise self._handle_api_error(
@@ -399,8 +410,11 @@ class ClaudeClient(Client):
                 return BatchStatus.ENDED
             else:
                 # Handle any unexpected status
-                logging.warning('Unexpected batch status: %s', message_batch.processing_status)
-                
+                logging.warning(
+                    'Unexpected batch status: %s',
+                    message_batch.processing_status
+                )
+
                 return BatchStatus.ENDED
 
         except Exception as e:
@@ -475,8 +489,12 @@ class ClaudeClient(Client):
             # Fetch and process each result
             results_iter = await self.async_client.messages.batches.results(batch_id)
             async for result in results_iter:
-                custom_id: str = getattr(result, 'custom_id', 'unknown_custom_id')
-                batch_response = self._process_single_batch_result(result, custom_id, counters)
+                custom_id: str = getattr(
+                    result, 'custom_id', 'unknown_custom_id'
+                )
+                batch_response = self._process_single_batch_result(
+                    result, custom_id, counters
+                )
                 results.append(batch_response)
 
             self._log_batch_summary(batch_id, results, counters)
@@ -549,7 +567,9 @@ class ClaudeClient(Client):
             A BatchResponse object for this result.
         """
         try:
-            result_obj: MessageBatchResult | None = getattr(result, 'result', None)
+            result_obj: MessageBatchResult | None = getattr(
+                result, 'result', None
+            )
             if result_obj is None:
                 counters['other'] += 1
                 return BatchResponse(
@@ -598,7 +618,9 @@ class ClaudeClient(Client):
         # Success path: MessageBatchSucceededResult
         if result_obj.type == 'succeeded':
             counters['succeeded'] += 1
-            response_text = self._extract_response_text_from_message(result_obj.message)
+            response_text = self._extract_response_text_from_message(
+                result_obj.message
+            )
             return BatchResponse(
                 custom_id=custom_id,
                 response_text=response_text,
@@ -679,7 +701,7 @@ class ClaudeClient(Client):
     @staticmethod
     def _extract_response_text_from_message(msg: Message) -> str:
         """Extract plain text from an Anthropic Message object.
-        
+
         Args:
             msg: Anthropic Message object from a successful batch result.
 
@@ -689,7 +711,7 @@ class ClaudeClient(Client):
         # Message.content is a list of content blocks
         # Collect text from blocks with type == "text"
         text_parts: list[str] = []
-        
+
         for block in msg.content:
             # Each block has a 'type' field (Literal type from SDK)
             # Only consume text blocks; ignore tool_use, thinking, and other blocks
@@ -697,7 +719,7 @@ class ClaudeClient(Client):
                 # Text blocks have a 'text' attribute
                 if hasattr(block, 'text') and block.text:
                     text_parts.append(block.text)
-        
+
         return ''.join(text_parts)
 
     @staticmethod
@@ -712,13 +734,13 @@ class ClaudeClient(Client):
         """
         # MessageBatchErroredResult has an 'error' attribute of type ErrorResponse
         error = errored_result.error
-        
+
         # Try to extract message from the error response
         # ErrorResponse has an 'error' attribute of type ErrorObject, which is an Union type,
         # so use defensive access
         if hasattr(error, 'error') and hasattr(error.error, 'message'):
-            return str(error.error.message)  
-        
+            return str(error.error.message)
+
         # Fallback to string representation
         return f'Batch request failed: {error}'
 
@@ -773,7 +795,7 @@ class ClaudeClient(Client):
             ValueError: If poll_interval is not positive.
         """
         if poll_interval is None:
-            poll_interval = self.DEFAULT_POLL_INTERVAL # base class constant
+            poll_interval = self.DEFAULT_POLL_INTERVAL  # base class constant
 
         if poll_interval <= 0:
             raise ValueError('poll_interval must be > 0.')
@@ -788,7 +810,9 @@ class ClaudeClient(Client):
 
                 elapsed_time = time.monotonic() - start_time
                 # Defensive extraction/typing
-                req_counts: dict[str, int] = batch_info.get('request_counts') or {}
+                req_counts: dict[str, int] = batch_info.get(
+                    'request_counts'
+                ) or {}
 
                 created_at = str(batch_info.get('created_at', ''))
                 expires_at = str(batch_info.get('expires_at', ''))
@@ -806,7 +830,10 @@ class ClaudeClient(Client):
 
                 # Check for terminal state
                 if status == BatchStatus.ENDED:
-                    logging.info('Batch %s reached terminal state: %s', batch_id, status.value)
+                    logging.info(
+                        'Batch %s reached terminal state: %s', 
+                        batch_id, status.value
+                    )
                     # break
                     return
 
@@ -814,7 +841,10 @@ class ClaudeClient(Client):
                 await asyncio.sleep(poll_interval)
 
             except Exception as e:
-                logging.error('Error monitoring batch %s: %s', batch_id, e, exc_info=True)
+                logging.error(
+                    'Error monitoring batch %s: %s',
+                    batch_id, e, exc_info=True
+                )
                 # Emit a final ended state so the caller can unwind cleanly.
                 yield BatchProgress(
                     batch_num=batch_num,

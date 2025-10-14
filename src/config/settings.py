@@ -21,7 +21,7 @@ class Settings:
 
     Loads configuration from environment variables with improved validation
     and type safety. Supports client-specific configuration validation.
-    
+
     All configuration values are class-level attributes that can be accessed
     without instantiating the class.
 
@@ -50,7 +50,9 @@ class Settings:
     DEFAULT_CACHE_DIR: ClassVar[str] = '.cache_llm'
 
     # Supported client types
-    SUPPORTED_CLIENTS: ClassVar[frozenset[str]] = frozenset({'claude', 'ollama'})
+    SUPPORTED_CLIENTS: ClassVar[frozenset[str]] = frozenset(
+        {'claude', 'ollama'}
+    )
 
     # Flag to track initialization
     _initialized: ClassVar[bool] = False
@@ -97,7 +99,7 @@ class Settings:
 
         try:
             # Load environment variables from .env file
-            load_dotenv(override=reload_env)   
+            load_dotenv(override=reload_env)
 
             # Load configuration from environment
             cls._load_from_environment()
@@ -110,7 +112,9 @@ class Settings:
             logging.info('Configuration initialized successfully')
 
         except OSError as e:
-            raise ConfigError(f'Failed to initialize configuration: {e}') from e
+            raise ConfigError(
+                f'Failed to initialize configuration: {e}'
+            ) from e
 
     @classmethod
     def _load_from_environment(cls) -> None:
@@ -126,13 +130,23 @@ class Settings:
 
         # File I/O Configuration
         cls.INPUT_FILE = os.getenv('INPUT_FILE', cls.DEFAULT_INPUT_FILE)
-        cls.OUTPUT_TEXT_FILE = os.getenv('OUTPUT_TEXT_FILE', cls.DEFAULT_OUTPUT_TEXT_FILE)
-        cls.OUTPUT_TABLE_FILE = os.getenv('OUTPUT_TABLE_FILE', cls.DEFAULT_OUTPUT_TABLE_FILE)
-        cls.OUTPUT_STATS_FILE = os.getenv('OUTPUT_STATS_FILE', cls.DEFAULT_OUTPUT_STATS_FILE)
+        cls.OUTPUT_TEXT_FILE = os.getenv(
+            'OUTPUT_TEXT_FILE', cls.DEFAULT_OUTPUT_TEXT_FILE
+        )
+        cls.OUTPUT_TABLE_FILE = os.getenv(
+            'OUTPUT_TABLE_FILE', cls.DEFAULT_OUTPUT_TABLE_FILE
+        )
+        cls.OUTPUT_STATS_FILE = os.getenv(
+            'OUTPUT_STATS_FILE', cls.DEFAULT_OUTPUT_STATS_FILE
+        )
 
         # Template Configuration
-        cls.PROMPT_TEMPLATE_FILE = os.getenv('PROMPT_TEMPLATE_FILE', cls.DEFAULT_PROMPT_TEMPLATE_FILE)
-        cls.BATCH_TEMPLATE_FILE = os.getenv('BATCH_TEMPLATE_FILE', cls.DEFAULT_BATCH_TEMPLATE_FILE)
+        cls.PROMPT_TEMPLATE_FILE = os.getenv(
+            'PROMPT_TEMPLATE_FILE', cls.DEFAULT_PROMPT_TEMPLATE_FILE
+        )
+        cls.BATCH_TEMPLATE_FILE = os.getenv(
+            'BATCH_TEMPLATE_FILE', cls.DEFAULT_BATCH_TEMPLATE_FILE
+        )
 
         # Cache Configuration
         cache_dir_str = os.getenv('CACHE_DIR', cls.DEFAULT_CACHE_DIR)
@@ -149,7 +163,9 @@ class Settings:
             cls.CACHE_DIR.mkdir(parents=True, exist_ok=True)
             logging.info('Cache directory created: %s', cls.CACHE_DIR)
         except OSError as e:
-            logging.error('Failed to create cache directory %s: %s', cls.CACHE_DIR, e)
+            logging.error(
+                'Failed to create cache directory %s: %s', cls.CACHE_DIR, e
+            )
             raise
 
     @classmethod
@@ -219,7 +235,7 @@ class Settings:
                 'OPENWEBUI_TOKEN': cls.OPENWEBUI_TOKEN,
                 'OPENWEBUI_ENDPOINT': cls.OPENWEBUI_ENDPOINT,
             }
-        
+
         # This should never be reached due to check above, but for type safety
         raise ConfigError(f'Unsupported client type: {client_type}')
 
@@ -241,9 +257,9 @@ class Settings:
     @classmethod
     def reset(cls) -> None:
         """Reset settings to defaults.
-        
+
         Useful for testing. Clears all configuration and resets initialization flag.
-        
+
         Example:
             >>> Settings.initialize()
             >>> Settings.reset()

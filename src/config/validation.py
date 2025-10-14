@@ -8,9 +8,9 @@ from pathlib import Path
 from typing import ClassVar
 
 from .exceptions import (
-    ConfigError, 
-    ConfigValidationError, 
-    DirectoryValidationError, 
+    ConfigError,
+    ConfigValidationError,
+    DirectoryValidationError,
     FileValidationError
 )
 from .settings import Settings
@@ -20,7 +20,9 @@ class ConfigValidator:
     """Validates configuration settings for the AI NER System."""
 
     # Class constants for better maintainability and type safety
-    SUPPORTED_CLIENT_TYPES: ClassVar[frozenset[str]] = frozenset({'claude', 'ollama'})
+    SUPPORTED_CLIENT_TYPES: ClassVar[frozenset[str]] = frozenset(
+        {'claude', 'ollama'}
+    )
     TEMPLATE_FILES: ClassVar[dict[str, str]] = {
         'PROMPT_TEMPLATE_FILE': 'prompt template',
         'BATCH_TEMPLATE_FILE': 'batch template',
@@ -47,7 +49,9 @@ class ConfigValidator:
 
         client_type = client_type.strip().lower()
         if client_type not in ConfigValidator.SUPPORTED_CLIENT_TYPES:
-            supported_types = ', '.join(sorted(ConfigValidator.SUPPORTED_CLIENT_TYPES))
+            supported_types = ', '.join(
+                sorted(ConfigValidator.SUPPORTED_CLIENT_TYPES)
+            )
             raise ConfigValidationError(
                 f'Unsupported client type: {client_type}. Supported types: {supported_types}.'
             )
@@ -76,11 +80,12 @@ class ConfigValidator:
                     missing_keys=missing_configs
                 )
 
-            logging.info('Configuration validation passed for %s client', client_type)
+            logging.info(
+                'Configuration validation passed for %s client', client_type
+            )
 
         except ConfigError as e:
             raise ConfigValidationError(str(e)) from e
-
 
     @staticmethod
     def validate_file_paths() -> None:
@@ -95,8 +100,9 @@ class ConfigValidator:
             ConfigValidator._validate_output_paths_writable()
             logging.info('File path validation completed successfully')
         except (OSError, ConfigError, FileValidationError, DirectoryValidationError) as e:
-            raise ConfigValidationError(f'File path validation failed: {e}') from e
-
+            raise ConfigValidationError(
+                f'File path validation failed: {e}'
+            ) from e
 
     @staticmethod
     def _validate_input_file() -> None:
@@ -107,7 +113,7 @@ class ConfigValidator:
         """
         if not Settings.INPUT_FILE or not Settings.INPUT_FILE.strip():
             logging.warning('INPUT_FILE not configured, skipping validation')
-            return # Optional validation, will be caught by required config check
+            return  # Optional validation, will be caught by required config check
 
         # Validate input file exists
         input_path = Path(Settings.INPUT_FILE)
@@ -145,19 +151,23 @@ class ConfigValidator:
 
         for config_key, file_path in template_configs.items():
             if not file_path or not file_path.strip():
-                logging.debug('Template file %s not configured, skipping', config_key)
-                continue # Optional files
+                logging.debug(
+                    'Template file %s not configured, skipping', config_key
+                )
+                continue  # Optional files
 
             template_path = Path(file_path)
-            file_description = ConfigValidator.TEMPLATE_FILES.get(config_key, 'Template file')
+            file_description = ConfigValidator.TEMPLATE_FILES.get(
+                config_key, 'Template file'
+            )
             ConfigValidator._validate_file_exists_and_readable(
                 template_path, config_key, file_description
             )
 
     @staticmethod
     def _validate_file_exists_and_readable(
-        file_path: Path, 
-        config_key: str, 
+        file_path: Path,
+        config_key: str,
         file_description: str
     ) -> None:
         """Validate that a file exists, is a file, and can be opened for reading.
@@ -209,18 +219,22 @@ class ConfigValidator:
 
         for config_key, file_path in output_configs.items():
             if not file_path:
-                logging.debug('Output file %s not configured, skipping', config_key)
+                logging.debug(
+                    'Output file %s not configured, skipping', config_key
+                )
                 continue
             output_path = Path(file_path)
-            file_description = ConfigValidator.OUTPUT_FILES.get(config_key, 'output file')
+            file_description = ConfigValidator.OUTPUT_FILES.get(
+                config_key, 'output file'
+            )
             ConfigValidator._validate_output_directory_writable(
                 output_path, config_key, file_description
             )
 
     @staticmethod
     def _validate_output_directory_writable(
-        output_path: Path, 
-        config_key: str, 
+        output_path: Path,
+        config_key: str,
         file_description: str
     ) -> None:
         """Validate that the output directory exists, is a directory, and is writable.
@@ -282,11 +296,13 @@ class ConfigValidator:
             if client_type:
                 ConfigValidator.validate_for_client(client_type)
 
-            logging.info('Comprehensive configuration validation completed successfully')
+            logging.info(
+                'Comprehensive configuration validation completed successfully'
+            )
         except (
-            ConfigError, 
-            ConfigValidationError, 
-            FileValidationError, 
+            ConfigError,
+            ConfigValidationError,
+            FileValidationError,
             DirectoryValidationError
         ) as e:
             logging.error('Configuration validation failed: %s', e)
@@ -306,7 +322,7 @@ class ConfigValidator:
             ConfigValidator.validate_all(client_type)
             return True
         except (
-            ConfigError, 
+            ConfigError,
             ConfigValidationError,
             FileValidationError,
             DirectoryValidationError,
@@ -316,5 +332,7 @@ class ConfigValidator:
             return False
         except Exception as e:
             # Unexpected errors should be logged
-            logging.error('Unexpected error during validation: %s', e, exc_info=True)
+            logging.error(
+                'Unexpected error during validation: %s', e, exc_info=True
+            )
             return False

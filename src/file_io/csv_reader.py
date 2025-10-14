@@ -109,7 +109,9 @@ class CSVReader:
                     try:
                         # skip empty rows but log them
                         if self._is_empty_row(row):
-                            logging.warning('Skipping empty row at line %d', row_number)
+                            logging.warning(
+                                'Skipping empty row at line %d', row_number
+                            )
                             continue
 
                         # Validate row data
@@ -127,7 +129,10 @@ class CSVReader:
                             line_number=row_number
                         ) from e
 
-                logging.info('Successfully streamed %d records from: %s', record_count, self.file_path)
+                logging.info(
+                    'Successfully streamed %d records from: %s',
+                    record_count, self.file_path
+                )
 
         except UnicodeDecodeError as e:
             raise EncodingError(
