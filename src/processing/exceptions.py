@@ -7,18 +7,19 @@ processing pipeline.
 
 from __future__ import annotations
 
+
 class ProcessingError(Exception):
     """Base exception for processing-related errors.
-    
+
     This is the base class for all processing exceptions in the AI NER system.
     It provides common functionality for associating errors with specific records
     via the brevid identifier.
     """
 
     def __init__(
-        self, 
-        message: str, 
-        *, 
+        self,
+        message: str,
+        *,
         brevid: str | None = None,
         operation: str | None = None,
     ) -> None:
@@ -36,7 +37,7 @@ class ProcessingError(Exception):
 
 class ValidationError(ProcessingError):
     """Exception raised when data validation fails.
-    
+
     This exception is raised when record data does not meet validation
     requirements, such as missing required fields or invalid field values.
     """
@@ -63,7 +64,7 @@ class ValidationError(ProcessingError):
 
 class LLMResponseError(ProcessingError):
     """Exception raised when LLM response parsing fails.
-    
+
     This exception is raised when there are issues with the LLM response,
     such as unexpected format, empty responses, or API errors.
     """
@@ -90,7 +91,7 @@ class LLMResponseError(ProcessingError):
 
 class ParseError(ProcessingError):
     """Exception raised when parsing LLM response fails.
-    
+
     This exception is raised specifically when parsing structured data
     (e.g., JSON) from LLM responses fails.
     """
@@ -120,10 +121,11 @@ class ParseError(ProcessingError):
 
 class BatchProcessingError(ProcessingError):
     """Exception for batch processing failures.
-    
+
     This exception is raised when batch processing operations fail,
     potentially affecting multiple records.
     """
+
     def __init__(
         self,
         message: str,

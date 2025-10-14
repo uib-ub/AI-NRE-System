@@ -10,9 +10,10 @@ from typing import ClassVar
 
 from .exceptions import ValidationError
 
+
 class RecordValidator:
     """Validates record data for processing.
-    
+
     This validator ensures that records contain all required fields and
     have valid data before being processed by LLM services.
 
@@ -21,7 +22,9 @@ class RecordValidator:
             and non-empty in each record.
     """
 
-    REQUIRED_FIELDS: ClassVar[frozenset[str]] = frozenset({'Bindnr', 'Brevid', 'Tekst'})
+    REQUIRED_FIELDS: ClassVar[frozenset[str]] = frozenset(
+        {'Bindnr', 'Brevid', 'Tekst'}
+    )
 
     @staticmethod
     def _is_missing_or_blank(value: object) -> bool:
@@ -34,7 +37,7 @@ class RecordValidator:
             True if the value is None, not a string, or a blank string.
         """
         if not isinstance(value, str):
-            return True 
+            return True
         return not value.strip()
 
     @classmethod
@@ -103,7 +106,7 @@ class RecordValidator:
                 # Extract brevid for error reporting
                 brevid_raw = record.get('Brevid')
                 brevid = brevid_raw.strip() if isinstance(brevid_raw, str) else 'unknown'
-                
+
                 raise ValidationError(
                     f'Validation failed at index {i}: {e}',
                     brevid=brevid,

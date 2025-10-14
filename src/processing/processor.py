@@ -23,9 +23,10 @@ from .validator import RecordValidator
 from .parser import ResponseParser
 from .exceptions import ProcessingError, BatchProcessingError
 
+
 class RecordProcessor:
     """Main processor for handling medieval text records through LLM services.
-    
+
     This processor provides both synchronous and asynchronous methods for
     processing individual records and batches through LLM services.
     """
@@ -51,7 +52,7 @@ class RecordProcessor:
     # Synchronous single-record processing
     # ---------------------------------------------------------------------
     def process_record(
-        self, 
+        self,
         record: dict[str, str]
     ) -> tuple[list[str], list[str]]:
         """Process a single record through the LLM synchronously.
@@ -79,26 +80,45 @@ class RecordProcessor:
 
             # Call LLM
             raw_response = self._call_llm(brevid, prompt)
-            logging.debug('--- RAW RESPONSE for Brevid %s ---\n%s', brevid, raw_response)
+            logging.debug('--- RAW RESPONSE for Brevid %s ---\n%s',
+                          brevid, raw_response)
 
             # Parse response
-            annotated_text, entities = ResponseParser.parse_llm_response(brevid, raw_response)
+            annotated_text, entities = ResponseParser.parse_llm_response(
+                brevid, raw_response)
 
             # DEBUG: annotated text and entities
-            logging.debug('--- Annotated text for Brevid %s ---\n%s', brevid, annotated_text)
-            logging.debug('--- Entities for Brevid %s ---\n%s', brevid, entities)
+            logging.debug(
+                '--- Annotated text for Brevid %s ---\n%s',
+                brevid, annotated_text
+            )
+            logging.debug(
+                '--- Entities for Brevid %s ---\n%s',
+                brevid, entities
+            )
 
             # Build output records
-            annotated_record = self._build_annotated_record(bindnr, brevid, annotated_text)
+            annotated_record = self._build_annotated_record(
+                bindnr, brevid, annotated_text
+            )
             metadata_record = self._build_metadata_record(entities, brevid)
 
-            logging.info('--- Annotated record for Brevid %s ---\n%s', brevid, annotated_record)
-            logging.info('--- Metadata for Brevid %s ---\n%s', brevid, metadata_record)
+            logging.info(
+                '--- Annotated record for Brevid %s ---\n%s',
+                brevid, annotated_record
+            )
+            logging.info(
+                '--- Metadata for Brevid %s ---\n%s',
+                brevid, metadata_record
+            )
 
             return [annotated_record], metadata_record
 
         except Exception as e:
-            logging.error('Error during LLM call for Brevid %s: %s', brevid, e, exc_info=True)
+            logging.error(
+                'Error during LLM call for Brevid %s: %s',
+                brevid, e, exc_info=True
+            )
             raise ProcessingError(
                 f'Failed to process record with Brevid {brevid}: {e}',
                 brevid=brevid,
@@ -109,7 +129,7 @@ class RecordProcessor:
     # Synchronous batch processing (single LLM call)
     # ---------------------------------------------------------------------
     def process_batch(
-        self, 
+        self,
         records: list[dict[str, str]]
     ) -> tuple[list[str], list[str]]:
         """Process multiple records in a single LLM call synchronously.
@@ -142,22 +162,33 @@ class RecordProcessor:
 
             # Call LLM with batch prompt
             raw_response = self._call_llm(batch_id, batch_prompt)
-            logging.debug('Received batch response (length: %d)', len(raw_response))
-            logging.debug('--- RAW RESPONSE for batch %s ---\n%s', batch_id, raw_response)
+            logging.debug(
+                'Received batch response (length: %d)',
+                len(raw_response)
+            )
+            logging.debug(
+                '--- RAW RESPONSE for batch %s ---\n%s',
+                batch_id, raw_response
+            )
 
             # Parse batch response
-            annotated_records, metadata_records = ResponseParser.parse_batch_response(records, raw_response)
+            annotated_records, metadata_records = ResponseParser.parse_batch_response(
+                records, raw_response
+            )
 
             logging.info(
                 'Successfully processed batch of %d records: %d annotations, %d metadata',
-                len(records), 
-                len(annotated_records), 
+                len(records),
+                len(annotated_records),
                 len(metadata_records),
             )
             return annotated_records, metadata_records
 
         except Exception as e:
-            logging.error('Error during batch processing: %s', e, exc_info=True)
+            logging.error(
+                'Error during batch processing: %s',
+                e, exc_info=True
+            )
             raise ProcessingError(
                 f'Failed to process batch: {e}',
                 operation='process_batch',
@@ -167,7 +198,7 @@ class RecordProcessor:
     # Asynchronous single-record processing
     # ---------------------------------------------------------------------
     async def process_record_async(
-        self, 
+        self,
         record: dict[str, str]
     ) -> ProcessingResult:
         """Process a single record asynchronously
@@ -194,10 +225,14 @@ class RecordProcessor:
             response = await self.llm_client.call_async(prompt)
 
             # Parse response
-            annotated_text, entities = ResponseParser.parse_llm_response(brevid, response)
+            annotated_text, entities = ResponseParser.parse_llm_response(
+                brevid, response
+            )
 
             # Build annotated text for result
-            formatted_text = self._build_annotated_record(bindnr, brevid, annotated_text)
+            formatted_text = self._build_annotated_record(
+                bindnr, brevid, annotated_text
+            )
 
             processing_time = time.monotonic() - start_time
 
@@ -253,7 +288,9 @@ class RecordProcessor:
 
         if not self.llm_client.supports_async_batch():
             # Fallback to individual async processing
-            logging.info('LLM client does not support batch async, falling back to individual processing')
+            logging.info(
+                'LLM client does not support batch async, falling back to individual processing'
+            )
             return await self._process_individual_async(records, batch_num, progress_callback)
 
         start_time = time.monotonic()
@@ -265,7 +302,7 @@ class RecordProcessor:
             for i, record in enumerate(records):
                 try:
                     RecordValidator.validate_record(record)
-                    prompt = self.prompt_builder.build(record) # one record prompt
+                    prompt = self.prompt_builder.build(record)  # one record prompt
 
                     bindnr = record.get('Bindnr', 'unknown')
                     brevid = record.get('Brevid', 'unknown')
@@ -293,11 +330,14 @@ class RecordProcessor:
 
             if not batch_requests:
                 raise BatchProcessingError(
-                    'No valid requests to process', 
+                    'No valid requests to process',
                     operation='prepare_batch'
                 )
 
-            logging.info('Starting async batch processing of %d records', len(batch_requests))
+            logging.info(
+                'Starting async batch processing of %d records', 
+                len(batch_requests)
+            )
 
             # Processing batch using LLM client
             batch_responses = await self.llm_client.process_batch_requests_async(
@@ -324,7 +364,7 @@ class RecordProcessor:
 
             return BatchProcessingResult(
                 batch_id=f'batch_{batch_num}',
-                results=results, # Results in original order
+                results=results,  # Results in original order
                 total_processing_time=total_processing_time,
                 successful_count=successful_count,
                 failed_count=failed_count
@@ -344,7 +384,7 @@ class RecordProcessor:
             )
 
     # ---------------------------------------------------------------------
-    # Fallback async 
+    # Fallback async
     # ---------------------------------------------------------------------
     async def _process_individual_async(
             self,
@@ -358,9 +398,9 @@ class RecordProcessor:
             records: List of record dictionaries to process.
             batch_num: A sequential batch number for display/IDs.
             progress_callback: Optional callback (currently unused in fallback).
-            
+
         Returns:
-            A BatchProcessingResult containing all processed records. 
+            A BatchProcessingResult containing all processed records.
         """
         start_time = time.monotonic()
         batch_id = f'batch_{batch_num}_individual'
@@ -440,7 +480,10 @@ class RecordProcessor:
                 index = self._extract_index_from_custom_id(response.custom_id)
                 response_map[index] = response
             except (ValueError, IndexError):
-                logging.warning('Could not parse index from custom_id: %s', response.custom_id)
+                logging.warning(
+                    'Could not parse index from custom_id: %s', 
+                    response.custom_id
+                )
 
         # Process responses in original order
         for i, record in enumerate(records):
@@ -475,15 +518,17 @@ class RecordProcessor:
                 )
                 continue
 
-            # Success path: 
+            # Success path:
             try:
                 annotated_text, entities = ResponseParser.parse_llm_response(
-                    brevid, 
+                    brevid,
                     response.response_text,
                 )
 
                 # formatted_text = f'{bindnr};{brevid};{annotated_text}'
-                formatted_text = self._build_annotated_record(bindnr, brevid, annotated_text)
+                formatted_text = self._build_annotated_record(
+                    bindnr, brevid, annotated_text
+                )
 
                 results.append(
                     ProcessingResult(
@@ -530,7 +575,7 @@ class RecordProcessor:
             raw_response = self.llm_client.call(prompt)
 
             if not raw_response or raw_response.strip() in [
-                'Claude API call failed', 
+                'Claude API call failed',
                 'Ollama API call failed',
             ]:
                 raise ProcessingError(
@@ -538,7 +583,10 @@ class RecordProcessor:
                     operation='call_llm'
                 )
 
-            logging.debug('Received LLM response for %s (length: %d)', identifier, len(raw_response))
+            logging.debug(
+                'Received LLM response for %s (length: %d)',
+                identifier, len(raw_response)
+            )
             return raw_response
 
         except Exception as e:
@@ -576,7 +624,10 @@ class RecordProcessor:
             List of metadata record strings.
         """
         metadata_record = [entity.to_csv_row() for entity in entities]
-        logging.debug('Built %d metadata records for Brevid %s', len(metadata_record), brevid)
+        logging.debug(
+            'Built %d metadata records for Brevid %s',
+            len(metadata_record), brevid
+        )
         return metadata_record
 
     @staticmethod
@@ -647,6 +698,7 @@ class RecordProcessor:
             raise ValueError(
                 f'Could not extract index from custom_id: {custom_id}'
             ) from e
+
 
 # -------------------------------------------------------------------------
 # Utility functions for batch processing monitoring

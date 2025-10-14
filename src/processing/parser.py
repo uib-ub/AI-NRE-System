@@ -15,11 +15,12 @@ from typing import Any, cast, ClassVar
 from .entities import EntityRecord
 from .exceptions import LLMResponseError, ParseError
 
+
 class ResponseParser:
     """Parses LLM responses into structured data.
-    
+
     This parser handles both single-record and batch responses from LLM services,
-    extracting annotated text and entity information. 
+    extracting annotated text and entity information.
     """
 
     # Class constants for markers
@@ -31,7 +32,7 @@ class ResponseParser:
 
     @staticmethod
     def parse_llm_response(
-        brevid: str, 
+        brevid: str,
         raw_response: str
     ) -> tuple[str, list[EntityRecord]]:
         """Parse the raw LLM response into annotated text and entities.
@@ -60,13 +61,20 @@ class ResponseParser:
                 pre, post = raw_response.split(ResponseParser.JSON_MARKER, 1)
                 annotated_text, json_text = pre.strip(), post.strip()
             else:
-                logging.warning('No JSON marker found in response, for Brevid=%s', brevid)
-                annotated_text, json_text = raw_response.strip(), '{"entities":[]}'
+                logging.warning(
+                    'No JSON marker found in response, for Brevid=%s',
+                    brevid
+                )
+                annotated_text, json_text = raw_response.strip(
+                ), '{"entities":[]}'
 
             # Parse entities from JSON
             entities = ResponseParser.parse_entities_json(json_text, brevid)
 
-            logging.debug('Parsed response for brevid=%s: %d entities', brevid, len(entities))
+            logging.debug(
+                'Parsed response for brevid=%s: %d entities',
+                brevid, len(entities)
+            )
 
             return annotated_text, entities
 
@@ -83,7 +91,7 @@ class ResponseParser:
 
     @staticmethod
     def parse_entities_json(
-        json_text: str, 
+        json_text: str,
         brevid: str
     ) -> list[EntityRecord]:
         """Parse the JSON entities section from LLM response.
@@ -114,7 +122,8 @@ class ResponseParser:
                     brevid=brevid,
                     operation='parse_entities_json',
                     parse_type='json',
-                    content=json_text[:ResponseParser._MAX_SNIPPET]   # Truncate for error message
+                    # Truncate for error message
+                    content=json_text[:ResponseParser._MAX_SNIPPET]
                 ) from e
 
             # Validate data structure
@@ -124,7 +133,8 @@ class ResponseParser:
                     brevid=brevid,
                     operation='parse_entities_json',
                     parse_type='json_structure',
-                    content=json_text[:ResponseParser._MAX_SNIPPET]  # Truncate for error message
+                    # Truncate for error message
+                    content=json_text[:ResponseParser._MAX_SNIPPET]
                 )
 
             # Cast to dict for type checker (runtime check done above)
@@ -132,7 +142,7 @@ class ResponseParser:
 
             # Extract entities list with default empty list
             entities_data: Any = data.get('entities', [])
-            
+
             # Validate it's a list (could be different type if JSON is malformed)
             if not isinstance(entities_data, list):
                 raise ParseError(
@@ -141,36 +151,49 @@ class ResponseParser:
                     operation='parse_entities_json',
                     parse_type='entities_structure',
                 )
-            
+
             # Type narrow after validation
             entities_data = cast(list[Any], entities_data)
 
-            logging.debug('Parsed %d entities for Brevid=%s', len(entities_data), brevid)
-
+            logging.debug(
+                'Parsed %d entities for Brevid=%s',
+                len(entities_data), brevid
+            )
 
             # Create EntityRecord objects
             entities: list[EntityRecord] = []
             failed_count = 0
             for entity_data in entities_data:
                 try:
-                    entity = EntityRecord.create_entity_record(entity_data, brevid)
-                    logging.info('Created entity record for Brevid=%s: %s', brevid, entity)
+                    entity = EntityRecord.create_entity_record(
+                        entity_data, brevid
+                    )
+                    logging.info(
+                        'Created entity record for Brevid=%s: %s',
+                        brevid, entity
+                    )
                     entities.append(entity)
                 except Exception as e:
                     failed_count += 1
-                    logging.warning('Invalid entity data for Brevid=%s: %s', brevid, e)
+                    logging.warning(
+                        'Invalid entity data for Brevid=%s: %s',
+                        brevid, e
+                    )
                     continue
-            
+
             if failed_count > 0:
                 logging.warning(
                     'Parsed %d/%d valid entities for Brevid=%s (%d entities failed).',
-                    len(entities), 
-                    len(entities_data), 
-                    brevid, 
+                    len(entities),
+                    len(entities_data),
+                    brevid,
                     failed_count
                 )
             else:
-                logging.info('Parsed all %d entities successfully for Brevid=%s', len(entities), brevid)
+                logging.info(
+                    'Parsed all %d entities successfully for Brevid=%s',
+                    len(entities), brevid
+                )
 
             return entities
 
@@ -182,7 +205,8 @@ class ResponseParser:
                 brevid=brevid,
                 operation='parse_entities_json',
                 parse_type='parse_json',
-                content=json_text[:ResponseParser._MAX_SNIPPET]  # Truncate for error message
+                # Truncate for error message
+                content=json_text[:ResponseParser._MAX_SNIPPET]
             ) from e
 
     @staticmethod
@@ -217,7 +241,7 @@ class ResponseParser:
             if len(record_sections) != len(records):
                 logging.warning(
                     'Expected %d record sections, found %d. Processing available sections.',
-                    len(records), 
+                    len(records),
                     len(record_sections)
                 )
 
@@ -228,7 +252,7 @@ class ResponseParser:
                 if i >= len(records):
                     logging.warning(
                         'More sections (%d) than records (%d). Stopping processing.',
-                        len(record_sections), 
+                        len(record_sections),
                         len(records)
                     )
                     break
@@ -240,40 +264,63 @@ class ResponseParser:
                     bindnr = record.get('Bindnr', 'unknown')
                     brevid = record.get('Brevid', 'unknown')
 
-                    logging.debug('Processing record, Index=%d: Bindnr=%s, Brevid=%s', i, bindnr, brevid)
+                    logging.debug(
+                        'Processing record, Index=%d: Bindnr=%s, Brevid=%s',
+                        i, bindnr, brevid
+                    )
 
                     # Extract result content (after "RESULT:")
                     if ResponseParser.RESULT_MARKER in section:
-                        logging.debug('Found RESULT marker in section for Brevid %s and record index %d', brevid, i)
-                        result_content = section.split(ResponseParser.RESULT_MARKER, 1)[1].strip()
+                        logging.debug(
+                            'Found RESULT marker in section for Brevid %s and record index %d', 
+                            brevid, i
+                        )
+                        result_content = section.split(
+                            ResponseParser.RESULT_MARKER, 1)[1].strip()
                     else:
-                        logging.warning('No RESULT marker found in section for Brevid %s and record index %d', brevid, i)
+                        logging.warning(
+                            'No RESULT marker found in section for Brevid %s and record index %d',
+                            brevid, i
+                        )
                         result_content = section.strip()
 
                     # Parse as single record response
-                    annotated_text, entities = ResponseParser.parse_llm_response(brevid, result_content)
+                    annotated_text, entities = ResponseParser.parse_llm_response(
+                        brevid, result_content
+                    )
 
                     # Build output records using CSV writer
-                    annotated_record = ResponseParser._format_csv_row(bindnr, brevid, annotated_text)
-                    logging.info('--- Annotated record for Brevid %s ---\n%s', brevid, annotated_record)
+                    annotated_record = ResponseParser._format_csv_row(
+                        bindnr, brevid, annotated_text
+                    )
+                    logging.info(
+                        '--- Annotated record for Brevid %s ---\n%s',
+                        brevid, annotated_record
+                    )
                     all_annotated_records.append(annotated_record)
 
                     # Add entity metadata records
                     for entity in entities:
                         metadata_record = entity.to_csv_row()
-                        logging.info('--- Metadata for Brevid %s ---\n%s', brevid, metadata_record)
+                        logging.info(
+                            '--- Metadata for Brevid %s ---\n%s',
+                            brevid, metadata_record
+                        )
                         all_metadata_records.append(metadata_record)
 
                     logging.info(
                         'Parsed record %d/%d successfully for Brevid=%s: %d entities',
-                        i + 1, 
-                        len(records), 
-                        brevid, 
+                        i + 1,
+                        len(records),
+                        brevid,
                         len(entities),
                     )
 
                 except Exception as e:
-                    logging.error('Error parsing record %d in batch: %s', i + 1, e, exc_info=True)
+                    logging.error(
+                        'Error parsing record %d in batch: %s',
+                        i + 1, e, exc_info=True
+                    )
                     # Add fallback record to maintain order
                     fallback_record = ResponseParser._format_csv_row(
                         record.get('Bindnr', 'unknown'),
@@ -285,7 +332,10 @@ class ResponseParser:
             return all_annotated_records, all_metadata_records
 
         except Exception as e:
-            logging.error(f'Critical error parsing batch response: {e}', exc_info=True)
+            logging.error(
+                f'Critical error parsing batch response: {e}',
+                exc_info=True
+            )
             # Return original records as fallback
             return ResponseParser._create_fallback_records(records)
 

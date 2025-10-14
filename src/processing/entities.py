@@ -13,6 +13,7 @@ from typing import Any, ClassVar
 
 from .exceptions import ValidationError
 
+
 @dataclass
 class EntityRecord:
     """Data class representing an entity record extracted from medieval text by LLM response.
@@ -28,7 +29,9 @@ class EntityRecord:
         language: Language code (ISO 639-3) (e.g., "lat", "non").
     """
 
-    ALLOWED_GENDERS: ClassVar[frozenset[str]] = frozenset({'Male', 'Female', 'N/A'})
+    ALLOWED_GENDERS: ClassVar[frozenset[str]] = frozenset(
+        {'Male', 'Female', 'N/A'}
+    )
 
     name: str
     entity_type: str
@@ -68,7 +71,7 @@ class EntityRecord:
                     brevid=self.brevid,
                     operation='entity_validation',
                 )
-        
+
         # order must be non-negative integer.
         if self.order < 0:
             raise ValidationError(
@@ -94,21 +97,21 @@ class EntityRecord:
         buf = io.StringIO()
         writer = csv.writer(buf, delimiter=';', quoting=csv.QUOTE_MINIMAL)
         writer.writerow([
-            self.name, 
+            self.name,
             self.entity_type,
-            self.preposition, 
+            self.preposition,
             self.order,
-            self.brevid, 
-            self.description, 
-            self.gender, 
+            self.brevid,
+            self.description,
+            self.gender,
             self.language,
         ])
         return buf.getvalue().rstrip('\r\n')
 
     @classmethod
     def create_entity_record(
-        cls, 
-        entity_data: dict[str, Any], 
+        cls,
+        entity_data: dict[str, Any],
         brevid: str
     ) -> EntityRecord:
         """Create an EntityRecord from dictionary data with validation.
@@ -129,7 +132,7 @@ class EntityRecord:
             An instance of EntityRecord.
 
         Raises:
-            ValidationError: If required fields are missing, invalid, 
+            ValidationError: If required fields are missing, invalid,
             or type conversion fails.
         """
         try:
@@ -186,7 +189,8 @@ class ProcessingResult:
     record_id: str
     brevid: str
     annotated_text: str = ''
-    entities: list[EntityRecord] = field(default_factory=lambda: [])  # Creates NEW list for each instance
+    # Creates NEW list for each instance
+    entities: list[EntityRecord] = field(default_factory=lambda: [])
     processing_time: float = 0.0
     success: bool = True
     error_message: str | None = None
@@ -236,7 +240,9 @@ class BatchProcessingResult:
         batch_info: Additional batch information from the API.
     """
     batch_id: str
-    results: list[ProcessingResult] = field(default_factory=lambda: [])  # Creates NEW list for each instance
+    results: list[ProcessingResult] = field(
+        default_factory=lambda: []  # Creates NEW list for each instance
+    )
     total_processing_time: float = 0.0
     successful_count: int = 0
     failed_count: int = 0
