@@ -14,9 +14,9 @@ import time
 from collections.abc import AsyncIterator, Callable
 from typing import TYPE_CHECKING
 
-from ai_ner_system.config import Settings
-from ai_ner_system.llm import BatchProgress
-from ai_ner_system.processing import ProcessingResult, BatchProcessingResult
+from ..config import Settings
+from ..llm import BatchProgress
+from ..processing import ProcessingResult, BatchProcessingResult
 
 from .stats import AsyncProcessingStats, ApplicationError
 
@@ -122,7 +122,7 @@ class AsyncProcessor:
             stats.processing_time = stats.end_time - stats.start_time
 
             logging.info(
-                'Async streaming processing completed: %d/%d records (%d%% success rate) in %.2fs',
+                'Async streaming processing completed: %d/%d records (%.1f%% success rate) in %.2fs',
                 stats.processed_records, 
                 stats.total_records, 
                 stats.success_rate, 
