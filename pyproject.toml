@@ -52,13 +52,10 @@ dependencies = [
 # Repository = ""
 
 [project.scripts]
-process-medieval-llm = "ai_ner_system.main:main"
+process-medieval-llm = "src.main:main"
 
 [tool.setuptools]
-packages = {find = {where = ["src"]}}
-
-[tool.setuptools.package-dir]
-"" = "src"
+packages = {find = {where = ["."]}}
 
 [tool.setuptools-git-versioning]
 enabled = true
@@ -286,7 +283,7 @@ unfixable = []
 convention = "google"
 
 [tool.ruff.lint.isort]
-known-first-party = ["ai_ner_system"]
+known-first-party = ["src"] 
 section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
 
 # Black configuration
