@@ -408,7 +408,13 @@ class RecordProcessor:
         # Process records concurrently using individual async calls
         tasks = [self.process_record_async(record) for record in records]
 
-        # Execute all tasks concurrently
+        # Execute all tasks concurrently, waiting for their completion.
+        # The reason that we do not use modern asyncio.TaskGroup is that
+        # 1. we need to preserve the order of results as they correspond to
+        # the original records, but TaskGroup does not guarantee order.
+        # 2. we want to process as many records as possible, even if
+        # some fail (Fault-tolerant), but TaskGroup() cancels all tasks
+        # on the first failure.
         results_raw = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Convert exceptions to failed results

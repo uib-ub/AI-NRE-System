@@ -440,7 +440,7 @@ def _run_processor(processor: MedievalTextProcessor, args: argparse.Namespace) -
         progress_callback = create_progress_logger(
             PROGRESS_LOG_INTERVAL  # Log every 60 seconds
         )
-        # Run async processing
+        # Create and start an event loop to Run async processing asynchronously
         return asyncio.run(processor.run_async(progress_callback))
     else:
         logging.info('Using synchronous processing mode')

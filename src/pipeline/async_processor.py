@@ -165,7 +165,7 @@ class AsyncProcessor:
         batch_num = 0
 
         # Track batch tasks with their order information using a map
-        batch_tasks: dict[int, asyncio.Task] = {}  # batch_num -> task
+        batch_tasks: dict[int, asyncio.Task[BatchProcessingResult]] = {}  # batch_num -> task
         # Limit to 5 concurrent batch processing tasks, otherwise it can reach 50 batch request limitation
         max_concurrent_batches = 5
 
@@ -421,8 +421,8 @@ class AsyncProcessor:
                 return
 
             # Prepare annotated data and entity metadata
-            annotated_rows = []
-            metadata_rows = []
+            annotated_rows: list[str] = []
+            metadata_rows: list[str] = []
 
             for result in successful_results:
                 annotated_rows.append(result.annotated_text)
@@ -492,9 +492,9 @@ class AsyncProcessor:
                     return await self.processor.process_record_async(record)
 
             # Create tasks for streaming records
-            tasks: list[asyncio.Task] = []
+            tasks: list[asyncio.Task[ProcessingResult]] = []
             # Keep track of current chunk records
-            current_chunk_records = []
+            current_chunk_records: list[dict[str, str]] = []
             record_count = 0
 
             async for record in self._async_stream_csv_records():
@@ -525,7 +525,7 @@ class AsyncProcessor:
 
     async def _process_task_chunk(
         self,
-        tasks: list[asyncio.Task],
+        tasks: list[asyncio.Task[ProcessingResult]],
         chunk_records: list[dict[str, str]],
         stats: AsyncProcessingStats
     ) -> None:
@@ -538,6 +538,7 @@ class AsyncProcessor:
         """
         try:
             # Gather results in the same order tasks were created
+            # return_exceptions=True ensures all tasks complete even if some fail
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             # Process results in the same order as input
@@ -608,6 +609,7 @@ class AsyncProcessor:
         tasks = [process_single_record(record) for record in batch_records]
 
         # Process all tasks by asyncio.gather() to preserve order
+        # return_exceptions=True ensures all records get processed even if some fail
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Process results in original order and update statistics
