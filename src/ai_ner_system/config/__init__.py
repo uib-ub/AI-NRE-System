@@ -18,8 +18,8 @@ from .validation import ConfigValidator
 __all__ = [
     "ConfigError",
     "ConfigValidationError",
+    "ConfigValidator",
     "DirectoryValidationError",
     "FileValidationError",
     "Settings",
-    "ConfigValidator",
 ]

@@ -11,7 +11,7 @@ from .exceptions import (
     ConfigError,
     ConfigValidationError,
     DirectoryValidationError,
-    FileValidationError
+    FileValidationError,
 )
 from .settings import Settings
 
@@ -21,7 +21,7 @@ class ConfigValidator:
 
     # Class constants for better maintainability and type safety
     SUPPORTED_CLIENT_TYPES: ClassVar[frozenset[str]] = frozenset(
-        {'claude', 'ollama'}
+        {'claude', 'ollama'},
     )
     TEMPLATE_FILES: ClassVar[dict[str, str]] = {
         'PROMPT_TEMPLATE_FILE': 'prompt template',
@@ -45,16 +45,16 @@ class ConfigValidator:
             configuration keys are missing/empty.
         """
         if not client_type or not client_type.strip():
-            raise ConfigValidationError('Client type must be provided.')
+            msg = 'Client type must be provided.'
+            raise ConfigValidationError(msg)
 
         client_type = client_type.strip().lower()
         if client_type not in ConfigValidator.SUPPORTED_CLIENT_TYPES:
             supported_types = ', '.join(
-                sorted(ConfigValidator.SUPPORTED_CLIENT_TYPES)
+                sorted(ConfigValidator.SUPPORTED_CLIENT_TYPES),
             )
-            raise ConfigValidationError(
-                f'Unsupported client type: {client_type}. Supported types: {supported_types}.'
-            )
+            msg = f'Unsupported client type: {client_type}. Supported types: {supported_types}.'
+            raise ConfigValidationError(msg)
 
         try:
             # Validate client-specific configuration
@@ -73,15 +73,15 @@ class ConfigValidator:
             missing_configs = missing_client_configs + missing_common_configs
 
             if missing_configs:
-                raise ConfigValidationError(
+                msg = (
                     f'Missing required configuration for {client_type} client: '
                     f'{", ".join(missing_configs)}. '
-                    'Set them in environment variables or your .env file.',
-                    missing_keys=missing_configs
+                    'Set them in environment variables or your .env file.'
                 )
+                raise ConfigValidationError(msg, missing_keys=missing_configs)
 
             logging.info(
-                'Configuration validation passed for %s client', client_type
+                'Configuration validation passed for %s client', client_type,
             )
 
         except ConfigError as e:
@@ -100,9 +100,8 @@ class ConfigValidator:
             ConfigValidator._validate_output_paths_writable()
             logging.info('File path validation completed successfully')
         except (OSError, ConfigError, FileValidationError, DirectoryValidationError) as e:
-            raise ConfigValidationError(
-                f'File path validation failed: {e}'
-            ) from e
+            msg = f'File path validation failed: {e}'
+            raise ConfigValidationError(msg) from e
 
     @staticmethod
     def _validate_input_file() -> None:
@@ -118,23 +117,25 @@ class ConfigValidator:
         # Validate input file exists
         input_path = Path(Settings.INPUT_FILE)
         ConfigValidator._validate_file_exists_and_readable(
-            input_path, 'INPUT_FILE', 'Input file'
+            input_path, 'INPUT_FILE', 'Input file',
         )
 
         try:
             # Size check (0-byte input usually indicates misconfiguration).
             file_size = input_path.stat().st_size
             if file_size == 0:
+                msg = 'Input file is empty'
                 raise FileValidationError(
-                    f'Input file is empty',
+                    msg,
                     file_path=str(input_path),
                     config_key='INPUT_FILE',
                 )
         except OSError as e:
+            msg = f'Cannot access input file: {e}'
             raise FileValidationError(
-                f'Cannot access input file: {e}',
+                msg,
                 file_path=str(input_path),
-                config_key='INPUT_FILE'
+                config_key='INPUT_FILE',
             ) from e
 
     @staticmethod
@@ -152,23 +153,23 @@ class ConfigValidator:
         for config_key, file_path in template_configs.items():
             if not file_path or not file_path.strip():
                 logging.debug(
-                    'Template file %s not configured, skipping', config_key
+                    'Template file %s not configured, skipping', config_key,
                 )
                 continue  # Optional files
 
             template_path = Path(file_path)
             file_description = ConfigValidator.TEMPLATE_FILES.get(
-                config_key, 'Template file'
+                config_key, 'Template file',
             )
             ConfigValidator._validate_file_exists_and_readable(
-                template_path, config_key, file_description
+                template_path, config_key, file_description,
             )
 
     @staticmethod
     def _validate_file_exists_and_readable(
         file_path: Path,
         config_key: str,
-        file_description: str
+        file_description: str,
     ) -> None:
         """Validate that a file exists, is a file, and can be opened for reading.
 
@@ -181,25 +182,28 @@ class ConfigValidator:
             FileValidationError: If file validation fails.
         """
         if not file_path.exists():
+            msg = f'{file_description} does not exist'
             raise FileValidationError(
-                f'{file_description} does not exist',
+                msg,
                 file_path=str(file_path),
-                config_key=config_key
+                config_key=config_key,
             )
 
         if not file_path.is_file():
+            msg = f'{file_description} path is not a file'
             raise FileValidationError(
-                f'{file_description} path is not a file',
+                msg,
                 file_path=str(file_path),
-                config_key=config_key
+                config_key=config_key,
             )
         # Most reliable check: try opening the file.
         try:
             with file_path.open('rb'):
                 pass
         except OSError as e:
+            msg = f'{file_description} is not readable: {e}'
             raise FileValidationError(
-                f'{file_description} is not readable: {e}',
+                msg,
                 file_path=str(file_path),
                 config_key=config_key,
             ) from e
@@ -220,57 +224,62 @@ class ConfigValidator:
         for config_key, file_path in output_configs.items():
             if not file_path:
                 logging.debug(
-                    'Output file %s not configured, skipping', config_key
+                    'Output file %s not configured, skipping', config_key,
                 )
                 continue
             output_path = Path(file_path)
             file_description = ConfigValidator.OUTPUT_FILES.get(
-                config_key, 'output file'
+                config_key, 'output file',
             )
             ConfigValidator._validate_output_directory_writable(
-                output_path, config_key, file_description
+                output_path, config_key, file_description,
             )
 
     @staticmethod
     def _validate_output_directory_writable(
         output_path: Path,
         config_key: str,
-        file_description: str
+        file_description: str,
     ) -> None:
         """Validate that the output directory exists, is a directory, and is writable.
 
-       Args:
-           output_path: Path to the output file.
-           config_key: Configuration key for error reporting.
-           file_description: Human-readable description of the file.
+        Args:
+            output_path: Path to the output file.
+            config_key: Configuration key for error reporting.
+            file_description: Human-readable description of the file.
 
-       Raises:
-           DirectoryValidationError: If the directory is missing/invalid or
-            cannot accept new files from this process.
-       """
+        Raises:
+            DirectoryValidationError: If the directory is missing/invalid or
+                cannot accept new files from this process.
+        """
         output_dir = output_path.parent
 
         # Check if directory exists (should be created by Settings.initialize())
         if not output_dir.exists():
-            raise DirectoryValidationError(
+            msg = (
                 f'Output directory for {file_description} does not exist: {output_dir}. '
-                'Make sure Settings.initialize() was called.',
+                'Make sure Settings.initialize() was called.'
+            )
+            raise DirectoryValidationError(
+                msg,
                 config_key=config_key,
                 directory_path=str(output_dir),
             )
 
         # Check if directory is actually a directory
         if not output_dir.is_dir():
+            msg = f'Output path for {file_description} is not a directory: {output_dir}'
             raise DirectoryValidationError(
-                f'Output path for {file_description} is not a directory: {output_dir}',
+                msg,
                 config_key=config_key,
                 directory_path=str(output_dir),
             )
 
         # Test writability
         if not os.access(output_dir, os.W_OK):
+            msg = f'Output directory for {file_description} is not writable: {output_dir}'
             raise DirectoryValidationError(
-                f'Output directory for {file_description} is not writable: {output_dir}',
+                msg,
                 config_key=config_key,
                 directory_path=str(output_dir),
             )
@@ -297,15 +306,15 @@ class ConfigValidator:
                 ConfigValidator.validate_for_client(client_type)
 
             logging.info(
-                'Comprehensive configuration validation completed successfully'
+                'Comprehensive configuration validation completed successfully',
             )
         except (
             ConfigError,
             ConfigValidationError,
             FileValidationError,
-            DirectoryValidationError
+            DirectoryValidationError,
         ) as e:
-            logging.error('Configuration validation failed: %s', e)
+            logging.exception('Configuration validation failed: %s', e)
             raise
 
     @staticmethod
@@ -314,13 +323,13 @@ class ConfigValidator:
 
         Args:
             client_type: Optional client type for client-specific validation.
+            silent: If True, suppress logging of validation errors (default: True).
 
         Returns:
             True if configuration is passes, False otherwise.
         """
         try:
             ConfigValidator.validate_all(client_type)
-            return True
         except (
             ConfigError,
             ConfigValidationError,
@@ -332,7 +341,7 @@ class ConfigValidator:
             return False
         except Exception as e:
             # Unexpected errors should be logged
-            logging.error(
-                'Unexpected error during validation: %s', e, exc_info=True
-            )
+            logging.exception('Unexpected error during validation: %s', e)
             return False
+        else:
+            return True

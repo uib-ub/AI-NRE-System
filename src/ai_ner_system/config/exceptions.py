@@ -57,7 +57,7 @@ class FileValidationError(ConfigError):
         message: str,
         *,
         config_key: str | None = None,
-        file_path: Pathish
+        file_path: Pathish,
     ) -> None:
         """Initialize FileValidationError.
 
@@ -82,7 +82,7 @@ class DirectoryValidationError(ConfigError):
         message: str,
         *,
         config_key: str | None = None,
-        directory_path: Pathish
+        directory_path: Pathish,
     ) -> None:
         """Initialize DirectoryValidationError.
 

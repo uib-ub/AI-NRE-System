@@ -51,7 +51,7 @@ class Settings:
 
     # Supported client types
     SUPPORTED_CLIENTS: ClassVar[frozenset[str]] = frozenset(
-        {'claude', 'ollama'}
+        {'claude', 'ollama'},
     )
 
     # Flag to track initialization
@@ -80,7 +80,7 @@ class Settings:
     CACHE_DIR: Path = Path(DEFAULT_CACHE_DIR)
 
     @classmethod
-    def initialize(cls, reload_env: bool = False) -> None:
+    def initialize(cls, *, reload_env: bool = False) -> None:
         """Initialize configuration and create necessary directories.
 
         Should be called once at the application startup. Safe to call multiple
@@ -92,7 +92,6 @@ class Settings:
         Raises:
             ConfigError: If initialization fails.
         """
-
         if cls._initialized and not reload_env:
             logging.debug('Settings already initialized, skipping')
             return
@@ -112,9 +111,8 @@ class Settings:
             logging.info('Configuration initialized successfully')
 
         except OSError as e:
-            raise ConfigError(
-                f'Failed to initialize configuration: {e}'
-            ) from e
+            msg = f'Failed to initialize configuration: {e}'
+            raise ConfigError(msg) from e
 
     @classmethod
     def _load_from_environment(cls) -> None:
@@ -131,21 +129,21 @@ class Settings:
         # File I/O Configuration
         cls.INPUT_FILE = os.getenv('INPUT_FILE', cls.DEFAULT_INPUT_FILE)
         cls.OUTPUT_TEXT_FILE = os.getenv(
-            'OUTPUT_TEXT_FILE', cls.DEFAULT_OUTPUT_TEXT_FILE
+            'OUTPUT_TEXT_FILE', cls.DEFAULT_OUTPUT_TEXT_FILE,
         )
         cls.OUTPUT_TABLE_FILE = os.getenv(
-            'OUTPUT_TABLE_FILE', cls.DEFAULT_OUTPUT_TABLE_FILE
+            'OUTPUT_TABLE_FILE', cls.DEFAULT_OUTPUT_TABLE_FILE,
         )
         cls.OUTPUT_STATS_FILE = os.getenv(
-            'OUTPUT_STATS_FILE', cls.DEFAULT_OUTPUT_STATS_FILE
+            'OUTPUT_STATS_FILE', cls.DEFAULT_OUTPUT_STATS_FILE,
         )
 
         # Template Configuration
         cls.PROMPT_TEMPLATE_FILE = os.getenv(
-            'PROMPT_TEMPLATE_FILE', cls.DEFAULT_PROMPT_TEMPLATE_FILE
+            'PROMPT_TEMPLATE_FILE', cls.DEFAULT_PROMPT_TEMPLATE_FILE,
         )
         cls.BATCH_TEMPLATE_FILE = os.getenv(
-            'BATCH_TEMPLATE_FILE', cls.DEFAULT_BATCH_TEMPLATE_FILE
+            'BATCH_TEMPLATE_FILE', cls.DEFAULT_BATCH_TEMPLATE_FILE,
         )
 
         # Cache Configuration
@@ -163,8 +161,8 @@ class Settings:
             cls.CACHE_DIR.mkdir(parents=True, exist_ok=True)
             logging.info('Cache directory created: %s', cls.CACHE_DIR)
         except OSError as e:
-            logging.error(
-                'Failed to create cache directory %s: %s', cls.CACHE_DIR, e
+            logging.exception(
+                'Failed to create cache directory %s: %s', cls.CACHE_DIR, e,
             )
             raise
 
@@ -220,16 +218,15 @@ class Settings:
 
         if client_type not in cls.SUPPORTED_CLIENTS:
             supported = ', '.join(sorted(cls.SUPPORTED_CLIENTS))
-            raise ConfigError(
-                f'Unsupported client type: {client_type}. Supported types: {supported}'
-            )
+            msg = f'Unsupported client type: {client_type}. Supported types: {supported}'
+            raise ConfigError(msg)
 
         if client_type == 'claude':
             return {
                 'ANTHROPIC_API_KEY': cls.ANTHROPIC_API_KEY,
                 'CLAUDE_MODEL': cls.CLAUDE_MODEL,
             }
-        elif client_type == 'ollama':
+        if client_type == 'ollama':
             return {
                 'OLLAMA_MODEL': cls.OLLAMA_MODEL,
                 'OPENWEBUI_TOKEN': cls.OPENWEBUI_TOKEN,
