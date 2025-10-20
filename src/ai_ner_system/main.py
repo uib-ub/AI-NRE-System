@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 from typing import Final, Literal
 
-from ai_ner_system.config import ConfigValidator, ConfigError, Settings
+from ai_ner_system.config import ConfigError, ConfigValidator, Settings
 from ai_ner_system.pipeline import ApplicationError, MedievalTextProcessor
 from ai_ner_system.processing import create_progress_logger
 
@@ -62,7 +62,7 @@ def setup_logging(level: str = 'INFO') -> None:
         force=True,
         handlers=[
             logging.StreamHandler(sys.stdout),
-        ]
+        ],
     )
 
     logging.info('Logging configured (level=%s)', level)
@@ -132,15 +132,14 @@ def _validate_template_files(args: argparse.Namespace) -> None:
     # Check if prompt template exists
     if args.prompt_template and not Path(args.prompt_template).exists():
         raise ApplicationError(
-            f'Prompt template file does not exist: {args.prompt_template}'
+            f'Prompt template file does not exist: {args.prompt_template}',
         )
 
     # Check batch template if batch processing is enabled
-    if args.use_batch:
-        if args.batch_template and not Path(args.batch_template).exists():
-            raise ApplicationError(
-                f'Batch template file does not exist: {args.batch_template}'
-            )
+    if args.use_batch and args.batch_template and not Path(args.batch_template).exists():
+        raise ApplicationError(
+            f'Batch template file does not exist: {args.batch_template}',
+        )
 
 
 def _validate_async_arguments(args: argparse.Namespace) -> None:
@@ -157,17 +156,19 @@ def _validate_async_arguments(args: argparse.Namespace) -> None:
 
     max_wait_time = getattr(args, 'max_wait_time', 0.0)
     if max_wait_time < MIN_MAX_WAIT_TIME:
-        raise ApplicationError(
+        msg = (
             f'Max wait time must be at least {MIN_MAX_WAIT_TIME} seconds for async mode, '
             f'got {max_wait_time} seconds'
         )
+        raise ApplicationError(msg)
 
     poll_interval = getattr(args, 'poll_interval', 0.0)
     if poll_interval < MIN_POLL_INTERVAL:
-        raise ApplicationError(
+        msg = (
             f'Poll interval must be at least {MIN_POLL_INTERVAL} seconds for async mode, '
             f'got {poll_interval} seconds'
         )
+        raise ApplicationError(msg)
 
 
 def validate_arguments(args: argparse.Namespace) -> None:
@@ -199,7 +200,7 @@ def validate_arguments(args: argparse.Namespace) -> None:
         supported = ', '.join(sorted(Settings.SUPPORTED_CLIENTS))
         raise ApplicationError(
             f'Unsupported client type: {args.client}. '
-            f'Supported types: {supported}'
+            f'Supported types: {supported}',
         )
 
     # Validate async-specific arguments
@@ -269,28 +270,28 @@ def _add_io_arguments(parser: argparse.ArgumentParser) -> None:
         '--input',
         type=str,
         default=None,
-        help='Path to the input file (default: from .env or Settings.INPUT_FILE)'
+        help='Path to the input file (default: from .env or Settings.INPUT_FILE)',
     )
 
     parser.add_argument(
         '--output-text',
         type=str,
         default=None,
-        help='Path for annotated text output (default: from .env or Settings.OUTPUT_TEXT_FILE)'
+        help='Path for annotated text output (default: from .env or Settings.OUTPUT_TEXT_FILE)',
     )
 
     parser.add_argument(
         '--output-table',
         type=str,
         default=None,
-        help='Path for metadata table output (default: from .env or Settings.OUTPUT_TABLE_FILE)'
+        help='Path for metadata table output (default: from .env or Settings.OUTPUT_TABLE_FILE)',
     )
 
     parser.add_argument(
-        "--output-stats",
+        '--output-stats',
         type=str,
         default=None,
-        help="Output file for processing statistics (default: from .env or Settings.OUTPUT_STATS_FILE)"
+        help='Output file for processing statistics (default: from .env or Settings.OUTPUT_STATS_FILE)',
     )
 
 
@@ -303,14 +304,14 @@ def _add_batch_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         '--use-batch',
         action='store_true',
-        help='Enable batch processing for better performance'
+        help='Enable batch processing for better performance',
     )
 
     parser.add_argument(
         '--batch-size',
         type=int,
         default=DEFAULT_BATCH_SIZE,
-        help=f'Number of records to process in each batch (default: {DEFAULT_BATCH_SIZE})'
+        help=f'Number of records to process in each batch (default: {DEFAULT_BATCH_SIZE})',
     )
 
 
@@ -324,14 +325,14 @@ def _add_template_arguments(parser: argparse.ArgumentParser) -> None:
         '--prompt-template',
         type=str,
         default=None,
-        help='Path to the prompt template file (default: from .env or Settings.PROMPT_TEMPLATE_FILE)'
+        help='Path to the prompt template file (default: from .env or Settings.PROMPT_TEMPLATE_FILE)',
     )
 
     parser.add_argument(
         '--batch-template',
         type=str,
         default=None,
-        help='Path to the batch template file (default: from .env or Settings.BATCH_TEMPLATE_FILE)'
+        help='Path to the batch template file (default: from .env or Settings.BATCH_TEMPLATE_FILE)',
     )
 
 
@@ -345,34 +346,34 @@ def _add_async_arguments(parser: argparse.ArgumentParser) -> None:
         '--async-mode', '-a',
         action='store_true',
         dest='async_mode',
-        help='Enable asynchronous processing for batch operations'
+        help='Enable asynchronous processing for batch operations',
     )
 
     parser.add_argument(
         '--max-concurrent-batches',
         type=int,
         default=DEFAULT_MAX_CONCURRENT_BATCHES,
-        help=f'Maximum number of concurrent batches (default: {DEFAULT_MAX_CONCURRENT_BATCHES})'
+        help=f'Maximum number of concurrent batches (default: {DEFAULT_MAX_CONCURRENT_BATCHES})',
     )
 
     parser.add_argument(
         '--incremental-output',
         action='store_true',
-        help='Write outputs incrementally after each batch (useful for large datasets)'
+        help='Write outputs incrementally after each batch (useful for large datasets)',
     )
 
     parser.add_argument(
         '--max-wait-time',
         type=float,
         default=DEFAULT_MAX_WAIT_TIME,
-        help=f'Maximum time to wait for async batch completion in seconds (default: {DEFAULT_MAX_WAIT_TIME}, i.e. 24 hours)'
+        help=f'Maximum time to wait for async batch completion in seconds (default: {DEFAULT_MAX_WAIT_TIME}, i.e. 24 hours)',
     )
 
     parser.add_argument(
         '--poll-interval',
         type=float,
         default=DEFAULT_POLL_INTERVAL,
-        help=f'Time between progress checks for async processing in seconds (default: {DEFAULT_POLL_INTERVAL})'
+        help=f'Time between progress checks for async processing in seconds (default: {DEFAULT_POLL_INTERVAL})',
     )
 
 
@@ -385,7 +386,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description='Medieval Text Processor with AI NER System - Process medieval texts using Large Language Models',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        epilog=_get_example_text()
+        epilog=_get_example_text(),
     )
 
     # Model client selection
@@ -394,7 +395,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
         type=str,
         choices=['claude', 'ollama'],
         default='claude',
-        help='Select LLM Client (default: claude)'
+        help='Select LLM Client (default: claude)',
     )
 
     # Add argument groups
@@ -409,13 +410,13 @@ def create_argument_parser() -> argparse.ArgumentParser:
         type=str,
         choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
         default='INFO',
-        help='Set logging level (default: INFO)'
+        help='Set logging level (default: INFO)',
     )
 
     parser.add_argument(
         '--dry-run',
         action='store_true',
-        help='Validate configuration and inputs without processing'
+        help='Validate configuration and inputs without processing',
     )
 
     return parser
@@ -438,7 +439,7 @@ def _run_processor(processor: MedievalTextProcessor, args: argparse.Namespace) -
         logging.info('Using asynchronous processing mode')
         # Create progress callback
         progress_callback = create_progress_logger(
-            PROGRESS_LOG_INTERVAL  # Log every 60 seconds
+            PROGRESS_LOG_INTERVAL,  # Log every 60 seconds
         )
 
         # Run async processing with parameters from command line arguments
@@ -448,12 +449,12 @@ def _run_processor(processor: MedievalTextProcessor, args: argparse.Namespace) -
                 timeout=args.max_wait_time,
                 max_batch_wait_time=args.max_wait_time,
                 poll_interval=args.poll_interval,
-            )
+            ),
         )
-    else:
-        logging.info('Using synchronous processing mode')
-        # Run synchronous processing
-        return processor.run()
+
+    logging.info('Using synchronous processing mode')
+    # Run synchronous processing
+    return processor.run()
 
 
 def _print_dry_run_success() -> None:
@@ -465,7 +466,7 @@ def _print_dry_run_success() -> None:
         '✓ Configuration validated successfully',
         '✓ Command line arguments validated',
         '✓ Input files exist and are accessible',
-        'Dry run completed successfully - no processing performed'
+        'Dry run completed successfully - no processing performed',
     ]
     message = '\n'.join(success_messages)
     print(message)
@@ -507,14 +508,14 @@ def main() -> Literal[0, 1]:
         return _run_processor(processor, args)
 
     except KeyboardInterrupt:
-        logging.error('Processing interrupted by user')
+        logging.exception('Processing interrupted by user')
         return 1
     except ApplicationError as e:
-        logging.error('Application error: %s', e)
+        logging.exception('Application error: %s', e)
         return 1
     except Exception as e:
         # Unexpected errors - log with full traceback
-        logging.error('Unexpected error: %s', e, exc_info=True)
+        logging.exception('Unexpected error: %s', e)
         return 1
 
 
