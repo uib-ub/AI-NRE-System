@@ -16,10 +16,10 @@ from .settings import Settings
 from .validation import ConfigValidator
 
 __all__ = [
-    'ConfigError',
-    'ConfigValidationError',
-    'ConfigValidator',
-    'DirectoryValidationError',
-    'FileValidationError',
-    'Settings',
+    "ConfigError",
+    "ConfigValidationError",
+    "DirectoryValidationError",
+    "FileValidationError",
+    "Settings",
+    "ConfigValidator",
 ]
