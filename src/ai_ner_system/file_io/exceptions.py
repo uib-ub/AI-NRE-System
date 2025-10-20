@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 
-class IOError(Exception):
+class FileIOError(Exception):
     """Base class for all I/O related exceptions in the AI NER System."""
 
     def __init__(self, message: str, file_path: str | None = None) -> None:
-        """Initialize IOError
+        """Initialize FileIOError.
 
         Args:
             message: Error message.
@@ -17,14 +17,14 @@ class IOError(Exception):
         self.file_path = file_path
 
 
-class CSVError(IOError):
+class CSVError(FileIOError):
     """Exception raised for CSV file operations errors."""
 
     def __init__(
         self,
         message: str,
         file_path: str | None = None,
-        line_number: int | None = None
+        line_number: int | None = None,
     ) -> None:
         """Initialize CSVError.
 
@@ -37,7 +37,7 @@ class CSVError(IOError):
         self.line_number = line_number
 
 
-class OutputError(IOError):
+class OutputError(FileIOError):
     """Exception raised for output operations errors."""
 
     def __init__(
@@ -57,14 +57,14 @@ class OutputError(IOError):
         self.output_type = output_type
 
 
-class FileValidationError(IOError):
+class FileValidationError(FileIOError):
     """Exception raised when file validation fails."""
 
     def __init__(
         self,
         message: str,
         file_path: str,
-        validation_type: str | None = None
+        validation_type: str | None = None,
     ) -> None:
         """Initialize FileValidationError.
 
@@ -84,7 +84,7 @@ class EncodingError(CSVError):
         self,
         message: str,
         file_path: str,
-        encoding: str | None = None
+        encoding: str | None = None,
     ) -> None:
         """Initialize EncodingError.
 

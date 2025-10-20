@@ -14,14 +14,14 @@ Concurrency:
 
 from __future__ import annotations
 
+import fcntl  # POSIX-only lock
 import json
 import logging
 import os
 import tempfile
+from contextlib import suppress
 from pathlib import Path
 from typing import Any, BinaryIO, ClassVar, cast
-
-import fcntl  # POSIX-only lock
 
 from .exceptions import OutputError
 
@@ -55,7 +55,7 @@ class OutputWriter:
         """
         self.encoding = encoding
         logging.debug(
-            'OutputWriter initialized with encoding: %s', self.encoding
+            'OutputWriter initialized with encoding: %s', self.encoding,
         )
 
     @staticmethod
@@ -76,12 +76,14 @@ class OutputWriter:
         try:
             directory.mkdir(parents=True, exist_ok=True)
             logging.debug('Ensured output directory exists: %s', directory)
-            return path
         except OSError as e:
+            msg = f'Failed to create output directory {directory}: {e}'
             raise OutputError(
-                f'Failed to create output directory {directory}: {e}',
+                msg,
                 file_path=str(file_path),
             ) from e
+        else:
+            return path
 
     @staticmethod
     def _atomic_write(file_path: Path, content: str, encoding: str) -> None:
@@ -103,7 +105,7 @@ class OutputWriter:
                     dir=file_path.parent,
                     encoding=encoding,
                     newline='',
-                    suffix='.tmp'
+                    suffix='.tmp',
             ) as temp_file:
                 temp_file.write(content)
                 temp_path = Path(temp_file.name)
@@ -113,14 +115,13 @@ class OutputWriter:
         except (OSError, UnicodeEncodeError) as e:
             # Clean up temp file if it exists
             if temp_path is not None and temp_path.exists():
-                try:
+                with suppress(OSError):
                     temp_path.unlink()
-                except OSError:
-                    pass  # Ignore cleanup errors
+            msg = f'Error during atomic write to {file_path}: {e}'
             raise OutputError(
-                f'Atomic write failed for {file_path}: {e}',
+                msg,
                 file_path=str(file_path),
-                output_type="atomic_write"
+                output_type="atomic_write",
             ) from e
 
     @staticmethod
@@ -153,7 +154,7 @@ class OutputWriter:
         header: str,
         lines: list[str],
         log_label: str,
-        output_type: str
+        output_type: str,
     ) -> None:
         """Writes 'lines' to 'file_path' atomically (replacing the file).
 
@@ -169,7 +170,8 @@ class OutputWriter:
           OutputError: If writing fails due to I/O or encoding errors.
         """
         if not lines:
-            raise ValueError(f'{log_label.capitalize()} list cannot be empty.')
+            msg = f'{log_label.capitalize()} list cannot be empty.'
+            raise ValueError(msg)
         # Ensure output directory exists
         output_path = self._ensure_output_directory(file_path)
         try:
@@ -178,20 +180,21 @@ class OutputWriter:
             self._atomic_write(output_path, content, self.encoding)
             logging.info(
                 '%s output written to %s successfully',
-                log_label.capitalize(), output_path
+                log_label.capitalize(), output_path,
             )
         except (OSError, UnicodeEncodeError) as e:
+            msg = f'Error writing {log_label} output to {output_path}: {e}'
             raise OutputError(
-                f'Failed to write {log_label} output to {output_path}: {e}',
+                msg,
                 file_path=str(output_path),
-                output_type=output_type
+                output_type=output_type,
             ) from e
 
     def write_text_output(
-            self,
-            file_path: Pathish,
-            header: str,
-            annotation_lines: list[str]
+        self,
+        file_path: Pathish,
+        header: str,
+        annotation_lines: list[str],
     ) -> None:
         """Writes annotated text output atomically.
 
@@ -207,14 +210,14 @@ class OutputWriter:
             header=header,
             lines=annotation_lines,
             log_label='annotations',
-            output_type='write_annotation'
+            output_type='write_annotation',
         )
 
     def write_metadata_output(
             self,
             file_path: Pathish,
             header: str,
-            metadata: list[str]
+            metadata: list[str],
     ) -> None:
         """Writes metadata table output atomically.
 
@@ -230,7 +233,7 @@ class OutputWriter:
             header=header,
             lines=metadata,
             log_label='metadata',
-            output_type='write_metadata'
+            output_type='write_metadata',
         )
 
     @staticmethod
@@ -247,7 +250,7 @@ class OutputWriter:
         """
         file.seek(0, os.SEEK_END)  # Move to end of file
         size = file.tell()  # Get file size (current byte offset)
-        if size <= 0:  # Empty file -> doesn’t end with a newline.
+        if size <= 0:  # Empty file -> doesn't end with a newline.
             return 0, False
         file.seek(-1, os.SEEK_END)  # Move to last byte of file
         return size, file.read(1) == b'\n'  # Check if last byte is newline
@@ -268,7 +271,7 @@ class OutputWriter:
           data: Data records (one line each).
           add_header: Whether to emit the header first at the start of the chunk.
           needs_leading_newline: Whether to prepend a single blank line to avoid sticking.
-          newline: Line separator to use (typically "\\n").
+          newline: Line separator to use (typically '\\n').
 
         Returns:
           The chunk text to write. If non-empty, the chunk always ends with a newline.
@@ -294,7 +297,7 @@ class OutputWriter:
         header: str,
         lines: list[str],
         log_label: str,
-        output_type: str
+        output_type: str,
     ) -> None:
         """Append 'lines' to 'file_path' (locked, non-atomic).
 
@@ -316,12 +319,13 @@ class OutputWriter:
           OutputError: If writing fails due to I/O or encoding errors.
         """
         if not lines:
-            raise ValueError(f'{log_label.capitalize()} list cannot be empty.')
+            msg = f'{log_label.capitalize()} list cannot be empty.'
+            raise ValueError(msg)
         # Ensure output directory exists
         output_path = self._ensure_output_directory(file_path)
         try:
             # Open/create in binary append/update so we can check last byte reliably.
-            with cast(BinaryIO, open(output_path, 'a+b')) as file:
+            with cast('BinaryIO', output_path.open('a+b')) as file:
                 fcntl.flock(file.fileno(), fcntl.LOCK_EX)
                 try:
                     size, ends_with_newline = self._file_size_and_trailing_newline(file)
@@ -344,7 +348,7 @@ class OutputWriter:
 
             logging.info(
                 'Appended %d %s to %s',
-                len(lines), log_label, output_path
+                len(lines), log_label, output_path,
             )
         except (OSError, UnicodeEncodeError) as e:
             if isinstance(e, UnicodeEncodeError):
@@ -354,14 +358,14 @@ class OutputWriter:
             raise OutputError(
                 error_msg,
                 file_path=str(output_path),
-                output_type=output_type
+                output_type=output_type,
             ) from e
 
     def append_text_output(
         self,
         file_path: Pathish,
         header: str,
-        annotation_lines: list[str]
+        annotation_lines: list[str],
     ) -> None:
         """Appends annotated text output with an exclusive 'flock()' (locked, non-atomic).
 
@@ -377,14 +381,14 @@ class OutputWriter:
             header=header,
             lines=annotation_lines,
             log_label='annotations',
-            output_type='append_annotation'
+            output_type='append_annotation',
         )
 
     def append_metadata_output(
         self,
         file_path: Pathish,
         header: str,
-        metadata: list[str]
+        metadata: list[str],
     ) -> None:
         """Appends metadata table output with an exclusive 'flock()' (locked, non-atomic).
 
@@ -400,7 +404,7 @@ class OutputWriter:
             header=header,
             lines=metadata,
             log_label='metadata',
-            output_type='append_metadata'
+            output_type='append_metadata',
         )
 
     @staticmethod
@@ -420,16 +424,16 @@ class OutputWriter:
             logging.info('Writing processing statistics to %s', output_path)
             content = json.dumps(stats_data, indent=2, ensure_ascii=False)
             OutputWriter._atomic_write(
-                output_path, content, OutputWriter.DEFAULT_ENCODING
+                output_path, content, OutputWriter.DEFAULT_ENCODING,
             )
             logging.info('Processing statistics written to: %s', output_path)
         except (OSError, UnicodeEncodeError, TypeError) as e:
-            logging.error(
-                'Error writing stats output to %s: %s', file_path, e, exc_info=True)
+            logging.exception('Error writing stats output to %s: %s', file_path, e)
+            msg = f'Error writing stats output to {file_path}: {e}'
             raise OutputError(
-                f'Failed to write stats output to {file_path}: {e}',
+                msg,
                 file_path=str(file_path),
-                output_type='stats'
+                output_type='stats',
             ) from e
 
     @staticmethod
@@ -440,7 +444,7 @@ class OutputWriter:
             *file_paths: Variable number of file paths to clean up.
 
         Raises:
-            IOError: If file deletion fails for any critical reason.
+            FileIOError: If file deletion fails for any critical reason.
         """
         for file_path in file_paths:
             if not file_path:  # Skip empty/None file paths
@@ -450,16 +454,16 @@ class OutputWriter:
                 if path.exists() and path.is_file():
                     path.unlink()
                     logging.info(
-                        'Cleaned up existing output file: %s', file_path
+                        'Cleaned up existing output file: %s', file_path,
                     )
                 else:
                     logging.debug(
-                        'Output file does not exist, skipping cleanup: %s', file_path
+                        'Output file does not exist, skipping cleanup: %s', file_path,
                     )
             except OSError as e:
                 # Log error but don't fail the entire process for file cleanup issues
                 logging.debug(
                     'Failed to clean up output file %s: %s',
-                    file_path, e, exc_info=True
+                    file_path, e, exc_info=True,
                 )
         logging.info('Output file cleanup completed')
