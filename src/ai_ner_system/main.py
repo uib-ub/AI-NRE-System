@@ -15,9 +15,9 @@ import sys
 from pathlib import Path
 from typing import Final, Literal
 
-from src.config import ConfigValidator, ConfigError, Settings
-from src.pipeline import ApplicationError, MedievalTextProcessor
-from src.processing import create_progress_logger
+from ai_ner_system.config import ConfigValidator, ConfigError, Settings
+from ai_ner_system.pipeline import ApplicationError, MedievalTextProcessor
+from ai_ner_system.processing import create_progress_logger
 
 # ============================================================================
 # Constants
@@ -233,25 +233,25 @@ def _get_example_text() -> str:
     return """
 Examples:
     # Process with sync mode
-    uv run src/ai_ner_system.main.py --client ollama \\
+    uv run -m ai_ner_system.main --client ollama \\
         --input input/input.txt \\
         --output-text output/annotated_output.txt \\
         --output-table output/metadata_table.txt \\
         --use-batch --batch-size 10 -l DEBUG
 
-    uv run src/ai_ner_system/main.py --client ollama \\
+    uv run -m ai_ner_system.main --client ollama \\
         --output-text output/annotated_output_gemma_batch_13R_B1.txt \\
         --output-table output/metadata_table_gemma_batch_13R_B1.txt \\
         -l DEBUG
 
     # Process with async batch processing
-    uv run src/ai_ner_system/main.py --client claude \\
+    uv run -m ai_ner_system.main --client claude \\
         --output-text output/annotated_output_claude_batch_100R_B100_async.txt \\
         --output-table output/metadata_table_claude_batch_100R_B100_async.txt \\
         --output-stats output/stats_claude_batch_100R_B100_async.txt  \\
         --batch-size 100 --async -l DEBUG
 
-    uv run src/ai_ner_system/main.py --client claude \\
+    uv run -m ai_ner_system.main --client claude \\
         --output-text output/annotated_output_claude_batch_13R_B2_async.txt \\
         --output-table output/metadata_table_claude_batch_13R_B2_async.txt \\
         --output-stats output/stats_claude_batch_13R_B2_async.txt \\

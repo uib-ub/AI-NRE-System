@@ -52,10 +52,13 @@ dependencies = [
 # Repository = ""
 
 [project.scripts]
-process-medieval-llm = "src.main:main"
+process-medieval-llm = "ai_ner_system.main:main"
 
 [tool.setuptools]
-packages = {find = {where = ["."]}}
+packages = {find = {where = ["src"]}}
+
+[tool.setuptools.package-data]
+ai_ner_system = ["py.typed"]
 
 [tool.setuptools-git-versioning]
 enabled = true
@@ -172,7 +175,7 @@ ignore = ["E501"]
 respect-gitignore = true
 
 # Source code directories
-src = ["src", "test"]
+src = ["src"]
 
 [tool.ruff.lint]
 # Enable comprehensive rule sets
@@ -283,7 +286,7 @@ unfixable = []
 convention = "google"
 
 [tool.ruff.lint.isort]
-known-first-party = ["src"] 
+known-first-party = ["ai_ner_system"] 
 section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
 
 # Black configuration
@@ -348,7 +351,7 @@ minversion = "8.0"
 addopts = [
     "--strict-config",
     "--strict-markers",
-    "--cov=src",
+    "--cov=ai_ner_system",
     "--cov-report=term-missing",
     "--cov-report=html",
     "--cov-report=xml",
@@ -368,7 +371,7 @@ filterwarnings = [
 
 # Coverage configuration
 [tool.coverage.run]
-source = ["src"]
+source = ["ai_ner_system"]
 omit = [
     "*/test/*",
     "*/test_*.py",
@@ -392,7 +395,7 @@ exclude_lines = [
 
 # Vulture configuration (dead code detection)
 [tool.vulture]
-paths = ["src", "test"]
+paths = ["src/ai_ner_system"]
 min_confidence = 60
 ignore_decorators = ["@pytest.fixture", "@click.command"]
 

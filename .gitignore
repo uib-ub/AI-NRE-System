@@ -201,3 +201,5 @@ cython_debug/
 examples
 output
 input
+# Package build artifacts
+src/ai_ner_system.egg-info/
