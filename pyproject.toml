@@ -163,8 +163,6 @@ extraPaths = ["src"]
 target-version = "py311"
 line-length = 100
 indent-width = 4
-select = ["E","F","I","UP","B","SIM","ASYNC"]
-ignore = ["E501"]
 # Source code directories
 src = ["src"]
 respect-gitignore = true
