@@ -42,7 +42,7 @@ class MedievalTextProcessor:
     )
 
     # Default timeout for async processing (24 hours in seconds)
-    DEFAULT_ASYNC_TIMEOUT: ClassVar[int] = 3600 * 24
+    DEFAULT_ASYNC_TIMEOUT: ClassVar[float] = 3600.0 * 24.0
 
     def __init__(self, args: argparse.Namespace) -> None:
         """Initialize the medieval text processor.
@@ -419,7 +419,9 @@ class MedievalTextProcessor:
         self,
         progress_callback: Callable[[BatchProgress], None] | None = None,
         *,
-        timeout: int | None = None,
+        timeout: float | None = None,
+        max_batch_wait_time: float | None = None,
+        poll_interval: float | None = None,
     ) -> Literal[0, 1]:
         """Run the medieval text processor asynchronously.
 
@@ -429,8 +431,12 @@ class MedievalTextProcessor:
         Args:
             progress_callback: Optional callback for batch progress updates.
                 Called with BatchProgress objects during processing.
-            timeout: Optional timeout in seconds. Defaults to 24 hours.
-                Set to None for no timeout.
+            timeout: Optional overall timeout in seconds for the entire processing.
+                Defaults to DEFAULT_ASYNC_TIMEOUT (24 hours). Set to None for no timeout.
+            max_batch_wait_time: Maximum time in seconds to wait for individual batch completion.
+                Passed to AsyncProcessor. Uses AsyncProcessor defaults if not specified.
+            poll_interval: Time in seconds between batch progress checks.
+                Passed to AsyncProcessor. Uses AsyncProcessor defaults if not specified.
 
         Returns:
             Exit code: 0 for success, 1 for failure.
@@ -445,11 +451,15 @@ class MedievalTextProcessor:
             timeout_seconds = timeout if timeout is not None else self.DEFAULT_ASYNC_TIMEOUT
 
             # Use async context manager for better resource cleanup with timeout
-            async with asyncio.timeout(timeout_seconds):  # 24-hour timeout
+            async with asyncio.timeout(timeout_seconds):
                 # Process all records asynchronously using async processor
                 from .async_processor import AsyncProcessor
                 async_processor = AsyncProcessor(self)
-                stats = await async_processor.process_all_records_async(progress_callback)
+                stats = await async_processor.process_all_records_async(
+                    progress_callback,
+                    max_batch_wait_time=max_batch_wait_time,
+                    poll_interval=poll_interval
+                )
 
                 # Write output files asynchronously
                 await self.write_output_async(stats)

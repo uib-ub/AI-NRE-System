@@ -34,7 +34,6 @@ class RecordProcessor:
     # Class constants
     DEFAULT_MAX_WAIT_TIME: ClassVar[float] = 86400.0  # 24 hours
     DEFAULT_POLL_INTERVAL: ClassVar[float] = 30.0  # 30 seconds
-    DEFAULT_LOG_INTERVAL: ClassVar[float] = 60.0  # 60 seconds
     DEFAULT_MAX_TOKENS: ClassVar[int] = 20000
     DEFAULT_TEMPERATURE: ClassVar[float] = 0.0
 
@@ -335,7 +334,7 @@ class RecordProcessor:
                 )
 
             logging.info(
-                'Starting async batch processing of %d records', 
+                'Starting async batch processing of %d records',
                 len(batch_requests)
             )
 
@@ -487,7 +486,7 @@ class RecordProcessor:
                 response_map[index] = response
             except (ValueError, IndexError):
                 logging.warning(
-                    'Could not parse index from custom_id: %s', 
+                    'Could not parse index from custom_id: %s',
                     response.custom_id
                 )
 
@@ -710,11 +709,12 @@ class RecordProcessor:
 # Utility functions for batch processing monitoring
 # -------------------------------------------------------------------------
 def create_progress_logger(
-    log_interval: float = RecordProcessor.DEFAULT_LOG_INTERVAL
+    log_interval: float = 60.0
 ) -> Callable[[BatchProgress], None]:
     """Create a progress callback that logs batch status.
+
     Args:
-        log_interval: Minimum seconds between log messages.
+        log_interval: Minimum seconds between log messages (default: 60.0).
 
     Returns:
         Callback function that logs batch progress.

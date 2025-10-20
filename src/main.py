@@ -24,8 +24,8 @@ from src.processing import create_progress_logger
 # ============================================================================
 
 # Validation thresholds for async mode
-MIN_MAX_WAIT_TIME: Final[int] = 60      # Minimum max wait time in seconds
-MIN_POLL_INTERVAL: Final[int] = 5       # Minimum poll interval in seconds
+MIN_MAX_WAIT_TIME: Final[float] = 60.0      # Minimum max wait time in seconds
+MIN_POLL_INTERVAL: Final[float] = 5.0       # Minimum poll interval in seconds
 
 # Default values for processing
 DEFAULT_BATCH_SIZE: Final[int] = 5      # Records per batch
@@ -33,11 +33,11 @@ DEFAULT_BATCH_SIZE: Final[int] = 5      # Records per batch
 DEFAULT_MAX_CONCURRENT_BATCHES: Final[int] = 5
 
 # Default values for async arguments
-DEFAULT_MAX_WAIT_TIME: Final[int] = 86400  # 24 hours in seconds
-DEFAULT_POLL_INTERVAL: Final[int] = 30     # 30 seconds
+DEFAULT_MAX_WAIT_TIME: Final[float] = 86400.0  # 24 hours in seconds
+DEFAULT_POLL_INTERVAL: Final[float] = 30.0     # 30 seconds
 
 # Progress logging interval
-PROGRESS_LOG_INTERVAL: Final[int] = 60   # Log progress every 60 seconds
+PROGRESS_LOG_INTERVAL: Final[float] = 60.0   # Log progress every 60 seconds
 
 
 # ============================================================================
@@ -155,15 +155,15 @@ def _validate_async_arguments(args: argparse.Namespace) -> None:
     if not getattr(args, 'async_mode', False):
         return
 
-    max_wait_time = getattr(args, 'max_wait_time', 0)
-    if max_wait_time <= MIN_MAX_WAIT_TIME:
+    max_wait_time = getattr(args, 'max_wait_time', 0.0)
+    if max_wait_time < MIN_MAX_WAIT_TIME:
         raise ApplicationError(
             f'Max wait time must be at least {MIN_MAX_WAIT_TIME} seconds for async mode, '
             f'got {max_wait_time} seconds'
         )
 
-    poll_interval = getattr(args, 'poll_interval', 0)
-    if poll_interval <= MIN_POLL_INTERVAL:
+    poll_interval = getattr(args, 'poll_interval', 0.0)
+    if poll_interval < MIN_POLL_INTERVAL:
         raise ApplicationError(
             f'Poll interval must be at least {MIN_POLL_INTERVAL} seconds for async mode, '
             f'got {poll_interval} seconds'
@@ -363,16 +363,16 @@ def _add_async_arguments(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument(
         '--max-wait-time',
-        type=int,
+        type=float,
         default=DEFAULT_MAX_WAIT_TIME,
-        help=f'Maximum time to wait for async batch completion (default: {DEFAULT_MAX_WAIT_TIME} seconds, i.e. 24 hours)'
+        help=f'Maximum time to wait for async batch completion in seconds (default: {DEFAULT_MAX_WAIT_TIME}, i.e. 24 hours)'
     )
 
     parser.add_argument(
         '--poll-interval',
-        type=int,
+        type=float,
         default=DEFAULT_POLL_INTERVAL,
-        help=f'Time between progress checks for async processing (default: {DEFAULT_POLL_INTERVAL}s)'
+        help=f'Time between progress checks for async processing in seconds (default: {DEFAULT_POLL_INTERVAL})'
     )
 
 
@@ -440,8 +440,16 @@ def _run_processor(processor: MedievalTextProcessor, args: argparse.Namespace) -
         progress_callback = create_progress_logger(
             PROGRESS_LOG_INTERVAL  # Log every 60 seconds
         )
-        # Create and start an event loop to Run async processing asynchronously
-        return asyncio.run(processor.run_async(progress_callback))
+
+        # Run async processing with parameters from command line arguments
+        return asyncio.run(
+            processor.run_async(
+                progress_callback,
+                timeout=args.max_wait_time,
+                max_batch_wait_time=args.max_wait_time,
+                poll_interval=args.poll_interval,
+            )
+        )
     else:
         logging.info('Using synchronous processing mode')
         # Run synchronous processing

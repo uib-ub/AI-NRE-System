@@ -20,12 +20,12 @@ from anthropic.types.messages import (
     MessageBatchErroredResult,
 )
 
-from .base_client import Client
+from .base_client import Client as LLMBaseClient
 from .batch_models import BatchRequest, BatchResponse, BatchProgress, BatchStatus
 from .exceptions import APIError, AuthenticationError, LLMClientError, RateLimitError
 
 
-class ClaudeClient(Client):
+class ClaudeClient(LLMBaseClient):
     """Client for interacting with Claude using Anthropic Claude API.
 
     This client supports both synchronous and asynchronous operations, with
@@ -82,7 +82,7 @@ class ClaudeClient(Client):
 
         try:
             # Initialize Synchronous client
-            self.client = Anthropic(api_key=api_key)
+            self.client = Anthropic(api_key=api_key)  
             # Initialize Asynchronous client
             self.async_client = AsyncAnthropic(api_key=api_key)
             # Initialize tokenizer for token counting

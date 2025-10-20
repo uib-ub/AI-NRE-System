@@ -12,7 +12,7 @@ import asyncio
 import logging
 import time
 from collections.abc import AsyncIterator, Callable
-from typing import TYPE_CHECKING
+from typing import ClassVar, TYPE_CHECKING
 
 from ..config import Settings
 from ..llm import BatchProgress
@@ -21,6 +21,10 @@ from ..processing import ProcessingResult, BatchProcessingResult
 from .stats import AsyncProcessingStats, ApplicationError
 
 if TYPE_CHECKING:
+    from argparse import Namespace
+    from ..file_io import CSVReader, OutputWriter
+    from ..processing import RecordProcessor
+    from ..llm import Client
     from .main_processor import MedievalTextProcessor
 
 
@@ -30,7 +34,31 @@ class AsyncProcessor:
     This class is responsible for executing async processing pipelines,
     including batch processing with fallback, streaming modes, incremental
     output, and comprehensive progress monitoring.
+
+    Class Attributes:
+        MAX_CONCURRENT_BATCHES: Maximum number of batch processing tasks to run
+            concurrently (default: 5).
+        MAX_CONCURRENT_INDIVIDUAL: Maximum concurrent individual record processing
+            tasks (default: 5).
+        FALLBACK_CONCURRENCY: Reduced concurrency limit for fallback processing
+            (default: 3).
+        CHUNK_SIZE: Number of records to process per chunk to manage memory
+            (default: 50).
+        DEFAULT_BATCH_WAIT_TIME: Default maximum time in seconds to wait for batch
+            completion (default: 86400 = 24 hours).
+        DEFAULT_POLL_INTERVAL: Default time in seconds between batch progress checks
+            (default: 30).
     """
+
+    # Concurrency limits
+    MAX_CONCURRENT_BATCHES: ClassVar[int] = 5
+    MAX_CONCURRENT_INDIVIDUAL: ClassVar[int] = 5
+    FALLBACK_CONCURRENCY: ClassVar[int] = 3
+    CHUNK_SIZE: ClassVar[int] = 50
+
+    # Batch processing timeouts and intervals
+    DEFAULT_BATCH_WAIT_TIME: ClassVar[float] = 86400.0  # 24 hours in seconds
+    DEFAULT_POLL_INTERVAL: ClassVar[float] = 30.0  # 30 seconds
 
     def __init__(self, main_processor: 'MedievalTextProcessor') -> None:
         """Initialize async processor with reference to main processor.
@@ -45,27 +73,27 @@ class AsyncProcessor:
         self._batch_result_queue: dict[int, BatchProcessingResult] = {}
 
     @property
-    def args(self):
+    def args(self) -> Namespace:
         """Access to command line arguments via main processor."""
         return self.main_processor.args
 
     @property
-    def reader(self):
+    def reader(self) -> CSVReader:
         """Access to input reader via main processor."""
         return self.main_processor.reader
 
     @property
-    def writer(self):
+    def writer(self) -> OutputWriter:
         """Access to output writer via main processor."""
         return self.main_processor.writer
 
     @property
-    def processor(self):
+    def processor(self) -> RecordProcessor:
         """Access to record processor via main processor."""
         return self.main_processor.processor
 
     @property
-    def llm_client(self):
+    def llm_client(self) -> Client:
         """Access to LLM client via main processor."""
         return self.main_processor.llm_client
 
@@ -77,8 +105,8 @@ class AsyncProcessor:
     async def process_all_records_async(
         self,
         progress_callback: Callable[[BatchProgress], None] | None = None,
-        max_batch_wait_time: int = 86400,  # 24 hours
-        poll_interval: int = 30
+        max_batch_wait_time: float | None = None,
+        poll_interval: float | None = None
     ) -> AsyncProcessingStats:
         """Process all records asynchronously with batch operations.
 
@@ -88,8 +116,10 @@ class AsyncProcessor:
 
         Args:
             progress_callback: Optional callback for batch progress updates.
-            max_batch_wait_time: Maximum time to wait for batch completion.
-            poll_interval: Time between progress checks.
+            max_batch_wait_time: Maximum time in seconds to wait for batch completion.
+                Defaults to DEFAULT_BATCH_WAIT_TIME (24 hours).
+            poll_interval: Time in seconds between progress checks.
+                Defaults to DEFAULT_POLL_INTERVAL (30 seconds).
 
         Returns:
             AsyncProcessingStats with detailed processing information.
@@ -103,23 +133,27 @@ class AsyncProcessor:
             )
 
         # Initialize statistics
-        stats = AsyncProcessingStats(start_time=time.time())
+        stats = AsyncProcessingStats(start_time=time.monotonic())
 
         try:
             logging.info('Starting async streaming processing...')
+
+            # Use defaults if not specified
+            wait_time = max_batch_wait_time or self.DEFAULT_BATCH_WAIT_TIME
+            poll_time = poll_interval or self.DEFAULT_POLL_INTERVAL
 
             # check if the LLM client supports async batch processing and if batch processing is enabled
             if self.args.batch_size > 1 and self.llm_client.supports_async_batch():
                 # Use async batch processing with streaming
                 await self._process_records_streaming_async(
-                    stats, progress_callback, max_batch_wait_time, poll_interval
+                    stats, progress_callback, wait_time, poll_time
                 )
             else:
                 # Use individual async processing with streaming
                 await self._process_records_individual_async(stats)
 
             # Finalize statistics
-            stats.end_time = time.time()
+            stats.end_time = time.monotonic()
             stats.processing_time = stats.end_time - stats.start_time
 
             logging.info(
@@ -133,7 +167,7 @@ class AsyncProcessor:
             return stats
 
         except Exception as e:
-            stats.end_time = time.time()
+            stats.end_time = time.monotonic()
             stats.processing_time = stats.end_time - stats.start_time
             error_msg = f'Async streaming processing failed: {e}'
             logging.error(error_msg, exc_info=True)
@@ -143,8 +177,8 @@ class AsyncProcessor:
         self,
         stats: AsyncProcessingStats,
         progress_callback: Callable[[BatchProgress], None] | None,
-        max_wait_time: int,
-        poll_interval: int
+        max_wait_time: float,
+        poll_interval: float
     ) -> None:
         """Process records using async streaming approach with batching
 
@@ -166,8 +200,15 @@ class AsyncProcessor:
 
         # Track batch tasks with their order information using a map
         batch_tasks: dict[int, asyncio.Task[BatchProcessingResult]] = {}  # batch_num -> task
-        # Limit to 5 concurrent batch processing tasks, otherwise it can reach 50 batch request limitation
-        max_concurrent_batches = 5
+        # Limit to default 5 concurrent batch processing tasks,
+        # otherwise it can reach 50 batch request limitation as default
+
+        # max_concurrent_batches = self.MAX_CONCURRENT_BATCHES
+        max_concurrent_batches = getattr(
+            self.args,
+            'max_concurrent_batches',
+            self.MAX_CONCURRENT_BATCHES  # fallback default
+        )
 
         try:
             # Stream records asynchronously in batches and concurrently (coroutines) process them with order preservation
@@ -196,10 +237,10 @@ class AsyncProcessor:
 
                     # Add the task to the tracking dictionary
                     batch_tasks[batch_num] = batch_task
-                    batch_records = []  # Clear batch records after processing a batch
+                    batch_records.clear()  # Clear batch records after processing a batch
 
                     # Limit concurrent batch processing tasks by
-                    # keep up max_concurrent_batches (5) tasks running at any time
+                    # keep up max_concurrent_batches (5 as default) tasks running at any time
                     if len(batch_tasks) >= max_concurrent_batches:
                         # Wait for the OLDEST(smallest batch_num) batch to complete (maintain order)
                         oldest_batch_num = min(batch_tasks.keys())
@@ -227,8 +268,7 @@ class AsyncProcessor:
 
             # Process any remaining batch tasks in ORDER
             for batch_num in sorted(batch_tasks.keys()):
-                batch_task = batch_tasks[batch_num]
-                batch_result = await batch_task
+                batch_result = await batch_tasks[batch_num]
                 # Add results to stats in order
                 await self._add_batch_results_in_order(stats, batch_result, batch_num)
 
@@ -253,14 +293,19 @@ class AsyncProcessor:
     async def _async_stream_csv_records(self) -> AsyncIterator[dict[str, str]]:
         """Asynchronously stream records from the CSV input file.
 
-        Returns:
-            AsyncIterator yielding records as dictionaries.
+        Wraps the synchronous CSV reader in an async iterator to allow
+        non-blocking I/O operations during record processing. Uses
+        asyncio.to_thread to run the blocking next() call in a thread pool.
+
+        Yields:
+            Record dictionaries from the CSV file.
         """
-        iterator = self.reader.stream_records()  # synchronous generator
+        iterator = self.reader.stream_records()
 
         while True:
-            # next(it, None) never raises StopIteration—it returns None at end
-            record = await asyncio.to_thread(lambda it: next(it, None), iterator)
+            # Run synchronous next() in thread pool to avoid blocking event loop
+            # next(iterator, None) returns None at end instead of raising StopIteration
+            record = await asyncio.to_thread(next, iterator, None)
             if record is None:
                 break
             yield record
@@ -270,8 +315,8 @@ class AsyncProcessor:
             batch_records: list[dict[str, str]],
             batch_num: int,
             progress_callback: Callable[[BatchProgress], None] | None,
-            max_wait_time: int,
-            poll_interval: int
+            max_wait_time: float,
+            poll_interval: float
     ) -> BatchProcessingResult:
         """Process a batch of records asynchronously with order tracking
 
@@ -339,6 +384,10 @@ class AsyncProcessor:
         batch_num: int
     ) -> None:
         """Add batch results to stats while preserving order and handle incremental output.
+
+        In incremental mode, results are queued until all earlier batches have been
+        written, ensuring output appears in the correct order. In standard mode,
+        results are accumulated in memory for final writing.
 
         Args:
             stats: Statistics object to update.
@@ -434,12 +483,9 @@ class AsyncProcessor:
             output_text_file = self.args.output_text or Settings.OUTPUT_TEXT_FILE
             output_table_file = self.args.output_table or Settings.OUTPUT_TABLE_FILE
 
-            # Define headers
-            annotated_header = 'Bindnr;Brevid;Tekst'
-            metadata_header = (
-                'Proper Noun;Type of Proper Noun;Preposition;Order of Occurrence in Doc;'
-                'Brevid;Status/Occupation/Description;Gender;Language'
-            )
+            # Use headers from main processor to maintain consistency
+            annotated_header = self.main_processor.ANNOTATED_HEADER
+            metadata_header = self.main_processor.METADATA_HEADER
 
             # Use TaskGroup for better async task management concurrently, and it
             # automatically waits for all tasks to complete when exiting the context manager
@@ -471,8 +517,10 @@ class AsyncProcessor:
             )
 
         except Exception as e:
-            logging.error('Failed to write batch %d results incrementally: %s',
-                          batch_num, e)
+            logging.error(
+                'Failed to write batch %d results incrementally: %s',
+                batch_num, e, exc_info=True
+            )
             # Don't raise - this is not critical enough to stop processing
 
     async def _process_records_individual_async(self, stats: AsyncProcessingStats) -> None:
@@ -485,7 +533,7 @@ class AsyncProcessor:
 
         try:
             # Process records with limited concurrency to avoid overwhelming the API
-            semaphore = asyncio.Semaphore(5)  # Limit to 5 concurrent requests
+            semaphore = asyncio.Semaphore(self.MAX_CONCURRENT_INDIVIDUAL)  # Limit to 5 (default) concurrent requests
 
             async def process_single_record(record: dict[str, str]) -> ProcessingResult:
                 async with semaphore:
@@ -505,7 +553,7 @@ class AsyncProcessor:
                 current_chunk_records.append(record)
 
                 # Process in chunks to avoid memory issues with large files
-                if len(tasks) >= 50:  # Process 50 records at a time
+                if len(tasks) >= self.CHUNK_SIZE:  # Process 50 (default) records at a time
                     await self._process_task_chunk(tasks, current_chunk_records, stats)
                     tasks.clear()
                     current_chunk_records.clear()
@@ -545,7 +593,7 @@ class AsyncProcessor:
             for i, result in enumerate(results):
                 # Get original record by index
                 original_record = chunk_records[i]
-                brevid = original_record.get('Brevid', '')  # Extract brevid
+                brevid = original_record.get('Brevid', 'unknown')  # Extract brevid
 
                 if isinstance(result, Exception):
                     # Handle failed task
@@ -599,7 +647,7 @@ class AsyncProcessor:
         )
 
         # Process records with limited concurrency
-        semaphore = asyncio.Semaphore(3)  # Lower concurrency for fallback
+        semaphore = asyncio.Semaphore(self.FALLBACK_CONCURRENCY)  # Lower concurrency for fallback
 
         async def process_single_record(record: dict[str, str]) -> ProcessingResult:
             async with semaphore:
@@ -615,7 +663,7 @@ class AsyncProcessor:
         # Process results in original order and update statistics
         for i, result in enumerate(results):
             original_record = batch_records[i]  # Get original record by index
-            brevid = original_record.get('Brevid', '')  # Extract brevid
+            brevid = original_record.get('Brevid', 'unknown')  # Extract brevid
 
             if isinstance(result, Exception):
                 # Handle failed task
@@ -664,7 +712,7 @@ class AsyncProcessor:
         """
         def progress_callback(progress: BatchProgress) -> None:
             # Log batch progress
-            counts = progress.request_counts
+            counts: dict[str, int] = progress.request_counts
             if total_batches:
                 batch_info = f'Batch {batch_num}/{total_batches}'
             else:

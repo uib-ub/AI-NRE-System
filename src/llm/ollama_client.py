@@ -10,14 +10,14 @@ from typing import Any, TYPE_CHECKING
 import aiohttp
 import requests
 
-from .base_client import Client
+from .base_client import Client as LLMBaseClient
 from .exceptions import APIError, LLMClientError, LLMConnectionError
 
 if TYPE_CHECKING:  # Only for type-checkers; not needed at runtime.
     from aiohttp import ClientTimeout
 
 
-class OllamaClient(Client):
+class OllamaClient(LLMBaseClient):
     """Client for interacting with Ollama via OpenWebUI API.
 
     Supports synchronous and asynchronous single-call operations. Async batch
