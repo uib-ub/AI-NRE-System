@@ -9,8 +9,8 @@ from __future__ import annotations
 from .exceptions import (
     ConfigError,
     ConfigValidationError,
+    DirectoryValidationError,
     FileValidationError,
-    DirectoryValidationError
 )
 from .settings import Settings
 from .validation import ConfigValidator
@@ -18,8 +18,8 @@ from .validation import ConfigValidator
 __all__ = [
     'ConfigError',
     'ConfigValidationError',
-    'FileValidationError',
-    'DirectoryValidationError',
-    'Settings',
     'ConfigValidator',
+    'DirectoryValidationError',
+    'FileValidationError',
+    'Settings',
 ]
