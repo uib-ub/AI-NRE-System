@@ -13,15 +13,15 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Callable
 from typing import Any, ClassVar
 
-from .batch_models import BatchRequest, BatchResponse, BatchProgress, BatchStatus
-from .exceptions import LLMClientError, BatchTimeoutError
+from .batch_models import BatchProgress, BatchRequest, BatchResponse, BatchStatus
+from .exceptions import BatchTimeoutError, LLMClientError
 
 # Type aliases
 ProgressCallback = Callable[[BatchProgress], None]
 
 
 class Client(ABC):
-    """Abstract base class for LLM clients
+    """Abstract base class for LLM clients.
 
     This class defines the interface for both synchronous and asynchronous
     operations with LLM APIs. Subclasses implement sync/async single-call
@@ -44,11 +44,13 @@ class Client(ABC):
             ValueError: If model is empty or None.
         """
         if not model:
-            raise ValueError('Model name cannot be empty or None')
+            msg = 'Model name cannot be empty or None'
+            raise ValueError(msg)
 
         self.model = model
         logging.info(
-            'Initializing LLM client %s with model %s', self.__class__.__name__, self.model
+            'Initializing LLM client %s with model %s', 
+            self.__class__.__name__, self.model,
         )
 
     # ----------------------------------------------------------------------
@@ -118,7 +120,7 @@ class Client(ABC):
             NotImplementedError: If batch processing is not supported.
         """
         raise NotImplementedError(
-            f'{self.__class__.__name__} does not support async batch processing'
+            f'{self.__class__.__name__} does not support async batch processing',
         )
 
     async def get_batch_status_async(self, batch_id: str) -> BatchStatus:
@@ -134,7 +136,7 @@ class Client(ABC):
             NotImplementedError: If batch processing is not supported.
         """
         raise NotImplementedError(
-            f'{self.__class__.__name__} does not support async batch processing'
+            f'{self.__class__.__name__} does not support async batch processing',
         )
 
     async def get_batch_info_async(self, batch_id: str) -> dict[str, Any]:
@@ -150,7 +152,7 @@ class Client(ABC):
             NotImplementedError: If batch processing is not supported.
         """
         raise NotImplementedError(
-            f'{self.__class__.__name__} does not support async batch processing'
+            f'{self.__class__.__name__} does not support async batch processing',
         )
 
     async def get_batch_results_async(self, batch_id: str) -> list[BatchResponse]:
@@ -166,7 +168,7 @@ class Client(ABC):
             NotImplementedError: If batch processing is not supported.
         """
         raise NotImplementedError(
-            f'{self.__class__.__name__} does not support async batch processing'
+            f'{self.__class__.__name__} does not support async batch processing',
         )
 
     async def cancel_batch_async(self, batch_id: str) -> bool:
@@ -182,7 +184,7 @@ class Client(ABC):
             NotImplementedError: If batch processing is not supported.
         """
         raise NotImplementedError(
-            f'{self.__class__.__name__} does not support async batch processing'
+            f'{self.__class__.__name__} does not support async batch processing',
         )
 
     # Abstract batch orchestration methods - must be implemented by concrete classes
@@ -190,7 +192,7 @@ class Client(ABC):
         self,
         batch_num: int,
         batch_id: str,
-        poll_interval: float | None = None
+        poll_interval: float | None = None,
     ) -> AsyncIterator[BatchProgress]:
         # """Monitor batch progress asynchronously with real-time updates.
         """Yields progress updates for a batch job.
@@ -201,6 +203,7 @@ class Client(ABC):
 
         Args:
             batch_id: The batch job identifier to monitor.
+            batch_num: The batch job number.
             poll_interval: Time between status checks in seconds, default is 30 seconds.
 
         Yields:
@@ -210,7 +213,7 @@ class Client(ABC):
             NotImplementedError: If batch processing is not supported.
         """
         raise NotImplementedError(
-            f'{self.__class__.__name__} does not support async batch monitoring'
+            f'{self.__class__.__name__} does not support async batch monitoring',
         )
 
     # ----------------------------------------------------------------------
@@ -246,10 +249,11 @@ class Client(ABC):
             LLMClientError: If batch processing fails.
         """
         if not self.supports_async_batch():
+            msg = f'Client {self.__class__.__name__} does not support async batch processing'
             raise LLMClientError(
-                f'Client {self.__class__.__name__} does not support async batch processing',
+                msg,
                 client_type=self.client_type,
-                operation='batch_waiting'
+                operation='batch_waiting',
             )
 
         # Resolve defaults from class constants
@@ -268,16 +272,18 @@ class Client(ABC):
         async for progress in self.monitor_batch_progress_async(
             batch_num,
             batch_id,
-            poll_interval
+            poll_interval,
         ):
             # Call progress callback if provides
             if progress_callback is not None:
                 try:
                     progress_callback(progress)
                 except Exception as e:
+                    # Catch all exceptions from user-provided callback to prevent
+                    # callback errors from breaking batch processing
                     logging.debug(
                         'Progress callback raised: %s',
-                        e, exc_info=True
+                        e, exc_info=True,
                     )
 
             # Check for completion
@@ -285,12 +291,13 @@ class Client(ABC):
                 return progress.status
             # Check for timeout
             if time.monotonic() - start_time > max_wait_time:
+                msg = f'Batch job {batch_id} did not complete within {max_wait_time} seconds'
                 raise BatchTimeoutError(
-                    f'Batch job {batch_id} did not complete within {max_wait_time} seconds',
+                    msg,
                     client_type=self.client_type,
                     operation='batch_waiting',
                     batch_id=batch_id,
-                    timeout_seconds=int(max_wait_time)
+                    timeout_seconds=int(max_wait_time),
                 )
         # Fallback status check; if monitor exits without ENDED, query once more.
         return await self.get_batch_status_async(batch_id)
@@ -324,10 +331,11 @@ class Client(ABC):
             BatchTimeoutError: If batch doesn't complete in time.
         """
         if not self.supports_async_batch():
+            msg = f'Client {self.__class__.__name__} does not support async batch processing'
             raise LLMClientError(
-                f'Client {self.__class__.__name__} does not support async batch processing',
+                msg,
                 client_type=self.client_type,
-                operation='batch_processing'
+                operation='batch_processing',
             )
 
         if not requests:
@@ -343,8 +351,8 @@ class Client(ABC):
             # Create batch job.
             batch_id = await self.create_batch_async(requests)
             logging.info(
-                'Created batch %d (ID: %s) with %d requests', 
-                batch_num, batch_id, len(requests)
+                'Created batch %d (ID: %s) with %d requests',
+                batch_num, batch_id, len(requests),
             )
 
             # Wait for completion with progress monitoring
@@ -364,18 +372,20 @@ class Client(ABC):
                     batch_num, batch_id, len(results)
                 )
                 return results
-            else:
-                raise LLMClientError(
-                    f'Batch {batch_num} (ID: {batch_id}) failed with status {final_status.value}',
-                    client_type=self.client_type,
-                    operation='batch_processing'
-                )
+            
+            msg = f'Batch {batch_num} (ID: {batch_id}) failed with status {final_status.value}'
+            raise LLMClientError(
+                msg,
+                client_type=self.client_type,
+                operation='batch_processing',
+            )
         except (LLMClientError, BatchTimeoutError):
             # Preserve domain-specific exceptions.
             raise
         except Exception as e:
+            msg = f'Batch processing failed: {e}'
             raise LLMClientError(
-                f'Batch processing failed: {e}',
+                msg,
                 client_type=self.client_type,
-                operation='batch_processing'
+                operation='batch_processing',
             ) from e

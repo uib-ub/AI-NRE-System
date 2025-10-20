@@ -5,8 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import AsyncIterator
-from typing import Any, ClassVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 import anthropic
 import tiktoken
@@ -14,14 +13,18 @@ from anthropic import Anthropic, AsyncAnthropic
 from anthropic.types import Message
 from anthropic.types.message_create_params import MessageCreateParamsNonStreaming
 from anthropic.types.messages.batch_create_params import Request
-from anthropic.types.messages import (
-    MessageBatch,
-    MessageBatchResult,
-    MessageBatchErroredResult,
-)
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+    from anthropic.types.messages import (
+        MessageBatch,
+        MessageBatchErroredResult,
+        MessageBatchResult,
+    )
 
 from .base_client import Client as LLMBaseClient
-from .batch_models import BatchRequest, BatchResponse, BatchProgress, BatchStatus
+from .batch_models import BatchProgress, BatchRequest, BatchResponse, BatchStatus
 from .exceptions import APIError, AuthenticationError, LLMClientError, RateLimitError
 
 
@@ -57,20 +60,22 @@ class ClaudeClient(LLMBaseClient):
             LLMClientError: If client initialization fails.
         """
         if not api_key:
-            raise ValueError('API key must be provided for ClaudeClient.')
+            msg = 'API key must be provided for ClaudeClient.'
+            raise ValueError(msg)
         if not model:
-            raise ValueError('Model must be provided for ClaudeClient.')
+            msg = 'Model must be provided for ClaudeClient.'
+            raise ValueError(msg)
         # Resolve defaults from class variables.
         if max_tokens is None:
             max_tokens = self.MAX_ALLOWED_TOKENS
         if not (1 <= max_tokens <= self.MAX_ALLOWED_TOKENS):
-            raise ValueError(
-                f'max_tokens must be between 1 and {self.MAX_ALLOWED_TOKENS}'
-            )
+            msg = f'max_tokens must be between 1 and {self.MAX_ALLOWED_TOKENS}'
+            raise ValueError(msg)
         if temperature is None:
             temperature = self.DEFAULT_TEMPERATURE
         if not (0.0 <= temperature <= 1.0):
-            raise ValueError('temperature must be between 0.0 and 1.0')
+            msg = 'temperature must be between 0.0 and 1.0'
+            raise ValueError(msg)
 
         # Initialize base class
         super().__init__(model)
@@ -82,22 +87,23 @@ class ClaudeClient(LLMBaseClient):
 
         try:
             # Initialize Synchronous client
-            self.client = Anthropic(api_key=api_key)  
+            self.client = Anthropic(api_key=api_key)
             # Initialize Asynchronous client
             self.async_client = AsyncAnthropic(api_key=api_key)
             # Initialize tokenizer for token counting
             self.tokenizer = tiktoken.get_encoding('cl100k_base')
         except Exception as e:
+            msg = f'Failed to initialize Claude client: {e}'
             raise LLMClientError(
-                f'Failed to initialize Claude client: {e}',
+                msg,
                 client_type=self.client_type,
-                operation='initialization'
+                operation='initialization',
             ) from e
         logging.info(
             'Claude Client initialized with model=%s, max_tokens=%d, temperature=%.2f',
             model,
             max_tokens,
-            temperature
+            temperature,
         )
 
     @staticmethod
@@ -147,7 +153,8 @@ class ClaudeClient(LLMBaseClient):
             ValueError: If prompt is empty or invalid.
         """
         if not prompt or not prompt.strip():
-            raise ValueError('Prompt must not be empty for ClaudeClient.')
+            msg = 'Prompt must not be empty for ClaudeClient.'
+            raise ValueError(msg)
 
     def _message_payload(
         self,
@@ -174,7 +181,7 @@ class ClaudeClient(LLMBaseClient):
             'temperature': temperature if temperature is not None else self.temperature,
             'top_k': 1,
             'top_p': 1.0,
-            'stream': False
+            'stream': False,
         }
 
     def _handle_auth_error(self, exc: Exception, *, operation: str) -> AuthenticationError:
@@ -190,7 +197,7 @@ class ClaudeClient(LLMBaseClient):
         return AuthenticationError(
             f'Claude authentication failed: {exc}',
             client_type=self.client_type,
-            operation=operation
+            operation=operation,
         )
 
     def _handle_rate_limit_error(self, exc: Exception, *, operation: str) -> RateLimitError:
@@ -216,6 +223,7 @@ class ClaudeClient(LLMBaseClient):
         Args:
             exc: The caught exception.
             operation: The operation being performed when the error occurred.
+            status_code: Optional HTTP status code from the API error.
 
         Returns:
             An APIError
@@ -254,34 +262,37 @@ class ClaudeClient(LLMBaseClient):
 
             payload = self._message_payload(prompt)
             response: Message = cast(
-                Message, self.client.messages.create(**payload)
+                'Message', self.client.messages.create(**payload),
             )
 
             text = self._extract_response_text_from_message(response)
             if not text:
+                msg = 'Empty response received from Claude API'
                 raise APIError(
-                    'Empty response received from Claude API',
+                    msg,
                     client_type=self.client_type,
-                    operation='single_call'
+                    operation='single_call',
                 )
-            return text
+            else:
+                return text
 
         except anthropic.AuthenticationError as e:
             raise self._handle_auth_error(e, operation='single_call') from e
         except anthropic.RateLimitError as e:
             raise self._handle_rate_limit_error(
-                e, operation='single_call'
+                e, operation='single_call',
             ) from e
         except anthropic.APIError as e:
             sc = getattr(e, 'status_code', None)
             raise self._handle_api_error(
-                e, operation='single_call', status_code=sc
+                e, operation='single_call', status_code=sc,
             ) from e
         except Exception as e:
+            msg = f'Claude API call failed: {e}'
             raise LLMClientError(
-                f'Claude API call failed: {e}',
+                msg,
                 client_type=self.client_type,
-                operation='single_call'
+                operation='single_call',
             ) from e
 
     # ------------------------------------------------------------------ #
@@ -310,35 +321,39 @@ class ClaudeClient(LLMBaseClient):
             logging.info('Async prompt Token Count: %d ', token_count)
 
             payload = self._message_payload(prompt)
-            response: Message = cast(Message, await self.async_client.messages.create(**payload))
+            response: Message = cast('Message', await self.async_client.messages.create(**payload))
 
             text = self._extract_response_text_from_message(response)
             if not text:
+                msg = 'Empty response received from Claude API'
                 raise APIError(
-                    'Empty response received from Claude API',
+                    msg,
                     client_type=self.client_type,
-                    operation='async_single_call'
+                    operation='async_single_call',
                 )
-            return text
+            else:
+                return text
 
         except anthropic.AuthenticationError as e:
             raise self._handle_auth_error(
-                e, operation='async_single_call'
+                e, operation='async_single_call',
             ) from e
         except anthropic.RateLimitError as e:
             raise self._handle_rate_limit_error(
-                e, operation='async_single_call'
+                e, operation='async_single_call',
             ) from e
         except anthropic.APIError as e:
             status_code = getattr(e, 'status_code', None)
             raise self._handle_api_error(
-                e, operation='async_single_call', status_code=status_code
+                e, operation='async_single_call',
+                status_code=status_code,
             ) from e
         except Exception as e:
+            msg = f'Claude API call failed: {e}'
             raise LLMClientError(
-                f'Claude API call failed: {e}',
+                msg,
                 client_type=self.client_type,
-                operation='async_single_call'
+                operation='async_single_call',
             ) from e
 
     # ------------------------------------------------------------------ #
@@ -373,19 +388,20 @@ class ClaudeClient(LLMBaseClient):
 
                 # Create properly typed batch request
                 batch_requests.append(
-                    Request(custom_id=request.custom_id, params=message_params)
+                    Request(custom_id=request.custom_id, params=message_params),
                 )
             # Use AsyncAnthropic client for proper async batch creation
             message_batch = await self.async_client.messages.batches.create(
-                requests=batch_requests
+                requests=batch_requests,
             )
             return message_batch.id
 
         except Exception as e:
+            msg = f'Failed to create batch job: {e}'
             raise LLMClientError(
-                f'Failed to create batch job: {e}',
+                msg,
                 client_type=self.client_type,
-                operation='async_create_batch'
+                operation='async_create_batch',
             ) from e
 
     async def get_batch_status_async(self, batch_id: str) -> BatchStatus:
@@ -406,26 +422,27 @@ class ClaudeClient(LLMBaseClient):
             # Map Claude batch processing_status to our enum
             if message_batch.processing_status == 'in_progress':
                 return BatchStatus.IN_PROGRESS
-            elif message_batch.processing_status == 'ended':
+            if message_batch.processing_status == 'ended':
                 return BatchStatus.ENDED
-            else:
-                # Handle any unexpected status
-                logging.warning(
-                    'Unexpected batch status: %s',
-                    message_batch.processing_status
-                )
 
-                return BatchStatus.ENDED
+            # Handle any unexpected status
+            logging.warning(
+                'Unexpected batch status: %s',
+                message_batch.processing_status,
+            )
+
+            return BatchStatus.ENDED
 
         except Exception as e:
+            msg = f'Failed to get batch status: {e}'
             raise LLMClientError(
-                f'Failed to get batch status: {e}',
+                msg,
                 client_type=self.client_type,
-                operation='async_get_batch_status'
+                operation='async_get_batch_status',
             ) from e
 
     async def get_batch_info_async(self, batch_id: str) -> dict[str, Any]:
-        """Return detailed async batch information
+        """Return detailed async batch information.
 
         Args:
             batch_id: The batch job ID.
@@ -449,21 +466,22 @@ class ClaudeClient(LLMBaseClient):
                     'succeeded': message_batch.request_counts.succeeded,
                     'errored': message_batch.request_counts.errored,
                     'canceled': message_batch.request_counts.canceled,
-                    'expired': message_batch.request_counts.expired
+                    'expired': message_batch.request_counts.expired,
                 },
                 'created_at': message_batch.created_at,
                 'expires_at': message_batch.expires_at,
                 'ended_at': message_batch.ended_at,
                 'cancel_initiated_at': message_batch.cancel_initiated_at,
-                'results_url': message_batch.results_url
+                'results_url': message_batch.results_url,
             }
             return batch_info
 
         except Exception as e:
+            msg = f'Failed to get batch info: {e}'
             raise LLMClientError(
-                f'Failed to get batch info: {e}',
+                msg,
                 client_type=self.client_type,
-                operation='async_get_batch_info'
+                operation='async_get_batch_info',
             ) from e
 
     async def get_batch_results_async(self, batch_id: str) -> list[BatchResponse]:
@@ -490,10 +508,10 @@ class ClaudeClient(LLMBaseClient):
             results_iter = await self.async_client.messages.batches.results(batch_id)
             async for result in results_iter:
                 custom_id: str = getattr(
-                    result, 'custom_id', 'unknown_custom_id'
+                    result, 'custom_id', 'unknown_custom_id',
                 )
                 batch_response = self._process_single_batch_result(
-                    result, custom_id, counters
+                    result, custom_id, counters,
                 )
                 results.append(batch_response)
 
@@ -501,8 +519,9 @@ class ClaudeClient(LLMBaseClient):
             return results
 
         except Exception as e:
+            msg = f'Failed to get batch results: {e}'
             raise LLMClientError(
-                f'Failed to get batch results: {e}',
+                msg,
                 client_type=self.client_type,
                 operation='async_get_batch_results',
             ) from e
@@ -519,19 +538,21 @@ class ClaudeClient(LLMBaseClient):
         # Ensure the batch is actually completed
         status = await self.get_batch_status_async(batch_id)
         if status != BatchStatus.ENDED:
+            msg = f'Batch {batch_id} is not completed yet, current status: {status.value}'
             raise LLMClientError(
-                f'Batch {batch_id} is not completed yet, current status: {status.value}',
+                msg,
                 client_type=self.client_type,
-                operation='async_get_batch_results'
+                operation='async_get_batch_results',
             )
 
         # Fetch batch information to access results_url
         batch_info = await self.get_batch_info_async(batch_id)
         if not batch_info.get('results_url'):
+            msg = f'Batch {batch_id} has no results URL available.'
             raise LLMClientError(
-                f'No results URL found for batch {batch_id}',
+                msg,
                 client_type=self.client_type,
-                operation='async_get_batch_results'
+                operation='async_get_batch_results',
             )
 
     @staticmethod
@@ -552,9 +573,9 @@ class ClaudeClient(LLMBaseClient):
 
     def _process_single_batch_result(
         self,
-        result: Any,
+        result: object,
         custom_id: str,
-        counters: dict[str, int]
+        counters: dict[str, int],
     ) -> BatchResponse:
         """Process a single batch result item.
 
@@ -568,7 +589,7 @@ class ClaudeClient(LLMBaseClient):
         """
         try:
             result_obj: MessageBatchResult | None = getattr(
-                result, 'result', None
+                result, 'result', None,
             )
             if result_obj is None:
                 counters['other'] += 1
@@ -576,18 +597,17 @@ class ClaudeClient(LLMBaseClient):
                     custom_id=custom_id,
                     response_text='',
                     success=False,
-                    error_message='Missing result object.'
+                    error_message='Missing result object.',
                 )
 
             return self._create_batch_response_for_result_type(result_obj, custom_id, counters)
 
         except Exception as result_exc:
             # Never let one malformed result crash the whole batch
-            logging.error(
+            logging.exception(
                 'Failed to parse batch result for custom_id %s: %s',
                 custom_id,
                 result_exc,
-                exc_info=True
             )
             counters['parse_errors'] += 1
             return BatchResponse(
@@ -601,7 +621,7 @@ class ClaudeClient(LLMBaseClient):
         self,
         result_obj: MessageBatchResult,
         custom_id: str,
-        counters: dict[str, int]
+        counters: dict[str, int],
     ) -> BatchResponse:
         """Create a BatchResponse based on the result type.
 
@@ -619,7 +639,7 @@ class ClaudeClient(LLMBaseClient):
         if result_obj.type == 'succeeded':
             counters['succeeded'] += 1
             response_text = self._extract_response_text_from_message(
-                result_obj.message
+                result_obj.message,
             )
             return BatchResponse(
                 custom_id=custom_id,
@@ -629,7 +649,7 @@ class ClaudeClient(LLMBaseClient):
             )
 
         # Errored path: MessageBatchErroredResult
-        elif result_obj.type == 'errored':
+        if result_obj.type == 'errored':
             counters['errored'] += 1
             error_message = self._extract_error_from_errored_result(result_obj)
             return BatchResponse(
@@ -640,7 +660,7 @@ class ClaudeClient(LLMBaseClient):
             )
 
         # Canceled path: MessageBatchCanceledResult
-        elif result_obj.type == 'canceled':
+        if result_obj.type == 'canceled':
             counters['canceled'] += 1
             return BatchResponse(
                 custom_id=custom_id,
@@ -650,7 +670,7 @@ class ClaudeClient(LLMBaseClient):
             )
 
         # Expired path: MessageBatchExpiredResult
-        elif result_obj.type == 'expired':
+        if result_obj.type == 'expired':
             counters['expired'] += 1
             return BatchResponse(
                 custom_id=custom_id,
@@ -660,20 +680,19 @@ class ClaudeClient(LLMBaseClient):
             )
 
         # Unknown/undocumented type: fallback
-        else:
-            counters['other'] += 1
-            return BatchResponse(
-                custom_id=custom_id,
-                response_text='',
-                success=False,
-                error_message=f'Unknown result type: {result_obj.type}',
-            )
+        counters['other'] += 1
+        return BatchResponse(
+            custom_id=custom_id,
+            response_text='',
+            success=False,
+            error_message=f'Unknown result type: {result_obj.type}',
+        )
 
     @staticmethod
     def _log_batch_summary(
         batch_id: str,
         results: list[BatchResponse],
-        counters: dict[str, int]
+        counters: dict[str, int],
     ) -> None:
         """Log a summary of batch processing results.
 
@@ -715,10 +734,9 @@ class ClaudeClient(LLMBaseClient):
         for block in msg.content:
             # Each block has a 'type' field (Literal type from SDK)
             # Only consume text blocks; ignore tool_use, thinking, and other blocks
-            if block.type == 'text':
-                # Text blocks have a 'text' attribute
-                if hasattr(block, 'text') and block.text:
-                    text_parts.append(block.text)
+            # Text blocks have a 'text' attribute
+            if block.type == 'text' and hasattr(block, 'text') and block.text:
+                text_parts.append(block.text)
 
         return ''.join(text_parts)
 
@@ -740,9 +758,9 @@ class ClaudeClient(LLMBaseClient):
         # so use defensive access
         if hasattr(error, 'error') and hasattr(error.error, 'message'):
             return str(error.error.message)
-
-        # Fallback to string representation
-        return f'Batch request failed: {error}'
+        else:
+            # Fallback to string representation
+            return f'Batch request failed: {error}'
 
     async def cancel_batch_async(self, batch_id: str) -> bool:
         """Cancel a batch job asynchronously.
@@ -764,7 +782,7 @@ class ClaudeClient(LLMBaseClient):
             raise LLMClientError(
                 f'Failed to cancel batch: {e}',
                 client_type=self.client_type,
-                operation='async_cancel_batch'
+                operation='async_cancel_batch',
             ) from e
 
     # ------------------------------------------------------------------ #
@@ -775,7 +793,7 @@ class ClaudeClient(LLMBaseClient):
         self,
         batch_num: int,
         batch_id: str,
-        poll_interval: float | None = None
+        poll_interval: float | None = None,
     ) -> AsyncIterator[BatchProgress]:
         """Yield progress updates for a batch job.
 
@@ -785,6 +803,7 @@ class ClaudeClient(LLMBaseClient):
         optional progress callback supplied by the caller.
 
         Args:
+            batch_num: The batch number for tracking multiple batches.
             batch_id: The batch job ID to monitor.
             poll_interval: Time between status checks in seconds (default: 30 seconds).
 
@@ -811,7 +830,7 @@ class ClaudeClient(LLMBaseClient):
                 elapsed_time = time.monotonic() - start_time
                 # Defensive extraction/typing
                 req_counts: dict[str, int] = batch_info.get(
-                    'request_counts'
+                    'request_counts',
                 ) or {}
 
                 created_at = str(batch_info.get('created_at', ''))
@@ -832,7 +851,7 @@ class ClaudeClient(LLMBaseClient):
                 if status == BatchStatus.ENDED:
                     logging.info(
                         'Batch %s reached terminal state: %s', 
-                        batch_id, status.value
+                        batch_id, status.value,
                     )
                     # break
                     return
@@ -841,9 +860,9 @@ class ClaudeClient(LLMBaseClient):
                 await asyncio.sleep(poll_interval)
 
             except Exception as e:
-                logging.error(
+                logging.exception(
                     'Error monitoring batch %s: %s',
-                    batch_id, e, exc_info=True
+                    batch_id, e,
                 )
                 # Emit a final ended state so the caller can unwind cleanly.
                 yield BatchProgress(
@@ -853,7 +872,7 @@ class ClaudeClient(LLMBaseClient):
                     elapsed_time=time.monotonic() - start_time,
                     request_counts={},
                     created_at='',
-                    expires_at=''
+                    expires_at='',
                 )
                 # break
                 return

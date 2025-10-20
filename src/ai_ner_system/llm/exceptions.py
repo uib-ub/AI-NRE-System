@@ -15,7 +15,11 @@ The exception hierarchy follows a structured approach:
 
 from __future__ import annotations
 
-from typing import Any
+# HTTP status codes for retryable errors
+_HTTP_TOO_MANY_REQUESTS = 429
+_HTTP_REQUEST_TIMEOUT = 408
+_HTTP_SERVER_ERROR_MIN = 500
+_HTTP_SERVER_ERROR_MAX = 599
 
 
 class LLMClientError(Exception):
@@ -68,7 +72,7 @@ class APIError(LLMClientError):
         operation: str | None = None,
         status_code: int | None = None,
         response_text: str | None = None,
-        request_id: str | None = None
+        request_id: str | None = None,
     ) -> None:
         """Initialize APIError with detailed API context.
 
@@ -94,8 +98,10 @@ class APIError(LLMClientError):
         sc = self.status_code
         if sc is None:
             return False
-        # 5xx server errors and 429 rate limits are generally retryable
-        return sc == 429 or sc == 408 or (500 <= sc <= 599)
+        # 5xx server errors and 429/408 are generally retryable
+        return sc in {_HTTP_TOO_MANY_REQUESTS, _HTTP_REQUEST_TIMEOUT} or (
+            _HTTP_SERVER_ERROR_MIN <= sc <= _HTTP_SERVER_ERROR_MAX
+        )
 
 
 class LLMConnectionError(LLMClientError):
@@ -111,7 +117,7 @@ class LLMConnectionError(LLMClientError):
         *,
         client_type: str | None = None,
         operation: str | None = None,
-        endpoint: str | None = None
+        endpoint: str | None = None,
     ) -> None:
         """Initialize LLMConnectionError with network context.
 
@@ -136,7 +142,7 @@ class AuthenticationError(LLMClientError):
         message: str,
         *,
         client_type: str | None = None,
-        operation: str | None = None
+        operation: str | None = None,
     ) -> None:
         """Initialize AuthenticationError.
 
@@ -161,7 +167,7 @@ class RateLimitError(APIError):
         client_type: str | None = None,
         operation: str | None = None,
         retry_after: int | None = None,
-        limit_type: str | None = None
+        limit_type: str | None = None,
     ) -> None:
         """Initialize RateLimitError with rate limit context.
 
@@ -176,7 +182,7 @@ class RateLimitError(APIError):
             message,
             client_type=client_type,
             operation=operation,
-            status_code=429
+            status_code=_HTTP_TOO_MANY_REQUESTS,
         )
         self.retry_after = retry_after
         self.limit_type = limit_type
@@ -195,7 +201,7 @@ class BatchTimeoutError(LLMClientError):
         client_type: str | None = None,
         operation: str | None = None,
         batch_id: str | None = None,
-        timeout_seconds: int | None = None
+        timeout_seconds: int | None = None,
     ) -> None:
         """Initialize BatchTimeoutError with timeout context.
 
@@ -225,7 +231,7 @@ class BatchProcessingError(LLMClientError):
         client_type: str | None = None,
         operation: str | None = None,
         batch_id: str | None = None,
-        failed_requests: list[str] | None = None
+        failed_requests: list[str] | None = None,
     ) -> None:
         """Initialize BatchProcessingError with batch context.
 
@@ -254,7 +260,7 @@ class LLMValidationError(LLMClientError):
         client_type: str | None = None,
         operation: str | None = None,
         field: str | None = None,
-        value: Any = None
+        value: object = None,
     ) -> None:
         """Initialize LLMValidationError with validation context.
 

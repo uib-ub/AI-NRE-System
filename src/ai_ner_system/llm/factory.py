@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .base_client import Client
 
 from ..config.settings import Settings
-from .base_client import Client
-from .ollama_client import OllamaClient
 from .claude_client import ClaudeClient
 from .exceptions import LLMClientError
+from .ollama_client import OllamaClient
 
 
-def create_llm_client(client_type: str, **kwargs: Any) -> Client:
+def create_llm_client(client_type: str) -> Client:
     """Factory function to create LLM clients.
 
     Note: This factory assumes configuration has already been validated
@@ -20,7 +22,6 @@ def create_llm_client(client_type: str, **kwargs: Any) -> Client:
 
     Args:
         client_type: Type of client ('claude' or 'ollama').
-        **kwargs: Additional arguments for client initialization.
 
     Returns:
         Initialized LLM client.
@@ -35,42 +36,75 @@ def create_llm_client(client_type: str, **kwargs: Any) -> Client:
     client_type = client_type.lower().strip()
     try:
         if client_type == 'claude':
-            # Type assertions: ConfigValidator ensures these are not None before factory is called
-            assert Settings.ANTHROPIC_API_KEY is not None, 'ANTHROPIC_API_KEY must be set'
-            assert Settings.CLAUDE_MODEL is not None, 'CLAUDE_MODEL must be set'
+            # Runtime checks: ConfigValidator ensures these are not None before factory is called
+            if Settings.ANTHROPIC_API_KEY is None:
+                msg = 'ANTHROPIC_API_KEY must be set'
+                raise LLMClientError(
+                    msg,
+                    client_type=client_type,
+                    operation='factory_creation',
+                )
+            if Settings.CLAUDE_MODEL is None:
+                msg = 'CLAUDE_MODEL must be set'
+                raise LLMClientError(
+                    msg,
+                    client_type=client_type,
+                    operation='factory_creation',
+                )
             return ClaudeClient(
                 api_key=Settings.ANTHROPIC_API_KEY,
-                model=Settings.CLAUDE_MODEL
+                model=Settings.CLAUDE_MODEL,
             )
         elif client_type == 'ollama':
-            # Type assertions: ConfigValidator ensures these are not None before factory is called
-            assert Settings.OPENWEBUI_ENDPOINT is not None, 'OPENWEBUI_ENDPOINT must be set'
-            assert Settings.OPENWEBUI_TOKEN is not None, 'OPENWEBUI_TOKEN must be set'
-            assert Settings.OLLAMA_MODEL is not None, 'OLLAMA_MODEL must be set'
+            # Runtime checks: ConfigValidator ensures these are not None before factory is called
+            if Settings.OPENWEBUI_ENDPOINT is None:
+                msg = 'OPENWEBUI_ENDPOINT must be set'
+                raise LLMClientError(
+                    msg,
+                    client_type=client_type,
+                    operation='factory_creation',
+                )
+            if Settings.OPENWEBUI_TOKEN is None:
+                msg = 'OPENWEBUI_TOKEN must be set'
+                raise LLMClientError(
+                    msg,
+                    client_type=client_type,
+                    operation='factory_creation',
+                )
+            if Settings.OLLAMA_MODEL is None:
+                msg = 'OLLAMA_MODEL must be set'
+                raise LLMClientError(
+                    msg,
+                    client_type=client_type,
+                    operation='factory_creation',
+                )
             return OllamaClient(
                 endpoint=Settings.OPENWEBUI_ENDPOINT,
                 token=Settings.OPENWEBUI_TOKEN,
-                model=Settings.OLLAMA_MODEL
+                model=Settings.OLLAMA_MODEL,
             )
         else:
             supported_types = ['claude', 'ollama']
+            msg = (
+                f'Unsupported client type: {client_type}. '
+                f'Supported types: {", ".join(supported_types)}'
+            )
             raise LLMClientError(
-                f'Unsupported client type: {client_type}.'
-                f'Supported types: {", ".join(supported_types)}',
+                msg,
                 client_type=client_type,
                 operation='factory_creation',
             )
     except Exception as e:
         # Wrap unexpected exceptions in LLMClientError
-        logging.error(
+        logging.exception(
             'Unexpected error creating %s client: %s',
             client_type,
             e,
-            exc_info=True,
         )
         # Catch any unexpected exceptions
+        msg = f'Failed to create {client_type} client: {e}'
         raise LLMClientError(
-            f'Failed to create {client_type} client: {e}',
+            msg,
             client_type=client_type,
             operation='factory_creation',
         ) from e

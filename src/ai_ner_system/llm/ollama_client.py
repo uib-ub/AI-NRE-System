@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import aiohttp
 import requests
@@ -31,7 +30,7 @@ class OllamaClient(LLMBaseClient):
         model: str,
         *,
         timeout: int = 10800,  # 3 hours default
-        temperature: float = 0.0
+        temperature: float = 0.0,
     ) -> None:
         """Initialize Ollama client.
 
@@ -160,14 +159,13 @@ class OllamaClient(LLMBaseClient):
             LLMConnectionError: On network failures.
             LLMClientError: If processing fails.
         """
-
         self._validate_prompt(prompt)
 
         headers = self._build_headers()
         payload = self._build_payload(prompt)
 
         logging.info(
-            'Sending request to Ollama (prompt length: %d)', len(prompt)
+            'Sending request to Ollama (prompt length: %d)', len(prompt),
         )
 
         try:
@@ -176,7 +174,7 @@ class OllamaClient(LLMBaseClient):
                 self.endpoint,
                 json=payload,
                 headers=headers,
-                timeout=self.timeout
+                timeout=self.timeout,
             )
 
             response.raise_for_status()
@@ -186,50 +184,50 @@ class OllamaClient(LLMBaseClient):
 
             logging.info(
                 'Received Ollama response (length: %d)',
-                len(response_text)
+                len(response_text),
             )
             return response_text
 
         except requests.exceptions.Timeout as e:
-            error_msg = 'Ollama API call timed out after %d seconds' % self.timeout
-            logging.error('%s: %s', error_msg, e, exc_info=True)
+            error_msg = f'Ollama API call timed out after {self.timeout} seconds'
+            logging.exception('%s: %s', error_msg, e)
             raise APIError(
                 error_msg,
                 client_type=self.client_type,
-                operation='single_call'
+                operation='single_call',
             ) from e
         except requests.exceptions.ConnectionError as e:
-            error_msg = 'Failed to connect to Ollama endpoint: %s' % self.endpoint
-            logging.error('%s: %s', error_msg, e, exc_info=True)
+            error_msg = f'Failed to connect to Ollama endpoint: {self.endpoint}'
+            logging.exception('%s: %s', error_msg, e)
             raise LLMConnectionError(
                 error_msg,
                 client_type=self.client_type,
                 operation='single_call',
-                endpoint=self.endpoint
+                endpoint=self.endpoint,
             ) from e
         except requests.exceptions.RequestException as e:
-            error_msg = 'Ollama API request failed: %s' % e
-            logging.error('%s', error_msg, exc_info=True)
+            error_msg = f'Ollama API request failed: {e}'
+            logging.exception('%s', error_msg)
             raise APIError(
                 error_msg,
                 client_type=self.client_type,
                 operation='single_call',
             ) from e
         except json.JSONDecodeError as e:
-            error_msg = 'Invalid JSON response from Ollama API: %s' % e
-            logging.error('%s', error_msg, exc_info=True)
+            error_msg = f'Invalid JSON response from Ollama API: {e}'
+            logging.exception('%s', error_msg)
             raise APIError(
                 error_msg,
                 client_type=self.client_type,
                 operation='single_call',
             ) from e
         except Exception as e:
-            error_msg = 'Ollama API call failed: %s' % e
-            logging.error('%s', error_msg, exc_info=True)
+            error_msg = f'Ollama API call failed: {e}'
+            logging.exception('%s', error_msg)
             raise LLMClientError(
                 error_msg,
                 client_type=self.client_type,
-                operation='single_call'
+                operation='single_call',
             ) from e
 
     # ----------------------------------------------------------------------
@@ -258,44 +256,46 @@ class OllamaClient(LLMBaseClient):
         # Configure proper timeout for aiohttp, annotated only for type-checkers;
         # thanks to postponed annotations, OK at runtime.
         timeout_config: ClientTimeout = aiohttp.ClientTimeout(
-            total=self.timeout
+            total=self.timeout,
         )
 
         logging.info(
             'Sending async request to Ollama (prompt length: %d)',
-            len(prompt)
+            len(prompt),
         )
 
         try:
             # Send request to OpenWebUI/Ollama
-            async with aiohttp.ClientSession(timeout=timeout_config) as session:
-                async with session.post(
+            async with (
+                aiohttp.ClientSession(timeout=timeout_config) as session,
+                session.post(
                     url=self.endpoint,
                     json=payload,
                     headers=headers,
-                ) as response:
-                    response.raise_for_status()
-                    data = await response.json()
+                ) as response,
+            ):
+                response.raise_for_status()
+                data = await response.json()
 
             response_text = self._extract_text_from_json(data)
 
             logging.info(
                 'Received async Ollama response (length: %d)',
-                len(response_text)
+                len(response_text),
             )
             return response_text
 
-        except asyncio.TimeoutError as e:
-            error_msg = 'Ollama API request timed out after %ds' % self.timeout
-            logging.error('%s: %s', error_msg, e, exc_info=True)
+        except TimeoutError as e:
+            error_msg = f'Ollama API request timed out after {self.timeout}s'
+            logging.exception('%s: %s', error_msg, e)
             raise APIError(
                 error_msg,
                 client_type='ollama',
                 operation='async_single_call',
             ) from e
         except aiohttp.ClientConnectorError as e:
-            error_msg = 'Failed to connect to Ollama endpoint: %s' % self.endpoint
-            logging.error('%s: %s', error_msg, e, exc_info=True)
+            error_msg = f'Failed to connect to Ollama endpoint: {self.endpoint}'
+            logging.exception('%s: %s', error_msg, e)
             raise LLMConnectionError(
                 error_msg,
                 client_type=self.client_type,
@@ -303,16 +303,16 @@ class OllamaClient(LLMBaseClient):
                 endpoint=self.endpoint,
             ) from e
         except aiohttp.ClientError as e:
-            error_msg = 'Ollama API client error: %s' % e
-            logging.error('%s', error_msg, exc_info=True)
+            error_msg = f'Ollama API client error: {e}'
+            logging.exception('%s', error_msg)
             raise APIError(
                 error_msg,
                 client_type=self.client_type,
                 operation='async_single_call',
             ) from e
         except Exception as e:
-            error_msg = 'Ollama async API call failed: %s' % e
-            logging.error('%s', error_msg, exc_info=True)
+            error_msg = f'Ollama async API call failed: {e}'
+            logging.exception('%s', error_msg)
             raise LLMClientError(
                 error_msg,
                 client_type=self.client_type,
