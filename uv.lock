@@ -121,6 +121,11 @@ test = [
     { name = "pytest-mock" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "ruff" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "ai-ner-system", extras = ["dev-tools", "docs", "lint", "profiling", "security", "test"], marker = "extra == 'all'" },
@@ -159,6 +164,9 @@ requires-dist = [
     { name = "vulture", marker = "extra == 'lint'", specifier = ">=2.10" },
 ]
 provides-extras = ["lint", "test", "dev-tools", "docs", "profiling", "security", "dev", "all", "ci"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "ruff", specifier = ">=0.12.1" }]
 
 [[package]]
 name = "aiohappyeyeballs"
