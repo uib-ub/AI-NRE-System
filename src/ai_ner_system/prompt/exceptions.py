@@ -33,9 +33,15 @@ class PromptError(Exception):
     def __str__(self) -> str:
         """Return detailed error description."""
         base_msg = super().__str__()
+        parts: list[str] = []
         if self.template_file:
-            return f'{base_msg} (template: {self.template_file}, operation: {self.operation})'
-        return f'{base_msg} (operation: {self.operation})'
+            parts.append(f"template: {self.template_file}")
+        if self.operation:
+            parts.append(f"operation: {self.operation}")
+
+        if parts:
+            return f"{base_msg} ({', '.join(parts)})"
+        return base_msg
 
 
 class TemplateNotFoundError(PromptError):
@@ -43,24 +49,44 @@ class TemplateNotFoundError(PromptError):
 
     def __init__(self, template_file: Pathish) -> None:
         super().__init__(
-            f'Template file not found: {template_file}',
+            f"Template file not found: {template_file}",
             template_file=template_file,
-            operation='load'
+            operation="load",
         )
 
 
 class PromptBuildError(PromptError):
-    """Raised when building a prompt from a template fails."""
+    """Raised when building a prompt from a template fails.
+
+    This exception is raised during prompt construction when template
+    formatting fails, required fields are missing, or data validation
+    fails.
+    """
 
     def __init__(
         self,
         message: str,
         template_file: Pathish | None = None,
-        data_type: str | None = None
+        data_type: str | None = None,
     ) -> None:
+        """Initialize PromptBuildError.
+
+        Args:
+            message: Descriptive error message.
+            template_file: Optional template file path related to the error.
+            data_type: Optional data type being processed (e.g., 'single', 'batch').
+        """
         super().__init__(
             message,
             template_file=template_file,
-            operation='build'
+            operation="build",
         )
         self.data_type = data_type
+
+    def __str__(self) -> str:
+        """Return detailed error description."""
+        base_msg = super().__str__()
+        if self.data_type and base_msg.endswith(")"):
+            # Insert data_type before the closing parenthesis
+            return f"{base_msg[:-1]}, data_type: {self.data_type})"
+        return base_msg
