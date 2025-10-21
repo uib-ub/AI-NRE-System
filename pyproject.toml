@@ -223,7 +223,9 @@ select = [
 ]
 
 ignore = [
-     # Allow print statements (common in CLI applications)
+    # Use isort for impor sorting
+    # "I001",
+    # Allow print statements (common in CLI applications)
     "T201",
     # Allow TODO comments
     "FIX002",
@@ -241,8 +243,12 @@ ignore = [
     "PLR0912",
     # Too many statements
     "PLR0915",
-    # Use isort for impor sorting
-    # "I001",
+    # Exception must not use a string literal messages
+    "EM101",  
+    # f-string in raise
+    "EM102",  
+    # long messages outside exception class
+    "TRY003", 
 ]
 
 # Allow autofix for all enabled rules
