@@ -389,3 +389,8 @@ skips = ["B101"]  # Skip assert_used test
 [tool.codespell]
 skip = "*.git,*.pdf,*.svg,*.pyc,*.egg-info,*.mypy_cache,*__pycache__*"
 ignore-words-list = "hist,aks,ans,nd"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.12.1",
+]
