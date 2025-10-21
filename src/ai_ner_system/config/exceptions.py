@@ -23,7 +23,7 @@ class ConfigError(Exception):
     def __str__(self) -> str:
         base_message = super().__str__()
         if self.config_key:
-            return f'{base_message} | config_key={self.config_key}'
+            return f"{base_message} | config_key={self.config_key}"
         return base_message
 
 
@@ -44,8 +44,8 @@ class ConfigValidationError(ConfigError):
     def __str__(self) -> str:
         base_message = super().__str__()
         if self.missing_keys:
-            missing = ', '.join(self.missing_keys)
-            return f'{base_message} | missing_keys=[{missing}]'
+            missing = ", ".join(self.missing_keys)
+            return f"{base_message} | missing_keys=[{missing}]"
         return base_message
 
 
@@ -71,7 +71,7 @@ class FileValidationError(ConfigError):
 
     def __str__(self) -> str:
         base_message = super().__str__()
-        return f'{base_message} | file_path={self.file_path}'
+        return f"{base_message} | file_path={self.file_path}"
 
 
 class DirectoryValidationError(ConfigError):
@@ -96,4 +96,4 @@ class DirectoryValidationError(ConfigError):
 
     def __str__(self) -> str:
         base_message = super().__str__()
-        return f'{base_message} | directory_path={self.directory_path}'
+        return f"{base_message} | directory_path={self.directory_path}"

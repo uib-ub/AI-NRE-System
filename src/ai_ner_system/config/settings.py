@@ -41,17 +41,17 @@ class Settings:
     """
 
     # Default values as class constants
-    DEFAULT_INPUT_FILE: ClassVar[str] = 'input/Brevid-DN-AI.txt'
-    DEFAULT_OUTPUT_TEXT_FILE: ClassVar[str] = 'output/annotated_texts.txt'
-    DEFAULT_OUTPUT_TABLE_FILE: ClassVar[str] = 'output/metadata_table.txt'
-    DEFAULT_OUTPUT_STATS_FILE: ClassVar[str] = 'output/processing_stats.json'
-    DEFAULT_PROMPT_TEMPLATE_FILE: ClassVar[str] = 'prompt/prompt.txt'
-    DEFAULT_BATCH_TEMPLATE_FILE: ClassVar[str] = 'prompt/batch_template.txt'
-    DEFAULT_CACHE_DIR: ClassVar[str] = '.cache_llm'
+    DEFAULT_INPUT_FILE: ClassVar[str] = "input/Brevid-DN-AI.txt"
+    DEFAULT_OUTPUT_TEXT_FILE: ClassVar[str] = "output/annotated_texts.txt"
+    DEFAULT_OUTPUT_TABLE_FILE: ClassVar[str] = "output/metadata_table.txt"
+    DEFAULT_OUTPUT_STATS_FILE: ClassVar[str] = "output/processing_stats.json"
+    DEFAULT_PROMPT_TEMPLATE_FILE: ClassVar[str] = "prompt/prompt.txt"
+    DEFAULT_BATCH_TEMPLATE_FILE: ClassVar[str] = "prompt/batch_template.txt"
+    DEFAULT_CACHE_DIR: ClassVar[str] = ".cache_llm"
 
     # Supported client types
     SUPPORTED_CLIENTS: ClassVar[frozenset[str]] = frozenset(
-        {'claude', 'ollama'},
+        {"claude", "ollama"},
     )
 
     # Flag to track initialization
@@ -93,7 +93,7 @@ class Settings:
             ConfigError: If initialization fails.
         """
         if cls._initialized and not reload_env:
-            logging.debug('Settings already initialized, skipping')
+            logging.debug("Settings already initialized, skipping")
             return
 
         try:
@@ -108,46 +108,51 @@ class Settings:
             cls._ensure_output_directories()
 
             cls._initialized = True
-            logging.info('Configuration initialized successfully')
+            logging.info("Configuration initialized successfully")
 
         except OSError as e:
-            msg = f'Failed to initialize configuration: {e}'
+            msg = f"Failed to initialize configuration: {e}"
             raise ConfigError(msg) from e
 
     @classmethod
     def _load_from_environment(cls) -> None:
         """Load configuration values from environment variables."""
         # API Configuration
-        cls.ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY')
-        cls.OPENWEBUI_TOKEN = os.getenv('OPENWEBUI_TOKEN')
-        cls.OPENWEBUI_ENDPOINT = os.getenv('OPENWEBUI_ENDPOINT')
+        cls.ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+        cls.OPENWEBUI_TOKEN = os.getenv("OPENWEBUI_TOKEN")
+        cls.OPENWEBUI_ENDPOINT = os.getenv("OPENWEBUI_ENDPOINT")
 
         # Model Configuration
-        cls.OLLAMA_MODEL = os.getenv('OLLAMA_MODEL')
-        cls.CLAUDE_MODEL = os.getenv('CLAUDE_MODEL')
+        cls.OLLAMA_MODEL = os.getenv("OLLAMA_MODEL")
+        cls.CLAUDE_MODEL = os.getenv("CLAUDE_MODEL")
 
         # File I/O Configuration
-        cls.INPUT_FILE = os.getenv('INPUT_FILE', cls.DEFAULT_INPUT_FILE)
+        cls.INPUT_FILE = os.getenv("INPUT_FILE", cls.DEFAULT_INPUT_FILE)
         cls.OUTPUT_TEXT_FILE = os.getenv(
-            'OUTPUT_TEXT_FILE', cls.DEFAULT_OUTPUT_TEXT_FILE,
+            "OUTPUT_TEXT_FILE",
+            cls.DEFAULT_OUTPUT_TEXT_FILE,
         )
         cls.OUTPUT_TABLE_FILE = os.getenv(
-            'OUTPUT_TABLE_FILE', cls.DEFAULT_OUTPUT_TABLE_FILE,
+            "OUTPUT_TABLE_FILE",
+            cls.DEFAULT_OUTPUT_TABLE_FILE,
         )
         cls.OUTPUT_STATS_FILE = os.getenv(
-            'OUTPUT_STATS_FILE', cls.DEFAULT_OUTPUT_STATS_FILE,
+            "OUTPUT_STATS_FILE",
+            cls.DEFAULT_OUTPUT_STATS_FILE,
         )
 
         # Template Configuration
         cls.PROMPT_TEMPLATE_FILE = os.getenv(
-            'PROMPT_TEMPLATE_FILE', cls.DEFAULT_PROMPT_TEMPLATE_FILE,
+            "PROMPT_TEMPLATE_FILE",
+            cls.DEFAULT_PROMPT_TEMPLATE_FILE,
         )
         cls.BATCH_TEMPLATE_FILE = os.getenv(
-            'BATCH_TEMPLATE_FILE', cls.DEFAULT_BATCH_TEMPLATE_FILE,
+            "BATCH_TEMPLATE_FILE",
+            cls.DEFAULT_BATCH_TEMPLATE_FILE,
         )
 
         # Cache Configuration
-        cache_dir_str = os.getenv('CACHE_DIR', cls.DEFAULT_CACHE_DIR)
+        cache_dir_str = os.getenv("CACHE_DIR", cls.DEFAULT_CACHE_DIR)
         cls.CACHE_DIR = Path(cache_dir_str).expanduser()
 
     @classmethod
@@ -159,10 +164,11 @@ class Settings:
         """
         try:
             cls.CACHE_DIR.mkdir(parents=True, exist_ok=True)
-            logging.info('Cache directory created: %s', cls.CACHE_DIR)
-        except OSError as e:
+            logging.info("Cache directory created: %s", cls.CACHE_DIR)
+        except OSError:
             logging.exception(
-                'Failed to create cache directory %s: %s', cls.CACHE_DIR, e,
+                "Failed to create cache directory %s",
+                cls.CACHE_DIR,
             )
             raise
 
@@ -199,7 +205,7 @@ class Settings:
 
         if not output_dir.exists():
             output_dir.mkdir(parents=True, exist_ok=True)
-            logging.info('Created output directory: %s', output_dir)
+            logging.info("Created output directory: %s", output_dir)
 
     @classmethod
     def get_client_required_configs(cls, client_type: str) -> dict[str, str | None]:
@@ -217,24 +223,25 @@ class Settings:
         client_type = client_type.lower()
 
         if client_type not in cls.SUPPORTED_CLIENTS:
-            supported = ', '.join(sorted(cls.SUPPORTED_CLIENTS))
-            msg = f'Unsupported client type: {client_type}. Supported types: {supported}'
+            supported = ", ".join(sorted(cls.SUPPORTED_CLIENTS))
+            msg = f"Unsupported client type: {client_type}. Supported types: {supported}"
             raise ConfigError(msg)
 
-        if client_type == 'claude':
+        if client_type == "claude":
             return {
-                'ANTHROPIC_API_KEY': cls.ANTHROPIC_API_KEY,
-                'CLAUDE_MODEL': cls.CLAUDE_MODEL,
+                "ANTHROPIC_API_KEY": cls.ANTHROPIC_API_KEY,
+                "CLAUDE_MODEL": cls.CLAUDE_MODEL,
             }
-        if client_type == 'ollama':
+        if client_type == "ollama":
             return {
-                'OLLAMA_MODEL': cls.OLLAMA_MODEL,
-                'OPENWEBUI_TOKEN': cls.OPENWEBUI_TOKEN,
-                'OPENWEBUI_ENDPOINT': cls.OPENWEBUI_ENDPOINT,
+                "OLLAMA_MODEL": cls.OLLAMA_MODEL,
+                "OPENWEBUI_TOKEN": cls.OPENWEBUI_TOKEN,
+                "OPENWEBUI_ENDPOINT": cls.OPENWEBUI_ENDPOINT,
             }
 
         # This should never be reached due to check above, but for type safety
-        raise ConfigError(f'Unsupported client type: {client_type}')
+        msg = f"Unsupported client type: {client_type}"
+        raise ConfigError(msg)
 
     @classmethod
     def get_common_required_configs(cls) -> dict[str, str | None]:
@@ -244,11 +251,11 @@ class Settings:
             Dictionary of common required configuration keys and their values.
         """
         return {
-            'INPUT_FILE': cls.INPUT_FILE,
-            'OUTPUT_TEXT_FILE': cls.OUTPUT_TEXT_FILE,
-            'OUTPUT_TABLE_FILE': cls.OUTPUT_TABLE_FILE,
-            'OUTPUT_STATS_FILE': cls.OUTPUT_STATS_FILE,
-            'PROMPT_TEMPLATE_FILE': cls.PROMPT_TEMPLATE_FILE,
+            "INPUT_FILE": cls.INPUT_FILE,
+            "OUTPUT_TEXT_FILE": cls.OUTPUT_TEXT_FILE,
+            "OUTPUT_TABLE_FILE": cls.OUTPUT_TABLE_FILE,
+            "OUTPUT_STATS_FILE": cls.OUTPUT_STATS_FILE,
+            "PROMPT_TEMPLATE_FILE": cls.PROMPT_TEMPLATE_FILE,
         }
 
     @classmethod
