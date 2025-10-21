@@ -51,10 +51,10 @@ class LLMClientError(Exception):
         """Return formatted error message with context."""
         parts = [super().__str__()]
         if self.client_type:
-            parts.append(f'Client: {self.client_type}')
+            parts.append(f"Client: {self.client_type}")
         if self.operation:
-            parts.append(f'Operation: {self.operation}')
-        return ' | '.join(parts)
+            parts.append(f"Operation: {self.operation}")
+        return " | ".join(parts)
 
 
 class APIError(LLMClientError):
@@ -103,6 +103,15 @@ class APIError(LLMClientError):
             _HTTP_SERVER_ERROR_MIN <= sc <= _HTTP_SERVER_ERROR_MAX
         )
 
+    def __str__(self) -> str:
+        """Return formatted error message with API context."""
+        parts = [super().__str__()]
+        if self.status_code:
+            parts.append(f"Status: {self.status_code}")
+        if self.request_id:
+            parts.append(f"Request ID: {self.request_id}")
+        return " | ".join(parts)
+
 
 class LLMConnectionError(LLMClientError):
     """Exception for network connectivity issues.
@@ -129,6 +138,13 @@ class LLMConnectionError(LLMClientError):
         """
         super().__init__(message, client_type=client_type, operation=operation)
         self.endpoint = endpoint
+
+    def __str__(self) -> str:
+        """Return formatted error message with connection context."""
+        parts = [super().__str__()]
+        if self.endpoint:
+            parts.append(f"Endpoint: {self.endpoint}")
+        return " | ".join(parts)
 
 
 class AuthenticationError(LLMClientError):
@@ -187,6 +203,15 @@ class RateLimitError(APIError):
         self.retry_after = retry_after
         self.limit_type = limit_type
 
+    def __str__(self) -> str:
+        """Return formatted error message with rate limit context."""
+        parts = [super().__str__()]
+        if self.limit_type:
+            parts.append(f"Limit Type: {self.limit_type}")
+        if self.retry_after:
+            parts.append(f"Retry After: {self.retry_after}s")
+        return " | ".join(parts)
+
 
 class BatchTimeoutError(LLMClientError):
     """Exception for batch processing timeout conditions.
@@ -215,6 +240,15 @@ class BatchTimeoutError(LLMClientError):
         super().__init__(message, client_type=client_type, operation=operation)
         self.batch_id = batch_id
         self.timeout_seconds = timeout_seconds
+
+    def __str__(self) -> str:
+        """Return formatted error message with timeout context."""
+        parts = [super().__str__()]
+        if self.batch_id:
+            parts.append(f"Batch ID: {self.batch_id}")
+        if self.timeout_seconds:
+            parts.append(f"Timeout: {self.timeout_seconds}s")
+        return " | ".join(parts)
 
 
 class BatchProcessingError(LLMClientError):
@@ -246,6 +280,15 @@ class BatchProcessingError(LLMClientError):
         self.batch_id = batch_id
         self.failed_requests = failed_requests or []
 
+    def __str__(self) -> str:
+        """Return formatted error message with batch processing context."""
+        parts = [super().__str__()]
+        if self.batch_id:
+            parts.append(f"Batch ID: {self.batch_id}")
+        if self.failed_requests:
+            parts.append(f"Failed Requests: {len(self.failed_requests)}")
+        return " | ".join(parts)
+
 
 class LLMValidationError(LLMClientError):
     """Exception for request validation failures.
@@ -274,3 +317,10 @@ class LLMValidationError(LLMClientError):
         super().__init__(message, client_type=client_type, operation=operation)
         self.field = field
         self.value = value
+
+    def __str__(self) -> str:
+        """Return formatted error message with validation context."""
+        parts = [super().__str__()]
+        if self.field:
+            parts.append(f"Field: {self.field}")
+        return " | ".join(parts)

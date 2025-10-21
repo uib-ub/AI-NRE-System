@@ -26,8 +26,8 @@ from .ollama_client import OllamaClient
 __all__ = [
     "APIError",
     "AuthenticationError",
-    "BatchProgress",
     "BatchProcessingError",
+    "BatchProgress",
     "BatchRequest",
     "BatchResponse",
     "BatchStatus",
