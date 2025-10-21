@@ -44,7 +44,7 @@ class OutputError(FileIOError):
         self,
         message: str,
         file_path: str | None = None,
-        output_type: str | None = None
+        output_type: str | None = None,
     ) -> None:
         """Initialize OutputError.
 

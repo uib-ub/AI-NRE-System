@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import csv
 import logging
-from collections.abc import Iterator
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .exceptions import CSVError, EncodingError, FileValidationError
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 class CSVReader:
@@ -25,8 +28,8 @@ class CSVReader:
     def __init__(
         self,
         file_path: str,
-        delimiter: str = ';',
-        encoding: str = 'utf-8',
+        delimiter: str = ";",
+        encoding: str = "utf-8",
     ) -> None:
         """Initialize the CSVReader with file path, delimiter, and encoding.
 
@@ -45,8 +48,10 @@ class CSVReader:
 
         self._validate_file()
         logging.info(
-            'Initialized CSV reader for %s with delimiter %s and encoding %s',
-            self.file_path, self.delimiter, self.encoding,
+            "Initialized CSV reader for %s with delimiter %s and encoding %s",
+            self.file_path,
+            self.delimiter,
+            self.encoding,
         )
 
     def _validate_file(self) -> None:
@@ -56,27 +61,27 @@ class CSVReader:
             FileValidationError: If file validation fails.
         """
         if not self.file_path.exists():
-            msg = f'CSV file does not exist: {self.file_path}'
+            msg = f"CSV file does not exist: {self.file_path}"
             raise FileValidationError(
                 msg,
                 file_path=str(self.file_path),
-                validation_type='existence',
+                validation_type="existence",
             )
 
         if not self.file_path.is_file():
-            msg = f'Path is not a file: {self.file_path}'
+            msg = f"Path is not a file: {self.file_path}"
             raise FileValidationError(
                 msg,
                 file_path=str(self.file_path),
-                validation_type='file_type',
+                validation_type="file_type",
             )
 
         if self.file_path.stat().st_size == 0:
-            msg = f'CSV file is empty: {self.file_path}'
+            msg = f"CSV file is empty: {self.file_path}"
             raise FileValidationError(
                 msg,
                 file_path=str(self.file_path),
-                validation_type='file_size',
+                validation_type="file_size",
             )
 
     def stream_records(self) -> Iterator[dict[str, str]]:
@@ -88,16 +93,16 @@ class CSVReader:
         Raises:
             CSVError: If reading fails.
         """
-        logging.info('Starting to stream records from: %s', self.file_path)
+        logging.info("Starting to stream records from: %s", self.file_path)
         record_count = 0
 
         try:
-            with self.file_path.open(encoding=self.encoding, newline='') as file:
+            with self.file_path.open(encoding=self.encoding, newline="") as file:
                 reader = csv.DictReader(file, delimiter=self.delimiter)
 
                 # Validate that the CSV has headers
                 if not reader.fieldnames:
-                    msg = f'CSV file does not have headers: {self.file_path}'
+                    msg = f"CSV file does not have headers: {self.file_path}"
                     raise CSVError(
                         msg,
                         file_path=str(self.file_path),
@@ -105,7 +110,7 @@ class CSVReader:
                     )
 
                 self._headers = list(reader.fieldnames)
-                logging.debug('CSV headers detected: %s', self._headers)
+                logging.debug("CSV headers detected: %s", self._headers)
 
                 # Stream records with proper error handling
                 # Start at 2 (header is row 1)
@@ -114,7 +119,8 @@ class CSVReader:
                         # skip empty rows but log them
                         if self._is_empty_row(row):
                             logging.warning(
-                                'Skipping empty row at line %d', row_number,
+                                "Skipping empty row at line %d",
+                                row_number,
                             )
                             continue
 
@@ -127,7 +133,7 @@ class CSVReader:
                         # Re-raise CSV-specific exceptions
                         raise
                     except Exception as e:
-                        msg = f'Error processing row at line {row_number}: {e}'
+                        msg = f"Error processing row at line {row_number}: {e}"
                         raise CSVError(
                             msg,
                             file_path=str(self.file_path),
@@ -135,25 +141,26 @@ class CSVReader:
                         ) from e
 
                 logging.info(
-                    'Successfully streamed %d records from: %s',
-                    record_count, self.file_path,
+                    "Successfully streamed %d records from: %s",
+                    record_count,
+                    self.file_path,
                 )
 
         except UnicodeDecodeError as e:
-            msg = f'Encoding error while reading CSV file: {e}'
+            msg = f"Encoding error while reading CSV file: {e}"
             raise EncodingError(
                 msg,
                 file_path=str(self.file_path),
                 encoding=self.encoding,
             ) from e
         except OSError as e:
-            msg = f'Error reading CSV file {self.file_path}: {e}'
+            msg = f"Error reading CSV file {self.file_path}: {e}"
             raise CSVError(
                 msg,
                 file_path=str(self.file_path),
             ) from e
         except csv.Error as e:
-            msg = f'CSV parsing error: {e}'
+            msg = f"CSV parsing error: {e}"
             raise CSVError(
                 msg,
                 file_path=str(self.file_path),
@@ -174,7 +181,7 @@ class CSVReader:
         """
         # Check for completely empty row (handled separately)
         if self._is_empty_row(row):
-            msg = f'Empty row encountered at line {row_number}'
+            msg = f"Empty row encountered at line {row_number}"
             raise CSVError(
                 msg,
                 file_path=str(self.file_path),
@@ -182,9 +189,7 @@ class CSVReader:
             )
 
         # Strip whitespace from all values
-        cleaned_row = {key: str(value).strip(
-        ) if value else '' for key, value in row.items()}
-
+        cleaned_row = {key: str(value).strip() if value else "" for key, value in row.items()}
         return cleaned_row
 
     @staticmethod
