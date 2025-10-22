@@ -115,6 +115,33 @@ class ResponseParser:
         return ResponseParser._create_entity_records(entities_data, brevid)
 
     @staticmethod
+    def parse_batch_response(
+        records: list[dict[str, str]],
+        raw_response: str,
+    ) -> tuple[list[str], list[str]]:
+        """Parse batch LLM response into individual record results.
+
+        Args:
+            records: Original records list for reference.
+            raw_response: Raw response string from LLM.
+
+        Returns:
+            Tuple of (annotated_records, metadata_records).
+        """
+        if not raw_response:
+            logging.error("Empty batch response")
+            return ResponseParser._create_fallback_records(records)
+
+        logging.debug("Full batch response:\n%s", raw_response)
+
+        try:
+            record_sections = ResponseParser._split_batch_response(raw_response, records)
+            return ResponseParser._process_record_sections(record_sections, records)
+        except Exception:
+            logging.exception("Critical error parsing batch response")
+            return ResponseParser._create_fallback_records(records)
+
+    @staticmethod
     def _parse_json_structure(json_text: str, brevid: str) -> dict[str, Any]:
         """Parse and validate JSON structure.
 
@@ -233,33 +260,6 @@ class ResponseParser:
             )
         else:
             logging.info("Parsed all %d entities successfully for Brevid=%s", len(entities), brevid)
-
-    @staticmethod
-    def parse_batch_response(
-        records: list[dict[str, str]],
-        raw_response: str,
-    ) -> tuple[list[str], list[str]]:
-        """Parse batch LLM response into individual record results.
-
-        Args:
-            records: Original records list for reference.
-            raw_response: Raw response string from LLM.
-
-        Returns:
-            Tuple of (annotated_records, metadata_records).
-        """
-        if not raw_response:
-            logging.error("Empty batch response")
-            return ResponseParser._create_fallback_records(records)
-
-        logging.debug("Full batch response:\n%s", raw_response)
-
-        try:
-            record_sections = ResponseParser._split_batch_response(raw_response, records)
-            return ResponseParser._process_record_sections(record_sections, records)
-        except Exception:
-            logging.exception("Critical error parsing batch response")
-            return ResponseParser._create_fallback_records(records)
 
     @staticmethod
     def _split_batch_response(
