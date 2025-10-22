@@ -249,6 +249,8 @@ ignore = [
     "EM102",  
     # long messages outside exception class
     "TRY003", 
+    # Prefer list over useless lambda
+    "PIE807", 
 ]
 
 # Allow autofix for all enabled rules
