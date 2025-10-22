@@ -252,121 +252,176 @@ class ResponseParser:
             logging.error("Empty batch response")
             return ResponseParser._create_fallback_records(records)
 
-        all_annotated_records: list[str] = []
-        all_metadata_records: list[str] = []
-
-        # TODO: DEBUG: log full response for now
         logging.debug("Full batch response:\n%s", raw_response)
 
         try:
-            # Split response by RECORD markers
-            parts = raw_response.split(ResponseParser.RECORD_MARKER)
-            record_sections = [part for part in parts if part.strip()]
-
-            if len(record_sections) != len(records):
-                logging.warning(
-                    "Expected %d record sections, found %d. Processing available sections.",
-                    len(records),
-                    len(record_sections),
-                )
-
-            # Process each record section
-            for i, section in enumerate(record_sections):
-                logging.debug("record index %d, section: %s", i, section)
-
-                if i >= len(records):
-                    logging.warning(
-                        "More sections (%d) than records (%d). Stopping processing.",
-                        len(record_sections),
-                        len(records),
-                    )
-                    break
-
-                record = records[i]
-
-                try:
-                    # Safe access Bindnr and Brevid with defaults
-                    bindnr = record.get("Bindnr", "unknown")
-                    brevid = record.get("Brevid", "unknown")
-
-                    logging.debug(
-                        "Processing record, Index=%d: Bindnr=%s, Brevid=%s",
-                        i,
-                        bindnr,
-                        brevid,
-                    )
-
-                    # Extract result content (after "RESULT:")
-                    if ResponseParser.RESULT_MARKER in section:
-                        logging.debug(
-                            "Found RESULT marker in section for Brevid %s and record index %d",
-                            brevid,
-                            i,
-                        )
-                        result_content = section.split(ResponseParser.RESULT_MARKER, 1)[1].strip()
-                    else:
-                        logging.warning(
-                            "No RESULT marker found in section for Brevid %s and record index %d",
-                            brevid,
-                            i,
-                        )
-                        result_content = section.strip()
-
-                    # Parse as single record response
-                    annotated_text, entities = ResponseParser.parse_llm_response(
-                        brevid,
-                        result_content,
-                    )
-
-                    # Build output records using CSV writer
-                    annotated_record = ResponseParser._format_csv_row(
-                        bindnr,
-                        brevid,
-                        annotated_text,
-                    )
-                    logging.info(
-                        "--- Annotated record for Brevid %s ---\n%s",
-                        brevid,
-                        annotated_record,
-                    )
-                    all_annotated_records.append(annotated_record)
-
-                    # Add entity metadata records
-                    for entity in entities:
-                        metadata_record = entity.to_csv_row()
-                        logging.info(
-                            "--- Metadata for Brevid %s ---\n%s",
-                            brevid,
-                            metadata_record,
-                        )
-                        all_metadata_records.append(metadata_record)
-
-                    logging.info(
-                        "Parsed record %d/%d successfully for Brevid=%s: %d entities",
-                        i + 1,
-                        len(records),
-                        brevid,
-                        len(entities),
-                    )
-
-                except Exception:
-                    logging.exception(
-                        "Error parsing record %d in batch",
-                        i + 1,
-                    )
-                    # Add fallback record to maintain order
-                    fallback_record = ResponseParser._format_csv_row(
-                        record.get("Bindnr", "unknown"),
-                        record.get("Brevid", "unknown"),
-                        record.get("Tekst", "unknown"),
-                    )
-                    all_annotated_records.append(fallback_record)
+            record_sections = ResponseParser._split_batch_response(raw_response, records)
+            return ResponseParser._process_record_sections(record_sections, records)
         except Exception:
             logging.exception("Critical error parsing batch response")
-            # Return original records as fallback
             return ResponseParser._create_fallback_records(records)
-        else:
-            return all_annotated_records, all_metadata_records
+
+    @staticmethod
+    def _split_batch_response(
+        raw_response: str,
+        records: list[dict[str, str]],
+    ) -> list[str]:
+        """Split batch response into individual record sections.
+
+        Args:
+            raw_response: Raw response string from LLM.
+            records: Original records list for size validation.
+
+        Returns:
+            List of record section strings.
+        """
+        parts = raw_response.split(ResponseParser.RECORD_MARKER)
+        record_sections = [part for part in parts if part.strip()]
+
+        if len(record_sections) != len(records):
+            logging.warning(
+                "Expected %d record sections, found %d. Processing available sections.",
+                len(records),
+                len(record_sections),
+            )
+
+        return record_sections
+
+    @staticmethod
+    def _process_record_sections(
+        record_sections: list[str],
+        records: list[dict[str, str]],
+    ) -> tuple[list[str], list[str]]:
+        """Process each record section and extract annotated text and entities.
+
+        Args:
+            record_sections: List of record section strings.
+            records: Original records list for reference.
+
+        Returns:
+            Tuple of (annotated_records, metadata_records).
+        """
+        all_annotated_records: list[str] = []
+        all_metadata_records: list[str] = []
+
+        for i, section in enumerate(record_sections):
+            logging.debug("record index %d, section: %s", i, section)
+
+            if i >= len(records):
+                logging.warning(
+                    "More sections (%d) than records (%d). Stopping processing.",
+                    len(record_sections),
+                    len(records),
+                )
+                break
+
+            record = records[i]
+
+            try:
+                annotated_record, metadata_records = ResponseParser._process_single_record_section(
+                    section,
+                    record,
+                    i,
+                    len(records),
+                )
+                all_annotated_records.append(annotated_record)
+                all_metadata_records.extend(metadata_records)
+            except Exception:
+                logging.exception("Error parsing record %d in batch", i + 1)
+                fallback_record = ResponseParser._format_csv_row(
+                    record.get("Bindnr", "unknown"),
+                    record.get("Brevid", "unknown"),
+                    record.get("Tekst", "unknown"),
+                )
+                all_annotated_records.append(fallback_record)
+
+        return all_annotated_records, all_metadata_records
+
+    @staticmethod
+    def _process_single_record_section(
+        section: str,
+        record: dict[str, str],
+        index: int,
+        total_records: int,
+    ) -> tuple[str, list[str]]:
+        """Process a single record section and extract annotated text and entities.
+
+        Args:
+            section: Record section string.
+            record: Original record dictionary.
+            index: Current record index.
+            total_records: Total number of records.
+
+        Returns:
+            Tuple of (annotated_record, metadata_records).
+        """
+        bindnr = record.get("Bindnr", "unknown")
+        brevid = record.get("Brevid", "unknown")
+
+        logging.debug("Processing record, Index=%d: Bindnr=%s, Brevid=%s", index, bindnr, brevid)
+
+        result_content = ResponseParser._extract_result_content(section, brevid, index)
+        annotated_text, entities = ResponseParser.parse_llm_response(brevid, result_content)
+
+        annotated_record = ResponseParser._format_csv_row(bindnr, brevid, annotated_text)
+        logging.info("--- Annotated record for Brevid %s ---\n%s", brevid, annotated_record)
+
+        metadata_records = ResponseParser._format_entity_metadata(entities, brevid)
+
+        logging.info(
+            "Parsed record %d/%d successfully for Brevid=%s: %d entities",
+            index + 1,
+            total_records,
+            brevid,
+            len(entities),
+        )
+
+        return annotated_record, metadata_records
+
+    @staticmethod
+    def _extract_result_content(section: str, brevid: str, index: int) -> str:
+        """Extract result content from record section.
+
+        Args:
+            section: Record section string.
+            brevid: The Brevid identifier.
+            index: Current record index.
+
+        Returns:
+            Extracted result content string.
+        """
+        if ResponseParser.RESULT_MARKER in section:
+            logging.debug(
+                "Found RESULT marker in section for Brevid %s and record index %d",
+                brevid,
+                index,
+            )
+            return section.split(ResponseParser.RESULT_MARKER, 1)[1].strip()
+
+        logging.warning(
+            "No RESULT marker found in section for Brevid %s and record index %d",
+            brevid,
+            index,
+        )
+        return section.strip()
+
+    @staticmethod
+    def _format_entity_metadata(entities: list[EntityRecord], brevid: str) -> list[str]:
+        """Format entity metadata records.
+
+        Args:
+            entities: List of EntityRecord objects.
+            brevid: The Brevid identifier.
+
+        Returns:
+            List of formatted metadata record strings.
+        """
+        metadata_records: list[str] = []
+        for entity in entities:
+            metadata_record = entity.to_csv_row()
+            logging.info("--- Metadata for Brevid %s ---\n%s", brevid, metadata_record)
+            metadata_records.append(metadata_record)
+        return metadata_records
 
     @staticmethod
     def _format_csv_row(bindnr: str, brevid: str, text: str) -> str:
