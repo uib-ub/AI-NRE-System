@@ -23,7 +23,7 @@ class RecordValidator:
     """
 
     REQUIRED_FIELDS: ClassVar[frozenset[str]] = frozenset(
-        {'Bindnr', 'Brevid', 'Tekst'}
+        {"Bindnr", "Brevid", "Tekst"},
     )
 
     @staticmethod
@@ -51,8 +51,8 @@ class RecordValidator:
             ValidationError: If record validation fails. The exception includes
                 the brevid and list of missing/invalid fields.
         """
-        brevid_raw = record.get('Brevid')
-        brevid = brevid_raw.strip() if isinstance(brevid_raw, str) else 'unknown'
+        brevid_raw = record.get("Brevid")
+        brevid = brevid_raw.strip() if isinstance(brevid_raw, str) else "unknown"
 
         # Check for missing fields
         missing_fields = cls.REQUIRED_FIELDS.difference(record)
@@ -60,9 +60,9 @@ class RecordValidator:
         if missing_fields:
             missing = sorted(missing_fields)
             raise ValidationError(
-                f'Record missing required fields: {missing}',
+                f"Record missing required fields: {missing}",
                 brevid=brevid,
-                operation='validate_record',
+                operation="validate_record",
                 missing_fields=missing,
             )
 
@@ -76,15 +76,15 @@ class RecordValidator:
         if invalid_fields:
             invalid_sorted = sorted(invalid_fields)
             raise ValidationError(
-                f'Record has empty or invalid required fields: {invalid_sorted}',
+                f"Record has empty or invalid required fields: {invalid_sorted}",
                 brevid=brevid,
-                operation='validate_record',
-                missing_fields=invalid_sorted
+                operation="validate_record",
+                missing_fields=invalid_sorted,
             )
 
     @classmethod
     def validate_records(cls, records: list[dict[str, str]]) -> None:
-        """Validate a list of records
+        """Validate a list of records.
 
         Args:
             records: List of dictionaries containing record data.
@@ -94,8 +94,8 @@ class RecordValidator:
         """
         if not records:
             raise ValidationError(
-                f'Records list cannot be empty',
-                operation='validate_records',
+                "Records list cannot be empty",
+                operation="validate_records",
             )
 
         # Validate each record
@@ -103,13 +103,9 @@ class RecordValidator:
             try:
                 cls.validate_record(record)
             except ValidationError as e:
-                # Extract brevid for error reporting
-                brevid_raw = record.get('Brevid')
-                brevid = brevid_raw.strip() if isinstance(brevid_raw, str) else 'unknown'
-
                 raise ValidationError(
-                    f'Validation failed at index {i}: {e}',
-                    brevid=brevid,
-                    operation='validate_records',
-                    missing_fields=getattr(e, 'missing_fields', []),
+                    f"Validation failed at index {i}: {e}",
+                    brevid=e.brevid,
+                    operation="validate_records",
+                    missing_fields=e.missing_fields,
                 ) from e

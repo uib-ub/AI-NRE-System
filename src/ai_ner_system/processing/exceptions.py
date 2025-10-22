@@ -7,6 +7,9 @@ processing pipeline.
 
 from __future__ import annotations
 
+# Maximum length for truncated content in error messages
+_MAX_CONTENT_LENGTH = 100
+
 
 class ProcessingError(Exception):
     """Base exception for processing-related errors.
@@ -33,6 +36,19 @@ class ProcessingError(Exception):
         super().__init__(message)
         self.brevid = brevid
         self.operation = operation
+
+    def __str__(self) -> str:
+        """Return detailed error description."""
+        base_msg = super().__str__()
+        parts: list[str] = []
+        if self.brevid:
+            parts.append(f"brevid: {self.brevid}")
+        if self.operation:
+            parts.append(f"operation: {self.operation}")
+
+        if parts:
+            return f"{base_msg} ({', '.join(parts)})"
+        return base_msg
 
 
 class ValidationError(ProcessingError):
@@ -61,6 +77,14 @@ class ValidationError(ProcessingError):
         super().__init__(message, brevid=brevid, operation=operation)
         self.missing_fields = missing_fields or []
 
+    def __str__(self) -> str:
+        """Return detailed error description."""
+        base_msg = super().__str__()
+        if self.missing_fields and base_msg.endswith(")"):
+            fields_str = ", ".join(self.missing_fields)
+            return f"{base_msg[:-1]}, missing_fields: [{fields_str}])"
+        return base_msg
+
 
 class LLMResponseError(ProcessingError):
     """Exception raised when LLM response parsing fails.
@@ -87,6 +111,18 @@ class LLMResponseError(ProcessingError):
         """
         super().__init__(message, brevid=brevid, operation=operation)
         self.response_text = response_text
+
+    def __str__(self) -> str:
+        """Return detailed error description."""
+        base_msg = super().__str__()
+        if self.response_text and base_msg.endswith(")"):
+            truncated = (
+                self.response_text[:_MAX_CONTENT_LENGTH] + "..."
+                if len(self.response_text) > _MAX_CONTENT_LENGTH
+                else self.response_text
+            )
+            return f"{base_msg[:-1]}, response_text: '{truncated}')"
+        return base_msg
 
 
 class ParseError(ProcessingError):
@@ -118,6 +154,24 @@ class ParseError(ProcessingError):
         self.parse_type = parse_type
         self.content = content
 
+    def __str__(self) -> str:
+        """Return detailed error description."""
+        base_msg = super().__str__()
+        additional_parts: list[str] = []
+        if self.parse_type:
+            additional_parts.append(f"parse_type: {self.parse_type}")
+        if self.content:
+            truncated = (
+                self.content[:_MAX_CONTENT_LENGTH] + "..."
+                if len(self.content) > _MAX_CONTENT_LENGTH
+                else self.content
+            )
+            additional_parts.append(f"content: '{truncated}'")
+
+        if additional_parts and base_msg.endswith(")"):
+            return f"{base_msg[:-1]}, {', '.join(additional_parts)})"
+        return base_msg
+
 
 class BatchProcessingError(ProcessingError):
     """Exception for batch processing failures.
@@ -138,7 +192,14 @@ class BatchProcessingError(ProcessingError):
         Args:
             message: Error message.
             operation: Operation being performed when error occurred.
-            batch_ID: Optional identifier for the batch that caused the error.
+            batch_id: Optional identifier for the batch that caused the error.
         """
         super().__init__(message, operation=operation)
         self.batch_id = batch_id
+
+    def __str__(self) -> str:
+        """Return detailed error description."""
+        base_msg = super().__str__()
+        if self.batch_id and base_msg.endswith(")"):
+            return f"{base_msg[:-1]}, batch_id: {self.batch_id})"
+        return base_msg

@@ -6,8 +6,8 @@ and batch processing outcomes for medieval text annotation tasks.
 
 from __future__ import annotations
 
-import io
 import csv
+import io
 from dataclasses import dataclass, field
 from typing import Any, ClassVar
 
@@ -30,17 +30,17 @@ class EntityRecord:
     """
 
     ALLOWED_GENDERS: ClassVar[frozenset[str]] = frozenset(
-        {'Male', 'Female', 'N/A'}
+        {"Male", "Female", "N/A"},
     )
 
     name: str
     entity_type: str
-    preposition: str = 'N/A'
+    preposition: str = "N/A"
     order: int = 0
-    brevid: str = ''
-    description: str = ''
-    gender: str = 'N/A'
-    language: str = ''
+    brevid: str = ""
+    description: str = ""
+    gender: str = "N/A"
+    language: str = ""
 
     def __post_init__(self) -> None:
         """Validate field values after initialization.
@@ -53,39 +53,38 @@ class EntityRecord:
             raise ValidationError(
                 'Entity "name" cannot be empty',
                 brevid=self.brevid,
-                operation='entity_validation'
+                operation="entity_validation",
             )
 
         if not self.entity_type.strip():
             raise ValidationError(
                 'Entity "entity_type" cannot be empty',
                 brevid=self.brevid,
-                operation='entity_validation'
+                operation="entity_validation",
             )
 
+        # Preposition must be non-empty after stripping (default is "N/A")
         if not self.preposition.strip():
-            # Allow exactly "N/A" for not-applicable.
-            if self.preposition.strip() != 'N/A':
-                raise ValidationError(
-                    'Entity "preposition" must be a non-empty string or "N/A"',
-                    brevid=self.brevid,
-                    operation='entity_validation',
-                )
+            raise ValidationError(
+                'Entity "preposition" must be a non-empty string or "N/A"',
+                brevid=self.brevid,
+                operation="entity_validation",
+            )
 
         # order must be non-negative integer.
         if self.order < 0:
             raise ValidationError(
                 f'Entity "order" must be non-negative, got {self.order}',
                 brevid=self.brevid,
-                operation='entity_validation'
+                operation="entity_validation",
             )
 
         # gender must be in allowed set (case-sensitive to keep a single canonical form).
         if self.gender not in self.ALLOWED_GENDERS:
             raise ValidationError(
-                f'Invalid gender {self.gender}. Must be one of: {self.ALLOWED_GENDERS}',
+                f"Invalid gender {self.gender}. Must be one of: {self.ALLOWED_GENDERS}",
                 brevid=self.brevid,
-                operation='entity_validation',
+                operation="entity_validation",
             )
 
     def to_csv_row(self) -> str:
@@ -95,24 +94,26 @@ class EntityRecord:
             Semicolon-separated string representation suitable for CSV output.
         """
         buf = io.StringIO()
-        writer = csv.writer(buf, delimiter=';', quoting=csv.QUOTE_MINIMAL)
-        writer.writerow([
-            self.name,
-            self.entity_type,
-            self.preposition,
-            self.order,
-            self.brevid,
-            self.description,
-            self.gender,
-            self.language,
-        ])
-        return buf.getvalue().rstrip('\r\n')
+        writer = csv.writer(buf, delimiter=";", quoting=csv.QUOTE_MINIMAL)
+        writer.writerow(
+            [
+                self.name,
+                self.entity_type,
+                self.preposition,
+                self.order,
+                self.brevid,
+                self.description,
+                self.gender,
+                self.language,
+            ],
+        )
+        return buf.getvalue().rstrip("\r\n")
 
     @classmethod
     def create_entity_record(
         cls,
         entity_data: dict[str, Any],
-        brevid: str
+        brevid: str,
     ) -> EntityRecord:
         """Create an EntityRecord from dictionary data with validation.
 
@@ -137,15 +138,15 @@ class EntityRecord:
         """
         try:
             # Extract and normalize string fields
-            name = str(entity_data.get('name', '')).strip()
-            entity_type = str(entity_data.get('type', '')).strip()
-            preposition = str(entity_data.get('preposition', 'N/A')).strip()
-            description = str(entity_data.get('description', '')).strip()
-            gender = str(entity_data.get('gender', '')).strip()
-            language = str(entity_data.get('language', '')).strip()
+            name = str(entity_data.get("name", "")).strip()
+            entity_type = str(entity_data.get("type", "")).strip()
+            preposition = str(entity_data.get("preposition", "N/A")).strip()
+            description = str(entity_data.get("description", "")).strip()
+            gender = str(entity_data.get("gender", "")).strip()
+            language = str(entity_data.get("language", "")).strip()
 
             # Extract numeric field with validation
-            order_raw = entity_data.get('order', 0)
+            order_raw = entity_data.get("order", 0)
             if isinstance(order_raw, str):
                 order_raw = order_raw.strip()
                 order = int(order_raw) if order_raw else 0
@@ -153,7 +154,7 @@ class EntityRecord:
                 order = int(order_raw)
 
             # Use provided brevid or override from entity_data
-            record_brevid = str(entity_data.get('brevid', brevid)).strip()
+            record_brevid = str(entity_data.get("brevid", brevid)).strip()
 
             return cls(
                 name=name,
@@ -163,13 +164,13 @@ class EntityRecord:
                 brevid=record_brevid,
                 description=description,
                 gender=gender,
-                language=language
+                language=language,
             )
         except (ValueError, TypeError) as e:
             raise ValidationError(
-                f'Invalid entity data: {e}',
+                f"Invalid entity data: {e}",
                 brevid=brevid,
-                operation='create_entity_record'
+                operation="create_entity_record",
             ) from e
 
 
@@ -186,9 +187,10 @@ class ProcessingResult:
         success: Whether processing was successful.
         error_message: Error message if processing failed.
     """
+
     record_id: str
     brevid: str
-    annotated_text: str = ''
+    annotated_text: str = ""
     # Creates NEW list for each instance
     entities: list[EntityRecord] = field(default_factory=lambda: [])
     processing_time: float = 0.0
@@ -203,23 +205,23 @@ class ProcessingResult:
         """
         if not self.record_id:
             raise ValidationError(
-                'ProcessingResult record_id cannot be empty',
+                "ProcessingResult record_id cannot be empty",
                 brevid=self.brevid,
-                operation='processing_result_validation',
+                operation="processing_result_validation",
             )
 
         if not self.brevid:
             raise ValidationError(
-                'ProcessingResult brevid cannot be empty',
+                "ProcessingResult brevid cannot be empty",
                 brevid=self.brevid,
-                operation='processing_result_validation',
+                operation="processing_result_validation",
             )
 
         if self.processing_time < 0:
             raise ValidationError(
-                f'Processing time must be non-negative, got {self.processing_time}',
+                f"Processing time must be non-negative, got {self.processing_time}",
                 brevid=self.brevid,
-                operation='processing_result_validation',
+                operation="processing_result_validation",
             )
 
 
@@ -239,9 +241,10 @@ class BatchProcessingResult:
         failed_count: Number of failed records.
         batch_info: Additional batch information from the API.
     """
+
     batch_id: str
     results: list[ProcessingResult] = field(
-        default_factory=lambda: []  # Creates NEW list for each instance
+        default_factory=lambda: [],  # Creates NEW list for each instance
     )
     total_processing_time: float = 0.0
     successful_count: int = 0
@@ -256,18 +259,18 @@ class BatchProcessingResult:
         """
         if not self.batch_id:
             raise ValidationError(
-                'BatchProcessingResult batch_id cannot be empty',
-                operation='batch_result_validation',
+                "BatchProcessingResult batch_id cannot be empty",
+                operation="batch_result_validation",
             )
 
         if self.total_processing_time < 0:
             raise ValidationError(
-                f'Total processing time must be non-negative, got {self.total_processing_time}',
-                operation='batch_result_validation',
+                f"Total processing time must be non-negative, got {self.total_processing_time}",
+                operation="batch_result_validation",
             )
 
         if self.successful_count < 0 or self.failed_count < 0:
             raise ValidationError(
-                f'Counts must be non-negative: successful={self.successful_count}, failed={self.failed_count}',
-                operation='batch_result_validation',
+                f"Counts must be non-negative: successful={self.successful_count}, failed={self.failed_count}",
+                operation="batch_result_validation",
             )
