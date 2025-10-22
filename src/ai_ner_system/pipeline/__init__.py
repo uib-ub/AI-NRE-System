@@ -10,18 +10,15 @@ with automatic fallback mechanisms and comprehensive progress monitoring.
 
 from __future__ import annotations
 
-from .sync_processor import SyncProcessor
+from .async_processor import AsyncProcessor
 from .main_processor import MedievalTextProcessor
 from .stats import ApplicationError, AsyncProcessingStats
-from .async_processor import AsyncProcessor
+from .sync_processor import SyncProcessor
 
 __all__ = [
-    # Main processor class
-    'MedievalTextProcessor',
-    # Processing workflow classes
-    'AsyncProcessor',
-    'SyncProcessor',
-    # Statistics and error handling
-    'ApplicationError',
-    'AsyncProcessingStats',
+    "ApplicationError",
+    "AsyncProcessingStats",
+    "AsyncProcessor",
+    "MedievalTextProcessor",
+    "SyncProcessor",
 ]

@@ -8,9 +8,10 @@ processing pipeline.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from ..processing import ProcessingResult
+if TYPE_CHECKING:
+    from ai_ner_system.processing import ProcessingResult
 
 
 class ApplicationError(Exception):
@@ -23,7 +24,7 @@ class ApplicationError(Exception):
 
 @dataclass
 class AsyncProcessingStats:
-    """Statistics for async processing operations
+    """Statistics for async processing operations.
 
     This class tracks comprehensive statistics during asynchronous processing,
     including timing, success rates, and detailed batch information.
@@ -38,6 +39,7 @@ class AsyncProcessingStats:
         batch_info: Information about batch processing (if used).
         results: List of ProcessingResult objects for detailed tracking.
     """
+
     total_records: int = 0
     processed_records: int = 0
     failed_records: int = 0
@@ -47,7 +49,7 @@ class AsyncProcessingStats:
     batch_info: dict[str, Any] | None = None
     results: list[ProcessingResult] = field(default_factory=lambda: [])
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate statistics after initialization.
 
         Raises:
@@ -56,19 +58,19 @@ class AsyncProcessingStats:
         # Validate non-negative values
         if self.total_records < 0:
             raise ValueError(
-                f'Total records cannot be negative, got {self.total_records}'
+                f"Total records cannot be negative, got {self.total_records}",
             )
         if self.processed_records < 0:
             raise ValueError(
-                f'Processed records cannot be negative, got {self.processed_records}'
+                f"Processed records cannot be negative, got {self.processed_records}",
             )
         if self.failed_records < 0:
             raise ValueError(
-                f'Failed records cannot be negative, got {self.failed_records}'
+                f"Failed records cannot be negative, got {self.failed_records}",
             )
         if self.processing_time < 0:
             raise ValueError(
-                f'Processing time cannot be negative, got {self.processing_time}'
+                f"Processing time cannot be negative, got {self.processing_time}",
             )
 
     @property
@@ -110,15 +112,15 @@ class AsyncProcessingStats:
             Dictionary containing all key statistics.
         """
         return {
-            'total_records': self.total_records,
-            'processed_records': self.processed_records,
-            'failed_records': self.failed_records,
-            'success_rate': self.success_rate,
-            'processing_time': self.processing_time,
-            'throughput': self.throughput,
-            'is_complete': self.is_complete,
-            'start_time': self.start_time,
-            'end_time': self.end_time,
+            "total_records": self.total_records,
+            "processed_records": self.processed_records,
+            "failed_records": self.failed_records,
+            "success_rate": self.success_rate,
+            "processing_time": self.processing_time,
+            "throughput": self.throughput,
+            "is_complete": self.is_complete,
+            "start_time": self.start_time,
+            "end_time": self.end_time,
         }
 
     def __str__(self) -> str:
@@ -128,8 +130,8 @@ class AsyncProcessingStats:
             String summarizing key statistics.
         """
         return (
-            f'AsyncProcessingStats('
-            f'{self.processed_records}/{self.total_records} processed, '
-            f'{self.success_rate:.1f}% success, '
-            f'{self.processing_time:.1f}s)'
+            f"AsyncProcessingStats("
+            f"{self.processed_records}/{self.total_records} processed, "
+            f"{self.success_rate:.1f}% success, "
+            f"{self.processing_time:.1f}s)"
         )

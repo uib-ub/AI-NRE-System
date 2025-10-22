@@ -10,19 +10,21 @@ from __future__ import annotations
 import logging
 import sys
 import time
-from typing import Any, ClassVar, Literal, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 from tqdm.auto import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
 
-from ..processing import ValidationError, ProcessingError, LLMResponseError
+from ai_ner_system.processing import LLMResponseError, ProcessingError, ValidationError
 
 from .stats import ApplicationError
 
 if TYPE_CHECKING:
     from argparse import Namespace
-    from ..file_io import CSVReader, OutputWriter
-    from ..processing import RecordProcessor
+
+    from ai_ner_system.file_io import CSVReader, OutputWriter
+    from ai_ner_system.processing import RecordProcessor
+
     from .main_processor import MedievalTextProcessor
 
 
@@ -41,7 +43,7 @@ class SyncProcessor:
     # Class constant for the delay between batches
     BATCH_PROCESSING_DELAY: ClassVar[float] = 0.2
 
-    def __init__(self, main_processor: 'MedievalTextProcessor') -> None:
+    def __init__(self, main_processor: MedievalTextProcessor) -> None:
         """Initialize sync processor with reference to main processor.
 
         Args:
@@ -97,8 +99,8 @@ class SyncProcessor:
             # if don't want to leave finished bars in logs, set to False
             "leave": True,
             "disable": not sys.stderr.isatty(),  # auto-disable if not a TTY
-            "dynamic_ncols": True,              # fit nicely to terminal width
-            "mininterval": 0.5,                 # reduce redraw chattiness
+            "dynamic_ncols": True,  # fit nicely to terminal width
+            "mininterval": 0.5,  # reduce redraw chattiness
         }
 
     def process_all_records(self) -> tuple[list[str], list[str]]:
@@ -112,43 +114,47 @@ class SyncProcessor:
         """
         try:
             logging.info(
-                'Starting to process records from: %s',
-                self.reader.file_path
+                "Starting to process records from: %s",
+                self.reader.file_path,
             )
 
             batch_size = self.args.batch_size if self.args.use_batch else 1
-            processing_mode: Literal['batch', 'individual'] = (
-                'batch' if batch_size > 1 else 'individual'
+            processing_mode: Literal["batch", "individual"] = (
+                "batch" if batch_size > 1 else "individual"
             )
             logging.info(
-                'Using %s processing (batch_size=%d)',
-                processing_mode, batch_size
+                "Using %s processing (batch_size=%d)",
+                processing_mode,
+                batch_size,
             )
 
             # Process records with unified streaming approach
             all_annotations, all_metadata = self._process_records_streaming(
-                batch_size, processing_mode
+                batch_size,
+                processing_mode,
             )
             logging.info(
-                'Completed processing all records: %d annotations, %d metadata entries',
-                len(all_annotations), len(all_metadata)
+                "Completed processing all records: %d annotations, %d metadata entries",
+                len(all_annotations),
+                len(all_metadata),
             )
             return all_annotations, all_metadata
 
         except Exception as e:
             raise ApplicationError(
-                f'Critical error during file processing: {e}'
+                f"Critical error during file processing: {e}",
             ) from e
 
     def _process_records_streaming(
         self,
         batch_size: int,
-        processing_mode: Literal['batch', 'individual']
+        processing_mode: Literal["batch", "individual"],
     ) -> tuple[list[str], list[str]]:
         """Process records using streaming approach with configurable batch size.
 
         Args:
             batch_size: Number of records to process together (1 = individual processing).
+            processing_mode: Processing mode ("batch" or "individual").
 
         Returns:
             Tuple of (all_annotations, all_metadata).
@@ -167,10 +173,10 @@ class SyncProcessor:
             # Redirect logging through tqdm to keep output tidy
             with logging_redirect_tqdm():
                 iterable = self.reader.stream_records()
-                desc = f'Processing Records ({processing_mode} mode)'
+                desc = f"Processing Records ({processing_mode} mode)"
                 for record in tqdm(
                     iterable,
-                    **self._tqdm_kwargs(desc)
+                    **self._tqdm_kwargs(desc),
                 ):
                     batch_records.append(record)
 
@@ -179,7 +185,9 @@ class SyncProcessor:
                         batch_count += 1
 
                         annotated_records, metadata_records = self._process_batch(
-                            batch_records, batch_count, batch_size
+                            batch_records,
+                            batch_count,
+                            batch_size,
                         )
 
                         # Collect results
@@ -188,19 +196,19 @@ class SyncProcessor:
 
                         # Log progress
                         if batch_size == 1:
-                            brevid = batch_records[0].get('Brevid', 'unknown')
+                            brevid = batch_records[0].get("Brevid", "unknown")
                             logging.debug(
-                                'Successfully processed Brevid %s: %d annotations, %d metadata',
+                                "Successfully processed Brevid %s: %d annotations, %d metadata",
                                 brevid,
                                 len(annotated_records),
-                                len(metadata_records)
+                                len(metadata_records),
                             )
                         else:
                             logging.debug(
-                                'Successfully processed batch %d: %d annotations, %d metadata',
+                                "Successfully processed batch %d: %d annotations, %d metadata",
                                 batch_count,
                                 len(annotated_records),
-                                len(metadata_records)
+                                len(metadata_records),
                             )
 
                         # Clear batch records after processing
@@ -214,7 +222,10 @@ class SyncProcessor:
                 if batch_records:
                     batch_count += 1
                     annotations, metadata = self._process_final_batch(
-                        batch_records, batch_count, batch_size, processing_mode
+                        batch_records,
+                        batch_count,
+                        batch_size,
+                        processing_mode,
                     )
                     all_annotations.extend(annotations)
                     all_metadata.extend(metadata)
@@ -222,16 +233,16 @@ class SyncProcessor:
                 return all_annotations, all_metadata
 
         except Exception as e:
-            logging.error('Streaming processing failed: %s', e, exc_info=True)
+            logging.exception("Streaming processing failed")
             raise ApplicationError(
-                f'Streaming processing failed after {batch_count} batches: {e}'
+                f"Streaming processing failed after {batch_count} batches: {e}",
             ) from e
 
     def _process_batch(
         self,
         batch_records: list[dict[str, str]],
         batch_count: int,
-        batch_size: int
+        batch_size: int,
     ) -> tuple[list[str], list[str]]:
         """Process a batch of records, handling both individual and batch modes.
 
@@ -252,21 +263,25 @@ class SyncProcessor:
             if batch_size == 1:
                 # Individual processing
                 individual_record = batch_records[0]
-                brevid = individual_record.get('Brevid', 'unknown')
-                logging.info('Processing Record (Brevid: %s)', brevid)
-                logging.debug('Individual record data: %s', individual_record)
+                brevid = individual_record.get("Brevid", "unknown")
+                logging.info("Processing Record (Brevid: %s)", brevid)
+                logging.debug("Individual record data: %s", individual_record)
                 return self.processor.process_record(individual_record)
 
             # Batch processing
             logging.info(
-                'Processing batch %d with %d records',
-                batch_count, len(batch_records)
+                "Processing batch %d with %d records",
+                batch_count,
+                len(batch_records),
             )
             return self.processor.process_batch(batch_records)
 
         except Exception as e:
             return self._handle_batch_exception(
-                batch_records, batch_count, batch_size, e
+                batch_records,
+                batch_count,
+                batch_size,
+                e,
             )
 
     def _handle_batch_exception(
@@ -274,7 +289,7 @@ class SyncProcessor:
         batch_records: list[dict[str, str]],
         batch_count: int,
         batch_size: int,
-        error: Exception
+        error: Exception,
     ) -> tuple[list[str], list[str]]:
         """Handle exceptions during batch processing, with fallback to individual processing if needed.
 
@@ -293,16 +308,17 @@ class SyncProcessor:
         """
         if batch_size == 1:
             # Individual processing error - no fallback available
-            brevid = batch_records[0].get('Brevid', 'unknown')
-            logging.error('Error processing Brevid %s: %s', brevid, error)
+            brevid = batch_records[0].get("Brevid", "unknown")
+            logging.error("Error processing Brevid %s: %s", brevid, error)
             self._handle_individual_error(batch_records[0], error)
             return [], []
 
         # Batch processing error - fallback to individual processing
-        logging.error('Error processing batch %d: %s', batch_count, error)
+        logging.error("Error processing batch %d: %s", batch_count, error)
         logging.info(
-            'Falling back to individual processing for batch %d (%d records)',
-            batch_count, len(batch_records)
+            "Falling back to individual processing for batch %d (%d records)",
+            batch_count,
+            len(batch_records),
         )
 
         annotations: list[str] = []
@@ -313,18 +329,20 @@ class SyncProcessor:
             for record in tqdm(
                 batch_records,
                 **self._tqdm_kwargs(
-                    desc=f'Fallback Batch {batch_count} Individual Processing'
-                )
+                    desc=f"Fallback Batch {batch_count} Individual Processing",
+                ),
             ):
                 annotated_record, metadata_record = self._fallback_to_individual_processing(
-                    record
+                    record,
                 )
                 annotations.extend(annotated_record)
                 metadata.extend(metadata_record)
 
         logging.info(
-            'Fallback processing completed for batch %d: %d annotations, %d metadata',
-            batch_count, len(annotations), len(metadata)
+            "Fallback processing completed for batch %d: %d annotations, %d metadata",
+            batch_count,
+            len(annotations),
+            len(metadata),
         )
         return annotations, metadata
 
@@ -333,7 +351,7 @@ class SyncProcessor:
         batch_records: list[dict[str, str]],
         batch_count: int,
         batch_size: int,
-        processing_mode: Literal['batch', 'individual']
+        processing_mode: Literal["batch", "individual"],
     ) -> tuple[list[str], list[str]]:
         """Process the final (possibly partial) batch of records.
 
@@ -352,49 +370,51 @@ class SyncProcessor:
         with logging_redirect_tqdm():
             with tqdm(
                 total=len(batch_records),
-                **self._tqdm_kwargs(f'Final {processing_mode} batch'),
+                **self._tqdm_kwargs(f"Final {processing_mode} batch"),
             ) as final_pbar:
                 try:
                     if batch_size == 1:
                         # Individual processing for remaining records
                         for record in batch_records:
-                            brevid = record.get('Brevid', 'unknown')
+                            brevid = record.get("Brevid", "unknown")
                             annotated_records, metadata_records = self.processor.process_record(
-                                record
+                                record,
                             )
                             annotations.extend(annotated_records)
                             metadata.extend(metadata_records)
                             final_pbar.set_description(
-                                f'Final record: {brevid}'
+                                f"Final record: {brevid}",
                             )
                             final_pbar.update(1)
                     else:
                         # Process the final batch
                         logging.info(
-                            'Processing final batch %d with %d records',
-                            batch_count, len(batch_records)
+                            "Processing final batch %d with %d records",
+                            batch_count,
+                            len(batch_records),
                         )
                         annotated_records, metadata_records = self.processor.process_batch(
-                            batch_records
+                            batch_records,
                         )
                         annotations.extend(annotated_records)
                         metadata.extend(metadata_records)
                         final_pbar.set_description(
-                            f'Final batch ({len(batch_records)} records)'
+                            f"Final batch ({len(batch_records)} records)",
                         )
                         final_pbar.update(len(batch_records))
                         logging.debug(
-                            'Successfully processed final batch: %d annotations, %d metadata',
-                            len(annotated_records), len(metadata_records)
+                            "Successfully processed final batch: %d annotations, %d metadata",
+                            len(annotated_records),
+                            len(metadata_records),
                         )
 
                 except Exception as e:
-                    logging.error('Error processing final batch: %s', e)
+                    logging.exception("Error processing final batch: %s", e)
                     # Fallback to individual processing for remaining records
-                    final_pbar.set_description('Final batch fallback')
+                    final_pbar.set_description("Final batch fallback")
                     for record in batch_records:
                         annotated_record, metadata_record = self._fallback_to_individual_processing(
-                            record
+                            record,
                         )
                         annotations.extend(annotated_record)
                         metadata.extend(metadata_record)
@@ -404,7 +424,7 @@ class SyncProcessor:
 
     def _fallback_to_individual_processing(
         self,
-        record: dict[str, str]
+        record: dict[str, str],
     ) -> tuple[list[str], list[str]]:
         """Fallback to individual processing when batch processing fails.
 
@@ -415,18 +435,19 @@ class SyncProcessor:
             Tuple of (annotated_record, metadata_record) for the individual record.
             Returns empty lists if processing fails.
         """
-        brevid = record.get('Brevid', 'unknown')
+        brevid = record.get("Brevid", "unknown")
         logging.debug(
-            'Attempting individual processing for Brevid %s',
-            brevid
+            "Attempting individual processing for Brevid %s",
+            brevid,
         )
 
         try:
             return self.processor.process_record(record)
         except Exception as e:
-            logging.error(
-                'Error in fallback processing for Brevid %s: %s',
-                brevid, e
+            logging.exception(
+                "Error in fallback processing for Brevid %s: %s",
+                brevid,
+                e,
             )
             self._handle_individual_error(record, e)
             return [], []
@@ -443,21 +464,28 @@ class SyncProcessor:
             This method logs the error but does not raise exceptions,
             allowing processing to continue with other records.
         """
-        brevid = record.get('Brevid', 'unknown')
-        bindnr = record.get('Bindnr', 'unknown')
+        brevid = record.get("Brevid", "unknown")
+        bindnr = record.get("Bindnr", "unknown")
 
         if isinstance(exception, ValidationError):
             logging.error(
-                'Validation error for Brevid %s (Bindnr: %s): %s',
-                brevid, bindnr, exception
+                "Validation error for Brevid %s (Bindnr: %s): %s",
+                brevid,
+                bindnr,
+                exception,
             )
         elif isinstance(exception, (ProcessingError, LLMResponseError)):
             logging.error(
-                'LLM Processing error for Brevid %s (Bindnr: %s): %s',
-                brevid, bindnr, exception
+                "LLM Processing error for Brevid %s (Bindnr: %s): %s",
+                brevid,
+                bindnr,
+                exception,
             )
         else:
             logging.error(
-                'Unexpected error processing Brevid %s (Bindnr: %s): %s',
-                brevid, bindnr, exception, exc_info=True
+                "Unexpected error processing Brevid %s (Bindnr: %s): %s",
+                brevid,
+                bindnr,
+                exception,
+                exc_info=True,
             )
