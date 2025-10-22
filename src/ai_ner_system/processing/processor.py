@@ -84,22 +84,17 @@ class RecordProcessor:
         try:
             # Validate required fields
             RecordValidator.validate_record(record)
-
             # Build prompt using the prompt builder (single record)
             prompt = self.prompt_builder.build(record)
             logging.debug("--- Prompt for Brevid %s ---\n%s", brevid, prompt)
-
             # Call LLM
             raw_response = self._call_llm(brevid, prompt)
             logging.debug("--- RAW RESPONSE for Brevid %s ---\n%s", brevid, raw_response)
-
             # Parse response
             annotated_text, entities = ResponseParser.parse_llm_response(brevid, raw_response)
-
             # Build output records
             annotated_record = self._build_annotated_record(bindnr, brevid, annotated_text)
             metadata_record = self._build_metadata_record(entities, brevid)
-
         except ProcessingError:
             # Already our domain error; keep original context
             logging.exception("Error during processing for Brevid %s", brevid)
@@ -158,7 +153,6 @@ class RecordProcessor:
                 records,
                 raw_response,
             )
-
         except ProcessingError:
             # Keep original ProcessingError intact (no double-wrapping)
             logging.exception("Error during batch processing for %s", batch_id)
@@ -216,47 +210,40 @@ class RecordProcessor:
             annotated_text, entities = ResponseParser.parse_llm_response(brevid, response)
             # Build annotated text for result
             formatted_text = self._build_annotated_record(bindnr, brevid, annotated_text)
-
         except ValidationError as e:
-            logging.exception("Validation failed for %s", record_id)
-            processing_time = time.monotonic() - start_time
-            return ProcessingResult(
-                record_id=record_id,
-                brevid=brevid,
-                processing_time=processing_time,
-                success=False,
-                error_message=str(e),
+            return self._handle_async_record_error(
+                e,
+                record_id,
+                brevid,
+                start_time,
+                "Validation failed",
             )
         except LLMClientError as e:
-            logging.exception("LLM client error for %s", record_id)
-            processing_time = time.monotonic() - start_time
-            return ProcessingResult(
-                record_id=record_id,
-                brevid=brevid,
-                processing_time=processing_time,
-                success=False,
-                error_message=str(e),
+            return self._handle_async_record_error(
+                e,
+                record_id,
+                brevid,
+                start_time,
+                "LLM client error",
             )
         except (LLMResponseError, ParseError) as e:
-            logging.exception("Response parse error for %s", record_id)
-            processing_time = time.monotonic() - start_time
-            return ProcessingResult(
-                record_id=record_id,
-                brevid=brevid,
-                processing_time=processing_time,
-                success=False,
-                error_message=str(e),
+            return self._handle_async_record_error(
+                e,
+                record_id,
+                brevid,
+                start_time,
+                "Response parse error",
             )
         else:
             # Success path
             processing_time = time.monotonic() - start_time
-            return ProcessingResult(
+            return self._create_processing_result(
                 record_id=record_id,
                 brevid=brevid,
+                success=True,
+                processing_time=processing_time,
                 annotated_text=formatted_text,
                 entities=entities,
-                processing_time=processing_time,
-                success=True,
             )
 
     # ---------------------------------------------------------------------
@@ -294,41 +281,114 @@ class RecordProcessor:
         if poll_interval is None:
             poll_interval = self.DEFAULT_POLL_INTERVAL
 
+        # Fallback to individual async processing if batch not supported
         if not self.llm_client.supports_async_batch():
-            # Fallback to individual async processing
             logging.info(
                 "LLM client does not support batch async, falling back to individual processing",
             )
             return await self._process_individual_async(records, batch_num, progress_callback)
 
-        def _fail(msg: str, *, operation: str) -> NoReturn:
-            raise BatchProcessingError(
-                msg,
-                operation=operation,
-                batch_id=f"batch_{batch_num}",
-            )
-
         start_time = time.monotonic()
 
         # Prepare batch requests
+        batch_requests = self._prepare_batch_requests(records)
+        if not batch_requests:
+            raise BatchProcessingError(
+                "No valid requests to process",
+                operation="prepare_batch",
+                batch_id=f"batch_{batch_num}",
+            )
+
+        logging.info(
+            "Starting async batch processing of %d records",
+            len(batch_requests),
+        )
+
+        # Execute batch processing
+        try:
+            batch_responses = await self.llm_client.process_batch_requests_async(
+                batch_requests,
+                batch_num,
+                max_wait_time=max_wait_time,
+                poll_interval=poll_interval,
+                progress_callback=progress_callback,
+            )
+            results = self._build_batch_results(records, batch_responses)
+        except Exception:
+            logging.exception("Batch processing failed")
+            total_processing_time = time.monotonic() - start_time
+            return self._create_batch_result(
+                batch_num,
+                results=[],
+                total_processing_time=total_processing_time,
+                failed=True,
+            )
+        else:
+            total_processing_time = time.monotonic() - start_time
+            return self._create_batch_result(
+                batch_num,
+                results=results,
+                total_processing_time=total_processing_time,
+            )
+
+    def _handle_async_record_error(
+        self,
+        error: Exception,
+        record_id: str,
+        brevid: str,
+        start_time: float,
+        error_context: str,
+    ) -> ProcessingResult:
+        """Handle errors during async record processing.
+
+        Args:
+            error: The exception that occurred.
+            record_id: Unique identifier for the record.
+            brevid: Brevid identifier.
+            start_time: Processing start time.
+            error_context: Context description for logging.
+
+        Returns:
+            ProcessingResult configured for failure.
+        """
+        logging.exception("%s for %s", error_context, record_id)
+        processing_time = time.monotonic() - start_time
+        return self._create_processing_result(
+            record_id=record_id,
+            brevid=brevid,
+            success=False,
+            processing_time=processing_time,
+            error_msg=str(error),
+        )
+
+    def _prepare_batch_requests(
+        self,
+        records: list[dict[str, str]],
+    ) -> list[BatchRequest]:
+        """Prepare batch requests from records.
+
+        Args:
+            records: List of record dictionaries to process.
+
+        Returns:
+            List of BatchRequest objects.
+        """
         batch_requests: list[BatchRequest] = []
         for i, record in enumerate(records):
             try:
                 RecordValidator.validate_record(record)
-                prompt = self.prompt_builder.build(record)  # one record prompt
+                prompt = self.prompt_builder.build(record)
 
                 bindnr = record.get("Bindnr", "unknown")
                 brevid = record.get("Brevid", "unknown")
                 custom_id = self._create_custom_id(i, bindnr, brevid)
 
-                # Create a batch request
                 batch_request = BatchRequest(
                     custom_id=custom_id,
                     prompt=prompt,
                     max_tokens=self.DEFAULT_MAX_TOKENS,
                     temperature=self.DEFAULT_TEMPERATURE,
                 )
-                # Append records into list
                 batch_requests.append(batch_request)
 
             except Exception:
@@ -340,41 +400,33 @@ class RecordProcessor:
                 )
                 continue
 
-        if not batch_requests:
-            _fail("No valid requests to process", operation="prepare_batch")
+        return batch_requests
 
-        logging.info(
-            "Starting async batch processing of %d records",
-            len(batch_requests),
-        )
+    def _create_batch_result(
+        self,
+        batch_num: int,
+        results: list[ProcessingResult],
+        total_processing_time: float,
+        *,
+        failed: bool = False,
+    ) -> BatchProcessingResult:
+        """Create a BatchProcessingResult object.
 
-        try:
-            # Processing batch using LLM client
-            batch_responses = await self.llm_client.process_batch_requests_async(
-                batch_requests,
-                batch_num,
-                max_wait_time=max_wait_time,
-                poll_interval=poll_interval,
-                progress_callback=progress_callback,
-            )
-            # Parse batch responses and build results
-            results = self._build_batch_results(records, batch_responses)
+        Args:
+            batch_num: Batch number.
+            results: List of ProcessingResult objects.
+            total_processing_time: Total processing time.
+            failed: Whether the entire batch failed.
 
-        except Exception:
-            total_processing_time = time.monotonic() - start_time
-            logging.exception("Batch processing failed")
-            return BatchProcessingResult(
-                batch_id=f"batch_{batch_num}_failed",
-                results=[],
-                total_processing_time=total_processing_time,
-                successful_count=0,
-                failed_count=len(records),
-            )
-        else:
-            total_processing_time = time.monotonic() - start_time
-            successful_count = sum(1 for r in results if r.success)
-            failed_count = len(results) - successful_count
+        Returns:
+            BatchProcessingResult object.
+        """
+        successful_count = sum(1 for r in results if r.success)
+        failed_count = len(results) - successful_count
 
+        batch_id = f"batch_{batch_num}_failed" if failed else f"batch_{batch_num}"
+
+        if not failed:
             logging.info(
                 "Batch processing completed: %d successful, %d failed, %.2f seconds total",
                 successful_count,
@@ -382,13 +434,13 @@ class RecordProcessor:
                 total_processing_time,
             )
 
-            return BatchProcessingResult(
-                batch_id=f"batch_{batch_num}",
-                results=results,  # Results in original order
-                total_processing_time=total_processing_time,
-                successful_count=successful_count,
-                failed_count=failed_count,
-            )
+        return BatchProcessingResult(
+            batch_id=batch_id,
+            results=results,
+            total_processing_time=total_processing_time,
+            successful_count=successful_count,
+            failed_count=failed_count,
+        )
 
     # ---------------------------------------------------------------------
     # Fallback async
@@ -436,11 +488,11 @@ class RecordProcessor:
                 record_id = self._create_record_id(bindnr, brevid)
 
                 processed_results.append(
-                    ProcessingResult(
+                    self._create_processing_result(
                         record_id=record_id,
                         brevid=brevid,
                         success=False,
-                        error_message=str(result),
+                        error_msg=str(result),
                     ),
                 )
                 failed_count += 1
@@ -468,6 +520,106 @@ class RecordProcessor:
             failed_count=failed_count,
         )
 
+    def _create_response_map(
+        self,
+        batch_responses: list[BatchResponse],
+    ) -> dict[int, BatchResponse]:
+        """Create mapping from index to BatchResponse for order preservation.
+
+        Args:
+            batch_responses: List of BatchResponse objects.
+
+        Returns:
+            Dictionary mapping record index to BatchResponse.
+        """
+        response_map: dict[int, BatchResponse] = {}
+        for response in batch_responses:
+            try:
+                # Extract index i from custom_id: "record_{i}_{Bindnr}_{Brevid}"
+                index = self._extract_index_from_custom_id(response.custom_id)
+                response_map[index] = response
+            except (ValueError, IndexError):
+                logging.warning(
+                    "Could not parse index from custom_id: %s",
+                    response.custom_id,
+                )
+        return response_map
+
+    def _process_single_batch_response(
+        self,
+        i: int,
+        record: dict[str, str],
+        response: BatchResponse | None,
+    ) -> ProcessingResult:
+        """Process a single batch response into a ProcessingResult.
+
+        Args:
+            i: Record index.
+            record: Original record dictionary.
+            response: BatchResponse object or None if no response.
+
+        Returns:
+            ProcessingResult for this record.
+        """
+        brevid = record.get("Brevid", "unknown")
+        bindnr = record.get("Bindnr", "unknown")
+        record_id = self._create_custom_id(i, bindnr, brevid)
+
+        # Handle missing response
+        if not response:
+            logging.warning(
+                "No response found for record index %d, Bindnr %s Brevid %s",
+                i,
+                bindnr,
+                brevid,
+            )
+            return self._create_processing_result(
+                record_id=record_id,
+                brevid=brevid,
+                success=False,
+                error_msg=f"No response received for record index {i} with Bindnr {bindnr} Brevid {brevid}",
+            )
+
+        # Handle failed response
+        if not response.success:
+            return self._create_processing_result(
+                record_id=response.custom_id,
+                brevid=brevid,
+                success=False,
+                error_msg=response.error_message,
+            )
+
+        # Parse successful response
+        try:
+            annotated_text, entities = ResponseParser.parse_llm_response(
+                brevid,
+                response.response_text,
+            )
+            formatted_text = self._build_annotated_record(bindnr, brevid, annotated_text)
+
+            return self._create_processing_result(
+                record_id=response.custom_id,
+                brevid=brevid,
+                success=True,
+                annotated_text=formatted_text,
+                entities=entities,
+            )
+        except Exception as e:
+            logging.exception(
+                "Failed to parse LLM response for custom id %s with Brevid %s",
+                response.custom_id,
+                brevid,
+            )
+            return self._create_processing_result(
+                record_id=response.custom_id,
+                brevid=brevid,
+                success=False,
+                error_msg=(
+                    f"Failed to parse LLM response for custom id {response.custom_id} "
+                    f"with Brevid {brevid}: {e}"
+                ),
+            )
+
     def _build_batch_results(
         self,
         records: list[dict[str, str]],
@@ -482,98 +634,14 @@ class RecordProcessor:
         Returns:
             List of ProcessingResult objects.
         """
-        results: list[ProcessingResult] = []
+        # Create mapping for order preservation
+        response_map = self._create_response_map(batch_responses)
 
-        # Create mapping from custom_id to (index, record) for order preservation
-        response_map: dict[int, BatchResponse] = {}
-
-        for response in batch_responses:
-            try:
-                # Extract index i from custom_id: "record_{i}_{Bindnr}_{Brevid}"
-                index = self._extract_index_from_custom_id(response.custom_id)
-                response_map[index] = response
-            except (ValueError, IndexError):
-                logging.warning(
-                    "Could not parse index from custom_id: %s",
-                    response.custom_id,
-                )
-
-        # Process responses in original order
-        for i, record in enumerate(records):
-            brevid = record.get("Brevid", "unknown")
-            bindnr = record.get("Bindnr", "unknown")
-            record_id = self._create_custom_id(i, bindnr, brevid)
-
-            response = response_map.get(i)
-            if not response:
-                # No response found for this record
-                logging.warning(
-                    "No response found for record index %d, Bindnr %s Brevid %s",
-                    i,
-                    bindnr,
-                    brevid,
-                )
-                results.append(
-                    ProcessingResult(
-                        record_id=record_id,
-                        brevid=brevid,
-                        success=False,
-                        error_message=f"No response received for record index {i} with Bindnr {bindnr} Brevid {brevid}",
-                    ),
-                )
-                continue
-
-            if not response.success:
-                results.append(
-                    ProcessingResult(
-                        record_id=response.custom_id,
-                        brevid=brevid,
-                        success=False,
-                        error_message=response.error_message,
-                    ),
-                )
-                continue
-
-            # Success path:
-            try:
-                annotated_text, entities = ResponseParser.parse_llm_response(
-                    brevid,
-                    response.response_text,
-                )
-
-                formatted_text = self._build_annotated_record(
-                    bindnr,
-                    brevid,
-                    annotated_text,
-                )
-
-                results.append(
-                    ProcessingResult(
-                        record_id=response.custom_id,
-                        brevid=brevid,
-                        annotated_text=formatted_text,
-                        entities=entities,
-                        success=True,
-                    ),
-                )
-            except Exception as e:
-                logging.exception(
-                    "Failed to parse LLM response for custom id %s with Brevid %s",
-                    response.custom_id,
-                    brevid,
-                )
-                results.append(
-                    ProcessingResult(
-                        record_id=response.custom_id,
-                        brevid=brevid,
-                        success=False,
-                        error_message=(
-                            f"Failed to parse LLM response for custom id {response.custom_id} "
-                            f"with Brevid {brevid}: {e}"
-                        ),
-                    ),
-                )
-        return results
+        # List comprehension processes each record in original order automatically
+        return [
+            self._process_single_batch_response(i, record, response_map.get(i))
+            for i, record in enumerate(records)
+        ]
 
     def _call_llm(self, identifier: str, prompt: str) -> str:
         """Call the LLM service with the prompt.
@@ -717,6 +785,57 @@ class RecordProcessor:
             raise ValueError(
                 f"Could not extract index from custom_id: {custom_id}",
             ) from e
+
+    @staticmethod
+    def _create_processing_result(
+        *,
+        record_id: str,
+        brevid: str,
+        success: bool,
+        processing_time: float = 0.0,
+        annotated_text: str | None = None,
+        entities: list[EntityRecord] | None = None,
+        error_msg: str | None = None,
+    ) -> ProcessingResult:
+        """Create a ProcessingResult object.
+
+        Args:
+            record_id: Unique identifier for the record.
+            brevid: Brevid identifier.
+            success: Whether processing was successful.
+            processing_time: Time taken to process (default: 0.0).
+            annotated_text: Annotated text (required if success=True).
+            entities: List of extracted entities (required if success=True).
+            error_msg: Error message (required if success=False).
+
+        Returns:
+            ProcessingResult object configured for success or failure case.
+        """
+        if success:
+            # Type assertions for success case
+            if annotated_text is None:
+                msg = "annotated_text is required when success=True"
+                raise ValueError(msg)
+            if entities is None:
+                msg = "entities is required when success=True"
+                raise ValueError(msg)
+            return ProcessingResult(
+                record_id=record_id,
+                brevid=brevid,
+                annotated_text=annotated_text,
+                entities=entities,
+                processing_time=processing_time,
+                success=True,
+            )
+
+        # Failure case
+        return ProcessingResult(
+            record_id=record_id,
+            brevid=brevid,
+            processing_time=processing_time,
+            success=False,
+            error_message=error_msg or "Unknown error",
+        )
 
 
 # -------------------------------------------------------------------------
