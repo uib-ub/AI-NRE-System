@@ -108,11 +108,29 @@ class ResponseParser:
             logging.warning("No JSON content to parse for brevid=%s", brevid)
             return []
 
-        json_text = json_text.strip()
+        data = ResponseParser._parse_json_structure(json_text, brevid)
+        entities_data = ResponseParser._validate_entities_structure(data, brevid)
+        logging.debug("Parsed %d entities for Brevid=%s", len(entities_data), brevid)
 
+        return ResponseParser._create_entity_records(entities_data, brevid)
+
+    @staticmethod
+    def _parse_json_structure(json_text: str, brevid: str) -> dict[str, Any]:
+        """Parse and validate JSON structure.
+
+        Args:
+            json_text: JSON string to parse.
+            brevid: The Brevid identifier for error reporting.
+
+        Returns:
+            Parsed JSON data as dictionary.
+
+        Raises:
+            ParseError: If JSON parsing fails or structure is invalid.
+        """
         # Parse JSON and validate structure
         try:
-            data: Any = json.loads(json_text)
+            data: Any = json.loads(json_text.strip())
         except json.JSONDecodeError as e:
             raise ParseError(
                 f"Invalid JSON format: {e}",
@@ -122,8 +140,7 @@ class ResponseParser:
                 # Truncate for error message
                 content=json_text[: ResponseParser._MAX_SNIPPET],
             ) from e
-
-        # Validate data structure
+        # Validate structure of data
         if not isinstance(data, dict):
             raise ParseError(
                 f"Expected JSON object for Brevid {brevid}, got {type(data).__name__}",
@@ -133,14 +150,25 @@ class ResponseParser:
                 # Truncate for error message
                 content=json_text[: ResponseParser._MAX_SNIPPET],
             )
+        # Cast to dict for type checker (runtime check done above) and return
+        return cast("dict[str, Any]", data)
 
-        # Cast to dict for type checker (runtime check done above)
-        data = cast("dict[str, Any]", data)
+    @staticmethod
+    def _validate_entities_structure(data: dict[str, Any], brevid: str) -> list[Any]:
+        """Validate and extract entities list from parsed JSON.
 
-        # Extract entities list with default empty list
+        Args:
+            data: Parsed JSON data dictionary.
+            brevid: The Brevid identifier for error reporting.
+
+        Returns:
+            List of entity data objects.
+
+        Raises:
+            ParseError: If entities structure is invalid.
+        """
         entities_data: Any = data.get("entities", [])
 
-        # Validate it's a list (could be different type if JSON is malformed)
         if not isinstance(entities_data, list):
             raise ParseError(
                 f"Entities must be a list, got {type(entities_data).__name__}",
@@ -148,56 +176,63 @@ class ResponseParser:
                 operation="parse_entities_json",
                 parse_type="entities_structure",
             )
+        # Type narrow and return entities data list
+        return cast("list[Any]", entities_data)
 
-        # Type narrow after validation
-        entities_data = cast("list[Any]", entities_data)
+    @staticmethod
+    def _create_entity_records(
+        entities_data: list[Any],
+        brevid: str,
+    ) -> list[EntityRecord]:
+        """Create EntityRecord objects from entity data, skipping invalid ones.
 
-        logging.debug(
-            "Parsed %d entities for Brevid=%s",
-            len(entities_data),
-            brevid,
-        )
+        Args:
+            entities_data: List of entity data objects.
+            brevid: The Brevid identifier for error reporting.
 
-        # Create EntityRecord objects
+        Returns:
+            List of valid EntityRecord objects.
+        """
         entities: list[EntityRecord] = []
         failed_count = 0
+
         for entity_data in entities_data:
             try:
-                entity = EntityRecord.create_entity_record(
-                    entity_data,
-                    brevid,
-                )
-                logging.info(
-                    "Created entity record for Brevid=%s: %s",
-                    brevid,
-                    entity,
-                )
+                entity = EntityRecord.create_entity_record(entity_data, brevid)
+                logging.info("Created entity record for Brevid=%s: %s", brevid, entity)
                 entities.append(entity)
-            except Exception as e:  # noqa: BLE001 - Continue processing remaining entities even if one fails
+            except Exception as e:  # noqa: BLE001
                 failed_count += 1
-                logging.warning(
-                    "Invalid entity data for Brevid=%s: %s",
-                    brevid,
-                    e,
-                )
-                continue
+                logging.warning("Invalid entity data for Brevid=%s: %s", brevid, e)
 
-        if failed_count > 0:
+        ResponseParser._log_entity_creation_results(entities, entities_data, brevid, failed_count)
+        return entities
+
+    @staticmethod
+    def _log_entity_creation_results(
+        entities: list[EntityRecord],
+        entities_data: list[Any],
+        brevid: str,
+        failed_count: int,
+    ) -> None:
+        """Log the results of entity creation.
+
+        Args:
+            entities: Successfully created EntityRecord objects.
+            entities_data: Original entity data list.
+            brevid: The Brevid identifier.
+            failed_count: Number of entities that failed to create.
+        """
+        if failed_count:
             logging.warning(
-                "Parsed %d/%d valid entities for Brevid=%s (%d entities failed).",
+                "Parsed %d/%d valid entities for Brevid=%s (%d failed)",
                 len(entities),
                 len(entities_data),
                 brevid,
                 failed_count,
             )
         else:
-            logging.info(
-                "Parsed all %d entities successfully for Brevid=%s",
-                len(entities),
-                brevid,
-            )
-
-        return entities
+            logging.info("Parsed all %d entities successfully for Brevid=%s", len(entities), brevid)
 
     @staticmethod
     def parse_batch_response(
