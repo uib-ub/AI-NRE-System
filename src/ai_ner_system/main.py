@@ -135,7 +135,11 @@ def _validate_template_files(args: argparse.Namespace) -> None:
         )
 
     # Check batch template if batch processing is enabled
-    if args.use_batch and args.batch_template and not Path(args.batch_template).exists():
+    if (
+        args.use_batch
+        and args.batch_template
+        and not Path(args.batch_template).exists()
+    ):
         raise ApplicationError(
             f"Batch template file does not exist: {args.batch_template}",
         )
@@ -150,10 +154,10 @@ def _validate_async_arguments(args: argparse.Namespace) -> None:
     Raises:
         ApplicationError: If arguments are invalid.
     """
-    if not getattr(args, "async_mode", False):
+    if not args.async_mode:
         return
 
-    max_wait_time = getattr(args, "max_wait_time", 0.0)
+    max_wait_time = args.max_wait_time
     if max_wait_time < MIN_MAX_WAIT_TIME:
         msg = (
             f"Max wait time must be at least {MIN_MAX_WAIT_TIME} seconds for async mode, "
@@ -161,7 +165,7 @@ def _validate_async_arguments(args: argparse.Namespace) -> None:
         )
         raise ApplicationError(msg)
 
-    poll_interval = getattr(args, "poll_interval", 0.0)
+    poll_interval = args.poll_interval
     if poll_interval < MIN_POLL_INTERVAL:
         msg = (
             f"Poll interval must be at least {MIN_POLL_INTERVAL} seconds for async mode, "
@@ -423,7 +427,10 @@ def create_argument_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _run_processor(processor: MedievalTextProcessor, args: argparse.Namespace) -> Literal[0, 1]:
+def _run_processor(
+    processor: MedievalTextProcessor,
+    args: argparse.Namespace,
+) -> Literal[0, 1]:
     """Run the processor in the appropriate mode (sync or async).
 
     Args:
@@ -434,7 +441,7 @@ def _run_processor(processor: MedievalTextProcessor, args: argparse.Namespace) -
         Exit code: 0 for success, 1 for failure.
     """
     # Choose execution mode based on async_mode argument
-    async_mode = getattr(args, "async_mode", False)
+    async_mode = args.async_mode
 
     if async_mode:
         logging.info("Using asynchronous processing mode")
@@ -447,7 +454,7 @@ def _run_processor(processor: MedievalTextProcessor, args: argparse.Namespace) -
         return asyncio.run(
             processor.run_async(
                 progress_callback,
-                timeout=args.max_wait_time,
+                timeout_seconds=args.max_wait_time,
                 max_batch_wait_time=args.max_wait_time,
                 poll_interval=args.poll_interval,
             ),
