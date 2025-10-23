@@ -59,11 +59,15 @@ class ConfigValidator:
         try:
             # Validate client-specific configuration
             client_configs = Settings.get_client_required_configs(client_type)
-            missing_client_configs = [key for key, value in client_configs.items() if not value]
+            missing_client_configs = [
+                key for key, value in client_configs.items() if not value
+            ]
 
             # Validate common configuration
             common_configs = Settings.get_common_required_configs()
-            missing_common_configs = [key for key, value in common_configs.items() if not value]
+            missing_common_configs = [
+                key for key, value in common_configs.items() if not value
+            ]
 
             # Combine all missing configurations
             missing_configs = missing_client_configs + missing_common_configs
@@ -96,7 +100,12 @@ class ConfigValidator:
             ConfigValidator._validate_template_files()
             ConfigValidator._validate_output_paths_writable()
             logging.info("File path validation completed successfully")
-        except (OSError, ConfigError, FileValidationError, DirectoryValidationError) as e:
+        except (
+            OSError,
+            ConfigError,
+            FileValidationError,
+            DirectoryValidationError,
+        ) as e:
             msg = f"File path validation failed: {e}"
             raise ConfigValidationError(msg) from e
 
@@ -284,7 +293,9 @@ class ConfigValidator:
 
         # Test writability
         if not os.access(output_dir, os.W_OK):
-            msg = f"Output directory for {file_description} is not writable: {output_dir}"
+            msg = (
+                f"Output directory for {file_description} is not writable: {output_dir}"
+            )
             raise DirectoryValidationError(
                 msg,
                 config_key=config_key,

@@ -78,7 +78,11 @@ def create_llm_client(client_type: str) -> Client:
                 Settings.ANTHROPIC_API_KEY,
                 client_type,
             )
-            model = _require_config_value("CLAUDE_MODEL", Settings.CLAUDE_MODEL, client_type)
+            model = _require_config_value(
+                "CLAUDE_MODEL",
+                Settings.CLAUDE_MODEL,
+                client_type,
+            )
             return ClaudeClient(api_key=api_key, model=model)
 
         if client_type == "ollama":
@@ -87,8 +91,16 @@ def create_llm_client(client_type: str) -> Client:
                 Settings.OPENWEBUI_ENDPOINT,
                 client_type,
             )
-            token = _require_config_value("OPENWEBUI_TOKEN", Settings.OPENWEBUI_TOKEN, client_type)
-            model = _require_config_value("OLLAMA_MODEL", Settings.OLLAMA_MODEL, client_type)
+            token = _require_config_value(
+                "OPENWEBUI_TOKEN",
+                Settings.OPENWEBUI_TOKEN,
+                client_type,
+            )
+            model = _require_config_value(
+                "OLLAMA_MODEL",
+                Settings.OLLAMA_MODEL,
+                client_type,
+            )
             return OllamaClient(endpoint=endpoint, token=token, model=model)
 
     except LLMClientError:

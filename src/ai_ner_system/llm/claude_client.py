@@ -186,7 +186,12 @@ class ClaudeClient(LLMBaseClient):
             "stream": False,
         }
 
-    def _handle_auth_error(self, exc: Exception, *, operation: str) -> AuthenticationError:
+    def _handle_auth_error(
+        self,
+        exc: Exception,
+        *,
+        operation: str,
+    ) -> AuthenticationError:
         """Handle authentication errors uniformly.
 
         Args:
@@ -202,7 +207,12 @@ class ClaudeClient(LLMBaseClient):
             operation=operation,
         )
 
-    def _handle_rate_limit_error(self, exc: Exception, *, operation: str) -> RateLimitError:
+    def _handle_rate_limit_error(
+        self,
+        exc: Exception,
+        *,
+        operation: str,
+    ) -> RateLimitError:
         """Handle rate limit errors uniformly.
 
         Args:
@@ -258,7 +268,12 @@ class ClaudeClient(LLMBaseClient):
         except anthropic.APIError as e:
             status_code = getattr(e, "status_code", None)
             msg = f"Claude API error: {e}"
-            self._raise_api_error(msg, operation="single_call", status_code=status_code, cause=e)
+            self._raise_api_error(
+                msg,
+                operation="single_call",
+                status_code=status_code,
+                cause=e,
+            )
         except Exception as e:  # noqa: BLE001
             msg = f"Claude API call failed: {e}"
             self._raise_llm_client_error(msg, operation="single_call", cause=e)
@@ -291,7 +306,10 @@ class ClaudeClient(LLMBaseClient):
 
         try:
             payload = self._message_payload(prompt)
-            response: Message = cast("Message", await self.async_client.messages.create(**payload))
+            response: Message = cast(
+                "Message",
+                await self.async_client.messages.create(**payload),
+            )
             text = self._extract_response_text_from_message(response)
             if not text:
                 msg = "Empty response received from Claude API"
@@ -364,7 +382,10 @@ class ClaudeClient(LLMBaseClient):
         except anthropic.AuthenticationError as e:
             raise self._handle_auth_error(e, operation="async_create_batch") from e
         except anthropic.RateLimitError as e:
-            raise self._handle_rate_limit_error(e, operation="async_create_batch") from e
+            raise self._handle_rate_limit_error(
+                e,
+                operation="async_create_batch",
+            ) from e
         except anthropic.APIError as e:
             status_code = getattr(e, "status_code", None)
             self._raise_api_error(
@@ -403,7 +424,10 @@ class ClaudeClient(LLMBaseClient):
         except anthropic.AuthenticationError as e:
             raise self._handle_auth_error(e, operation="async_get_batch_status") from e
         except anthropic.RateLimitError as e:
-            raise self._handle_rate_limit_error(e, operation="async_get_batch_status") from e
+            raise self._handle_rate_limit_error(
+                e,
+                operation="async_get_batch_status",
+            ) from e
         except anthropic.APIError as e:
             status_code = getattr(e, "status_code", None)
             self._raise_api_error(
@@ -414,7 +438,11 @@ class ClaudeClient(LLMBaseClient):
             )
         except Exception as e:  # noqa: BLE001
             msg = f"Failed to get batch status: {e}"
-            self._raise_llm_client_error(msg, operation="async_get_batch_status", cause=e)
+            self._raise_llm_client_error(
+                msg,
+                operation="async_get_batch_status",
+                cause=e,
+            )
         else:
             # Map Claude batch processing_status to our enum
             ps = getattr(message_batch, "processing_status", None)
@@ -441,8 +469,10 @@ class ClaudeClient(LLMBaseClient):
         if not batch_id:
             raise ValueError("batch_id cannot be empty")
         try:
-            message_batch: MessageBatch = await self.async_client.messages.batches.retrieve(
-                batch_id,
+            message_batch: MessageBatch = (
+                await self.async_client.messages.batches.retrieve(
+                    batch_id,
+                )
             )
         except asyncio.CancelledError:
             logging.debug("async_get_batch_info cancelled")
@@ -450,7 +480,10 @@ class ClaudeClient(LLMBaseClient):
         except anthropic.AuthenticationError as e:
             raise self._handle_auth_error(e, operation="async_get_batch_info") from e
         except anthropic.RateLimitError as e:
-            raise self._handle_rate_limit_error(e, operation="async_get_batch_info") from e
+            raise self._handle_rate_limit_error(
+                e,
+                operation="async_get_batch_info",
+            ) from e
         except anthropic.APIError as e:
             status_code = getattr(e, "status_code", None)
             self._raise_api_error(
@@ -509,7 +542,11 @@ class ClaudeClient(LLMBaseClient):
             results_iter = await self.async_client.messages.batches.results(batch_id)
             async for result in results_iter:
                 custom_id: str = getattr(result, "custom_id", "unknown_custom_id")
-                batch_response = self._process_single_batch_result(result, custom_id, counters)
+                batch_response = self._process_single_batch_result(
+                    result,
+                    custom_id,
+                    counters,
+                )
                 results.append(batch_response)
 
             self._log_batch_summary(batch_id, results, counters)
@@ -520,7 +557,10 @@ class ClaudeClient(LLMBaseClient):
         except anthropic.AuthenticationError as e:
             raise self._handle_auth_error(e, operation="async_get_batch_results") from e
         except anthropic.RateLimitError as e:
-            raise self._handle_rate_limit_error(e, operation="async_get_batch_results") from e
+            raise self._handle_rate_limit_error(
+                e,
+                operation="async_get_batch_results",
+            ) from e
         except anthropic.APIError as e:
             status_code = getattr(e, "status_code", None)
             self._raise_api_error(
@@ -531,7 +571,11 @@ class ClaudeClient(LLMBaseClient):
             )
         except Exception as e:  # noqa: BLE001
             msg = f"Failed to get batch results: {e}"
-            self._raise_llm_client_error(msg, operation="async_get_batch_results", cause=e)
+            self._raise_llm_client_error(
+                msg,
+                operation="async_get_batch_results",
+                cause=e,
+            )
         else:
             return results
 
@@ -547,7 +591,9 @@ class ClaudeClient(LLMBaseClient):
         # Ensure the batch is actually completed
         status = await self.get_batch_status_async(batch_id)
         if status != BatchStatus.ENDED:
-            msg = f"Batch {batch_id} is not completed yet, current status: {status.value}"
+            msg = (
+                f"Batch {batch_id} is not completed yet, current status: {status.value}"
+            )
             self._raise_llm_client_error(msg, operation="async_get_batch_results")
 
         # Fetch batch information to access results_url
@@ -603,7 +649,11 @@ class ClaudeClient(LLMBaseClient):
                     error_message="Missing result object.",
                 )
 
-            return self._create_batch_response_for_result_type(result_obj, custom_id, counters)
+            return self._create_batch_response_for_result_type(
+                result_obj,
+                custom_id,
+                counters,
+            )
 
         except Exception as result_exc:
             # Never let one malformed result crash the whole batch
@@ -731,19 +781,19 @@ class ClaudeClient(LLMBaseClient):
         """
         # Message.content is a list of content blocks
         # Collect text from blocks with type == "text"
-        text_parts: list[str] = []
-
-        for block in msg.content:
-            # Each block has a 'type' field (Literal type from SDK)
-            # Only consume text blocks; ignore tool_use, thinking, and other blocks
-            # Text blocks have a 'text' attribute
-            if block.type == "text" and hasattr(block, "text") and block.text:
-                text_parts.append(block.text)
-
+        # Each block has a 'type' field (Literal type from SDK)
+        # Here we only consume text blocks; other blocks such as tool_use, thinking are ignored.
+        # Text blocks have a 'text' attribute containing the actual text.
+        # Type narrowing: when block.type == "text", block is TextBlock with a 'text' attribute
+        text_parts = [
+            block.text for block in msg.content if block.type == "text" and block.text
+        ]
         return "".join(text_parts)
 
     @staticmethod
-    def _extract_error_from_errored_result(errored_result: MessageBatchErroredResult) -> str:
+    def _extract_error_from_errored_result(
+        errored_result: MessageBatchErroredResult,
+    ) -> str:
         """Extract error message from MessageBatchErroredResult.
 
         Args:
@@ -787,7 +837,10 @@ class ClaudeClient(LLMBaseClient):
         except anthropic.AuthenticationError as e:
             raise self._handle_auth_error(e, operation="async_cancel_batch") from e
         except anthropic.RateLimitError as e:
-            raise self._handle_rate_limit_error(e, operation="async_cancel_batch") from e
+            raise self._handle_rate_limit_error(
+                e,
+                operation="async_cancel_batch",
+            ) from e
         except anthropic.APIError as e:
             status_code = getattr(e, "status_code", None)
             self._raise_api_error(

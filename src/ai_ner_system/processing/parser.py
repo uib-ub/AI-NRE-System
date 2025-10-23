@@ -77,7 +77,9 @@ class ResponseParser:
                 f"Failed to parse LLM response for Brevid {brevid}: {e}",
                 brevid=brevid,
                 operation="parse_llm_response",
-                response_text=raw_response[: ResponseParser._MAX_SNIPPET] if raw_response else None,
+                response_text=raw_response[: ResponseParser._MAX_SNIPPET]
+                if raw_response
+                else None,
             ) from e
         else:
             logging.debug(
@@ -135,7 +137,10 @@ class ResponseParser:
         logging.debug("Full batch response:\n%s", raw_response)
 
         try:
-            record_sections = ResponseParser._split_batch_response(raw_response, records)
+            record_sections = ResponseParser._split_batch_response(
+                raw_response,
+                records,
+            )
             return ResponseParser._process_record_sections(record_sections, records)
         except Exception:
             logging.exception("Critical error parsing batch response")
@@ -232,7 +237,12 @@ class ResponseParser:
                 failed_count += 1
                 logging.warning("Invalid entity data for Brevid=%s: %s", brevid, e)
 
-        ResponseParser._log_entity_creation_results(entities, entities_data, brevid, failed_count)
+        ResponseParser._log_entity_creation_results(
+            entities,
+            entities_data,
+            brevid,
+            failed_count,
+        )
         return entities
 
     @staticmethod
@@ -259,7 +269,11 @@ class ResponseParser:
                 failed_count,
             )
         else:
-            logging.info("Parsed all %d entities successfully for Brevid=%s", len(entities), brevid)
+            logging.info(
+                "Parsed all %d entities successfully for Brevid=%s",
+                len(entities),
+                brevid,
+            )
 
     @staticmethod
     def _split_batch_response(
@@ -318,11 +332,13 @@ class ResponseParser:
             record = records[i]
 
             try:
-                annotated_record, metadata_records = ResponseParser._process_single_record_section(
-                    section,
-                    record,
-                    i,
-                    len(records),
+                annotated_record, metadata_records = (
+                    ResponseParser._process_single_record_section(
+                        section,
+                        record,
+                        i,
+                        len(records),
+                    )
                 )
                 all_annotated_records.append(annotated_record)
                 all_metadata_records.extend(metadata_records)
@@ -358,13 +374,29 @@ class ResponseParser:
         bindnr = record.get("Bindnr", "unknown")
         brevid = record.get("Brevid", "unknown")
 
-        logging.debug("Processing record, Index=%d: Bindnr=%s, Brevid=%s", index, bindnr, brevid)
+        logging.debug(
+            "Processing record, Index=%d: Bindnr=%s, Brevid=%s",
+            index,
+            bindnr,
+            brevid,
+        )
 
         result_content = ResponseParser._extract_result_content(section, brevid, index)
-        annotated_text, entities = ResponseParser.parse_llm_response(brevid, result_content)
+        annotated_text, entities = ResponseParser.parse_llm_response(
+            brevid,
+            result_content,
+        )
 
-        annotated_record = ResponseParser._format_csv_row(bindnr, brevid, annotated_text)
-        logging.info("--- Annotated record for Brevid %s ---\n%s", brevid, annotated_record)
+        annotated_record = ResponseParser._format_csv_row(
+            bindnr,
+            brevid,
+            annotated_text,
+        )
+        logging.info(
+            "--- Annotated record for Brevid %s ---\n%s",
+            brevid,
+            annotated_record,
+        )
 
         metadata_records = ResponseParser._format_entity_metadata(entities, brevid)
 

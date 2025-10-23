@@ -224,7 +224,9 @@ class Settings:
 
         if client_type not in cls.SUPPORTED_CLIENTS:
             supported = ", ".join(sorted(cls.SUPPORTED_CLIENTS))
-            msg = f"Unsupported client type: {client_type}. Supported types: {supported}"
+            msg = (
+                f"Unsupported client type: {client_type}. Supported types: {supported}"
+            )
             raise ConfigError(msg)
 
         if client_type == "claude":

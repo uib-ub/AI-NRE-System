@@ -349,6 +349,8 @@ class GenericPromptBuilder(PromptBuilder):
         """
         record_sections: list[str] = []
         for i, record in enumerate(records, start=1):
-            section = f'RECORD {i}:\nBrevid: {record["brevid"]}\nText: """{record["text"]}"""'
+            section = (
+                f'RECORD {i}:\nBrevid: {record["brevid"]}\nText: """{record["text"]}"""'
+            )
             record_sections.append(section)
         return "\n\n".join(record_sections)

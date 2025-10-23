@@ -272,7 +272,11 @@ class OllamaClient(LLMBaseClient):
             self._raise_api_error(error_msg, operation="async_single_call", cause=e)
         except Exception as e:  # noqa: BLE001
             error_msg = f"Ollama async API call failed: {e}"
-            self._raise_llm_client_error(error_msg, operation="async_single_call", cause=e)
+            self._raise_llm_client_error(
+                error_msg,
+                operation="async_single_call",
+                cause=e,
+            )
         else:
             response_text = self._extract_text_from_json(data)
 

@@ -355,10 +355,10 @@ class OutputWriter:
                 output_path,
             )
         except (OSError, UnicodeEncodeError) as e:
-            if isinstance(e, UnicodeEncodeError):
-                error_msg = f"Encoding error writing {log_label} to {output_path}: {e}"
-            else:
-                error_msg = f"I/O error writing {log_label} to {output_path}: {e}"
+            error_prefix = (
+                "Encoding error" if isinstance(e, UnicodeEncodeError) else "I/O error"
+            )
+            error_msg = f"{error_prefix} writing {log_label} to {output_path}: {e}"
             raise OutputError(
                 error_msg,
                 file_path=str(output_path),

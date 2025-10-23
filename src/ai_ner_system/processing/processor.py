@@ -89,11 +89,22 @@ class RecordProcessor:
             logging.debug("--- Prompt for Brevid %s ---\n%s", brevid, prompt)
             # Call LLM
             raw_response = self._call_llm(brevid, prompt)
-            logging.debug("--- RAW RESPONSE for Brevid %s ---\n%s", brevid, raw_response)
+            logging.debug(
+                "--- RAW RESPONSE for Brevid %s ---\n%s",
+                brevid,
+                raw_response,
+            )
             # Parse response
-            annotated_text, entities = ResponseParser.parse_llm_response(brevid, raw_response)
+            annotated_text, entities = ResponseParser.parse_llm_response(
+                brevid,
+                raw_response,
+            )
             # Build output records
-            annotated_record = self._build_annotated_record(bindnr, brevid, annotated_text)
+            annotated_record = self._build_annotated_record(
+                bindnr,
+                brevid,
+                annotated_text,
+            )
             metadata_record = self._build_metadata_record(entities, brevid)
         except ProcessingError:
             # Already our domain error; keep original context
@@ -108,9 +119,17 @@ class RecordProcessor:
             ) from e
         else:
             # DEBUG: annotated text and entities
-            logging.debug("--- Annotated text for Brevid %s ---\n%s", brevid, annotated_text)
+            logging.debug(
+                "--- Annotated text for Brevid %s ---\n%s",
+                brevid,
+                annotated_text,
+            )
             logging.debug("--- Entities for Brevid %s ---\n%s", brevid, entities)
-            logging.info("--- Annotated record for Brevid %s ---\n%s", brevid, annotated_record)
+            logging.info(
+                "--- Annotated record for Brevid %s ---\n%s",
+                brevid,
+                annotated_record,
+            )
             logging.info("--- Metadata for Brevid %s ---\n%s", brevid, metadata_record)
             return [annotated_record], metadata_record
 
@@ -164,13 +183,21 @@ class RecordProcessor:
                 operation="process_batch",
             ) from e
         else:
-            logging.debug("--- Batch Prompt for batch %s ---\n%s", batch_id, batch_prompt)
+            logging.debug(
+                "--- Batch Prompt for batch %s ---\n%s",
+                batch_id,
+                batch_prompt,
+            )
             logging.debug(
                 "Received batch response for batch %s (length: %d)",
                 batch_id,
                 len(raw_response),
             )
-            logging.debug("--- RAW RESPONSE for batch %s ---\n%s", batch_id, raw_response)
+            logging.debug(
+                "--- RAW RESPONSE for batch %s ---\n%s",
+                batch_id,
+                raw_response,
+            )
             logging.info(
                 "Successfully processed batch of %d records: %d annotations, %d metadata",
                 len(records),
@@ -207,9 +234,16 @@ class RecordProcessor:
             # Call LLM asynchronously
             response = await self.llm_client.call_async(prompt)
             # Parse response
-            annotated_text, entities = ResponseParser.parse_llm_response(brevid, response)
+            annotated_text, entities = ResponseParser.parse_llm_response(
+                brevid,
+                response,
+            )
             # Build annotated text for result
-            formatted_text = self._build_annotated_record(bindnr, brevid, annotated_text)
+            formatted_text = self._build_annotated_record(
+                bindnr,
+                brevid,
+                annotated_text,
+            )
         except ValidationError as e:
             return self._handle_async_record_error(
                 e,
@@ -286,7 +320,11 @@ class RecordProcessor:
             logging.info(
                 "LLM client does not support batch async, falling back to individual processing",
             )
-            return await self._process_individual_async(records, batch_num, progress_callback)
+            return await self._process_individual_async(
+                records,
+                batch_num,
+                progress_callback,
+            )
 
         start_time = time.monotonic()
 
@@ -595,7 +633,11 @@ class RecordProcessor:
                 brevid,
                 response.response_text,
             )
-            formatted_text = self._build_annotated_record(bindnr, brevid, annotated_text)
+            formatted_text = self._build_annotated_record(
+                bindnr,
+                brevid,
+                annotated_text,
+            )
 
             return self._create_processing_result(
                 record_id=response.custom_id,
@@ -657,7 +699,12 @@ class RecordProcessor:
             ProcessingError: If LLM call fails.
         """
 
-        def _fail(msg: str, *, operation: str, cause: Exception | None = None) -> NoReturn:
+        def _fail(
+            msg: str,
+            *,
+            operation: str,
+            cause: Exception | None = None,
+        ) -> NoReturn:
             if cause is None:
                 raise ProcessingError(msg, operation=operation)
             raise ProcessingError(msg, operation=operation) from cause
@@ -666,7 +713,11 @@ class RecordProcessor:
         try:
             raw_response = self.llm_client.call(prompt)
         except LLMClientError as e:
-            _fail(f"Error during LLM call for {identifier}: {e}", operation="call_llm", cause=e)
+            _fail(
+                f"Error during LLM call for {identifier}: {e}",
+                operation="call_llm",
+                cause=e,
+            )
 
         if not raw_response or raw_response.strip() in {
             "Claude API call failed",
