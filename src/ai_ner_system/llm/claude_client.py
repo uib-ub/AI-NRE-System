@@ -903,12 +903,7 @@ class ClaudeClient(LLMBaseClient):
 
                 elapsed_time = time.monotonic() - start_time
                 # Defensive extraction/typing
-                req_counts: dict[str, int] = (
-                    batch_info.get(
-                        "request_counts",
-                    )
-                    or {}
-                )
+                req_counts: dict[str, int] = batch_info.get("request_counts") or {}
 
                 created_at = str(batch_info.get("created_at", ""))
                 expires_at = str(batch_info.get("expires_at", ""))
@@ -935,7 +930,9 @@ class ClaudeClient(LLMBaseClient):
 
                 # Wait before next poll (non-blocking)
                 await asyncio.sleep(poll_interval)
-
+            except asyncio.CancelledError:
+                logging.info("Batch monitor cancelled for %s", batch_id)
+                raise
             except Exception:
                 logging.exception(
                     "Error monitoring batch %s",

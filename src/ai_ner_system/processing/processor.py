@@ -352,6 +352,9 @@ class RecordProcessor:
                 progress_callback=progress_callback,
             )
             results = self._build_batch_results(records, batch_responses)
+        except asyncio.CancelledError:
+            logging.info("Batch processing was cancelled")
+            raise
         except Exception:
             logging.exception("Batch processing failed")
             total_processing_time = time.monotonic() - start_time

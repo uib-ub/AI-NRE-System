@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, ClassVar, cast
 
 from ai_ner_system.config import Settings
 from ai_ner_system.processing import BatchProcessingResult, ProcessingResult
@@ -134,10 +134,11 @@ class AsyncProcessor:
 
         # Initialize statistics
         stats = AsyncProcessingStats(start_time=time.monotonic())
+        success = False
 
         try:
             logging.info("Starting async streaming processing...")
-
+            # TODO: move these defaults to properties
             # Use defaults if not specified
             wait_time = max_batch_wait_time or self.DEFAULT_BATCH_WAIT_TIME
             poll_time = poll_interval or self.DEFAULT_POLL_INTERVAL
@@ -155,10 +156,20 @@ class AsyncProcessor:
                 # Use individual async processing with streaming
                 await self._process_records_individual_async(stats)
 
+            success = True
+        except asyncio.CancelledError:
+            logging.info("Async processing cancelled")
+            raise
+        except Exception as e:
+            error_msg = "Async streaming processing failed"
+            logging.exception(error_msg)
+            raise ApplicationError(error_msg) from e
+        finally:
             # Finalize statistics
             stats.end_time = time.monotonic()
             stats.processing_time = stats.end_time - stats.start_time
 
+        if success:
             logging.info(
                 "Async streaming processing completed: %d/%d records (%.1f%% success rate) in %.2fs",
                 stats.processed_records,
@@ -166,15 +177,7 @@ class AsyncProcessor:
                 stats.success_rate,
                 stats.processing_time,
             )
-
-            return stats
-
-        except Exception as e:
-            stats.end_time = time.monotonic()
-            stats.processing_time = stats.end_time - stats.start_time
-            logging.exception("Async streaming processing failed")
-            error_msg = f"Async streaming processing failed: {e}"
-            raise ApplicationError(error_msg) from e
+        return stats
 
     async def _process_records_streaming_async(
         self,
@@ -200,12 +203,12 @@ class AsyncProcessor:
         batch_records: list[dict[str, str]] = []
         record_count = 0
         batch_num = 0
+        # Track batch tasks with their order information using a map (batch_num -> task)
+        # TODO: should we just use a list instead of a dict?
+        batch_tasks: dict[int, asyncio.Task[BatchProcessingResult]] = {}
 
-        # Track batch tasks with their order information using a map
-        batch_tasks: dict[int, asyncio.Task[BatchProcessingResult]] = {}  # batch_num -> task
         # Limit to default 5 concurrent batch processing tasks,
-        # otherwise it can reach 50 batch request limitation as default
-
+        # otherwise it can reach 50 batch request limitation of Anthropic API
         max_concurrent_batches = getattr(
             self.args,
             "max_concurrent_batches",
@@ -213,21 +216,20 @@ class AsyncProcessor:
         )
 
         try:
-            # Stream records asynchronously in batches and concurrently (coroutines) process them with order preservation
+            # Stream records asynchronously in batches and
+            # concurrently (coroutines) process them with order preservation
             async for record in self._async_stream_csv_records():
                 batch_records.append(record)
                 # count number of records
                 record_count += 1
-
                 # Update total count as we discover records
                 stats.total_records = record_count
 
                 # Process batch when it reaches the specified size, eg: 10, 100
                 if len(batch_records) >= self.args.batch_size:
                     batch_num += 1  # batch_num starts from 1
-
                     # Create and start coroutine task with batch number tracking
-                    batch_task = asyncio.create_task(
+                    batch_tasks[batch_num] = asyncio.create_task(
                         self._process_batch_with_order_async(
                             batch_records.copy(),
                             batch_num,  # Use batch_num for tracking the order
@@ -236,10 +238,8 @@ class AsyncProcessor:
                             poll_interval,
                         ),
                     )
-
-                    # Add the task to the tracking dictionary
-                    batch_tasks[batch_num] = batch_task
-                    batch_records.clear()  # Clear batch records after processing a batch
+                    # Clear batch records after processing a batch
+                    batch_records.clear()
 
                     # Limit concurrent batch processing tasks by
                     # keep up max_concurrent_batches (5 as default) tasks running at any time
@@ -247,7 +247,6 @@ class AsyncProcessor:
                         # Wait for the OLDEST(smallest batch_num) batch to complete (maintain order)
                         oldest_batch_num = min(batch_tasks.keys())
                         oldest_task = batch_tasks.pop(oldest_batch_num)
-
                         # Process results in order
                         batch_result = await oldest_task
                         # Add results to stats in order
@@ -260,7 +259,7 @@ class AsyncProcessor:
             # Process final batch if there are any remaining records
             if batch_records:
                 batch_num += 1
-                final_task = asyncio.create_task(
+                batch_tasks[batch_num] = asyncio.create_task(
                     self._process_batch_with_order_async(
                         batch_records.copy(),
                         batch_num,
@@ -269,7 +268,6 @@ class AsyncProcessor:
                         poll_interval,
                     ),
                 )
-                batch_tasks[batch_num] = final_task
 
             # Process any remaining batch tasks in ORDER
             for batch_num in sorted(batch_tasks.keys()):
@@ -285,14 +283,21 @@ class AsyncProcessor:
                 "Async streaming processing completed with preserved order: %d records",
                 record_count,
             )
-
+        except asyncio.CancelledError:
+            # Cancel & drain all children, then propagate
+            for task in batch_tasks.values():
+                task.cancel()
+            await asyncio.gather(*batch_tasks.values(), return_exceptions=True)
+            logging.info("Async streaming processing cancelled")
+            raise
         except Exception as e:
             # Cancel remaining tasks
             for task in batch_tasks.values():
                 if not task.done():
                     task.cancel()
-            logging.exception("Async streaming processing failed")
-            error_msg = f"Async streaming processing failed: {e}"
+            await asyncio.gather(*batch_tasks.values(), return_exceptions=True)
+            error_msg = "Async streaming processing failed"
+            logging.exception(error_msg)
             raise ApplicationError(error_msg) from e
 
     async def _async_stream_csv_records(self) -> AsyncIterator[dict[str, str]]:
@@ -359,6 +364,26 @@ class AsyncProcessor:
                 poll_interval=poll_interval,
             )
 
+        except asyncio.CancelledError:
+            logging.info("Batch %d cancelled", batch_num)
+            raise
+        except Exception:
+            logging.exception("Batch %d failed.", batch_num)
+            # Fallback to per-record async processing; do not raise
+            fallback_stats = AsyncProcessingStats()
+            await self._fallback_to_individual_async_streaming(
+                batch_records,
+                fallback_stats,
+            )
+            # Convert to BatchProcessingResult format
+            return BatchProcessingResult(
+                batch_id=f"fallback_batch_{batch_num}",
+                results=fallback_stats.results,
+                total_processing_time=0.0,
+                successful_count=fallback_stats.processed_records,
+                failed_count=fallback_stats.failed_records,
+            )
+        else:
             logging.info(
                 "Async batch %d completed: %d successful, %d failed in %.2fs",
                 batch_num,
@@ -368,23 +393,6 @@ class AsyncProcessor:
             )
 
             return batch_result
-
-        except Exception:
-            logging.exception("Batch %d failed.", batch_num)
-            # Create fallback results for this batch
-            fallback_stats = AsyncProcessingStats()
-            await self._fallback_to_individual_async_streaming(batch_records, fallback_stats)
-
-            # Convert to BatchProcessingResult format
-            fallback_batch_result = BatchProcessingResult(
-                batch_id=f"fallback_batch_{batch_num}",
-                results=fallback_stats.results,
-                total_processing_time=0.0,
-                successful_count=fallback_stats.processed_records,
-                failed_count=fallback_stats.failed_records,
-            )
-
-            return fallback_batch_result
 
     async def _add_batch_results_in_order(
         self,
@@ -465,26 +473,27 @@ class AsyncProcessor:
         """
         try:
             successful_results = [
-                r for r in batch_result.results if r.success and r.annotated_text.strip()
+                r
+                for r in batch_result.results
+                if r.success and r.annotated_text.strip()
             ]
 
             if not successful_results:
-                logging.info(
-                    "Batch %d: No successful results to write",
-                    batch_num,
-                )
+                logging.info("Batch %d: No successful results to write", batch_num)
                 return
 
             # Prepare annotated data and entity metadata
-            annotated_rows: list[str] = []
-            metadata_rows: list[str] = []
+            annotated_rows: list[str] = [
+                res.annotated_text for res in successful_results
+            ]
 
-            for result in successful_results:
-                annotated_rows.append(result.annotated_text)
-                # Convert entities to metadata records
-                for entity in result.entities:
-                    metadata_rows.append(entity.to_csv_row())
+            metadata_rows: list[str] = [
+                entity.to_csv_row()
+                for res in successful_results
+                for entity in res.entities
+            ]
 
+            # TODO: change to use properties?
             # Determine output file paths
             output_text_file = self.args.output_text or Settings.OUTPUT_TEXT_FILE
             output_table_file = self.args.output_table or Settings.OUTPUT_TABLE_FILE
@@ -523,15 +532,21 @@ class AsyncProcessor:
                 len(annotated_rows),
                 len(metadata_rows),
             )
-
+        # Re-raise cancellation; log-and-continue for other failures.
+        except asyncio.CancelledError:
+            logging.info("Incremental write for batch %d cancelled", batch_num)
+            raise
         except Exception:
             logging.exception(
                 "Failed to write batch %d results incrementally",
                 batch_num,
             )
-            # Don't raise - this is not critical enough to stop processing
+            # non-fatal, don't raise - this is not critical enough to stop processing
 
-    async def _process_records_individual_async(self, stats: AsyncProcessingStats) -> None:
+    async def _process_records_individual_async(
+        self,
+        stats: AsyncProcessingStats,
+    ) -> None:
         """Process records individually asynchronously using streaming.
 
         Args:
@@ -541,9 +556,8 @@ class AsyncProcessor:
 
         try:
             # Process records with limited concurrency to avoid overwhelming the API
-            semaphore = asyncio.Semaphore(
-                self.MAX_CONCURRENT_INDIVIDUAL,
-            )  # Limit to 5 (default) concurrent requests
+            # Limit to 5 (default) concurrent requests
+            semaphore = asyncio.Semaphore(self.MAX_CONCURRENT_INDIVIDUAL)
 
             async def process_single_record(record: dict[str, str]) -> ProcessingResult:
                 async with semaphore:
@@ -558,12 +572,12 @@ class AsyncProcessor:
             async for record in self._async_stream_csv_records():
                 record_count += 1
                 stats.total_records = record_count
-                task = asyncio.create_task(process_single_record(record))
-                tasks.append(task)
+                tasks.append(asyncio.create_task(process_single_record(record)))
                 current_chunk_records.append(record)
 
                 # Process in chunks to avoid memory issues with large files
-                if len(tasks) >= self.CHUNK_SIZE:  # Process 50 (default) records at a time
+                # Process 50 (default) records at a time
+                if len(tasks) >= self.CHUNK_SIZE:
                     await self._process_task_chunk(tasks, current_chunk_records, stats)
                     tasks.clear()
                     current_chunk_records.clear()
@@ -572,10 +586,11 @@ class AsyncProcessor:
             if tasks:
                 await self._process_task_chunk(tasks, current_chunk_records, stats)
 
+        except asyncio.CancelledError:
+            logging.info("Individual async streaming cancelled")
+            raise
         except Exception as e:
-            logging.exception(
-                "Individual async streaming processing failed",
-            )
+            logging.exception("Individual async streaming processing failed")
             raise ApplicationError(
                 f"Individual async streaming processing failed: {e}",
             ) from e
@@ -593,22 +608,27 @@ class AsyncProcessor:
             chunk_records: Original records corresponding to the tasks.
             stats: Statistics object to update.
         """
-        try:
-            # Gather results in the same order tasks were created
-            # return_exceptions=True ensures all tasks complete even if some fail
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+        # Gather results in the same order tasks were created
+        # return_exceptions=True ensures all tasks complete even if some fail
+        results = await asyncio.gather(*tasks, return_exceptions=True)
 
+        # If any child was cancelled, propagate cancellation before entering try
+        if any(isinstance(r, asyncio.CancelledError) for r in results):
+            raise asyncio.CancelledError
+
+        try:
             # Process results in the same order as input
             for i, result in enumerate(results):
-                # Get original record by index
-                original_record = chunk_records[i]
-                brevid = original_record.get("Brevid", "unknown")  # Extract brevid
+                # Get original record by index and extract brevid
+                brevid = chunk_records[i].get("Brevid", "unknown")
 
+                # Any other exception => convert to failed ProcessingResult
                 if isinstance(result, Exception):
                     # Handle failed task
                     stats.failed_records += 1
                     # Create a failed ProcessingResult for consistency
                     failed_result = ProcessingResult(
+                        # TODO: check record_id format, with "failed" prefix?
                         record_id=f"failed_{brevid}",
                         brevid=brevid,
                         success=False,
@@ -620,22 +640,26 @@ class AsyncProcessor:
                         brevid,
                         result,
                     )
-                elif isinstance(result, ProcessingResult):
-                    # Handle successful task
-                    stats.results.append(result)
-                    if result.success:
-                        stats.processed_records += 1
-                    else:
-                        stats.failed_records += 1
-                        logging.warning(
-                            "Record %s and Brevid %s failed: %s",
-                            result.record_id,
-                            result.brevid,
-                            result.error_message,
-                        )
+                    continue
+
+                # Handle successful task
+                result = cast("ProcessingResult", result)
+                stats.results.append(result)
+                if result.success:
+                    stats.processed_records += 1
+                else:
+                    stats.failed_records += 1
+                    logging.warning(
+                        "Record %s and Brevid %s failed: %s",
+                        result.record_id,
+                        result.brevid,
+                        result.error_message,
+                    )
 
             logging.info("Processed chunk: %d tasks completed", len(results))
-
+        except asyncio.CancelledError:
+            logging.info("Processing of task chunk cancelled")
+            raise
         except Exception:
             logging.exception("Error processing task chunk")
             # Update stats for failed chunk
@@ -659,14 +683,15 @@ class AsyncProcessor:
         )
 
         # Process records with limited concurrency
-        semaphore = asyncio.Semaphore(self.FALLBACK_CONCURRENCY)  # Lower concurrency for fallback
+        # Lower concurrency for fallback
+        semaphore = asyncio.Semaphore(self.FALLBACK_CONCURRENCY)
 
-        async def process_single_record(record: dict[str, str]) -> ProcessingResult:
+        async def process_one(record: dict[str, str]) -> ProcessingResult:
             async with semaphore:
                 return await self.processor.process_record_async(record)
 
         # Create tasks for all records in this batch
-        tasks = [process_single_record(record) for record in batch_records]
+        tasks = [process_one(record) for record in batch_records]
 
         # Process all tasks by asyncio.gather() to preserve order
         # return_exceptions=True ensures all records get processed even if some fail
@@ -674,9 +699,11 @@ class AsyncProcessor:
 
         # Process results in original order and update statistics
         for i, result in enumerate(results):
-            original_record = batch_records[i]  # Get original record by index
-            brevid = original_record.get("Brevid", "unknown")  # Extract brevid
-
+            # Get original record by index and extract brevid
+            brevid = batch_records[i].get("Brevid", "unknown")
+            if isinstance(result, asyncio.CancelledError):
+                # Cooperate with cancellation policy
+                raise result
             if isinstance(result, Exception):
                 # Handle failed task
                 stats.failed_records += 1
@@ -693,19 +720,21 @@ class AsyncProcessor:
                     brevid,
                     result,
                 )
-            elif isinstance(result, ProcessingResult):
-                # Handle successful task
-                stats.results.append(result)  # Results added in original order
-                if result.success:
-                    stats.processed_records += 1
-                else:
-                    stats.failed_records += 1
-                    logging.warning(
-                        "Fallback processing failed for record %s and Brevid %s: %s",
-                        result.record_id,
-                        result.brevid,
-                        result.error_message,
-                    )
+                continue
+
+            result = cast("ProcessingResult", result)
+            # Handle successful task
+            stats.results.append(result)  # Results added in original order
+            if result.success:
+                stats.processed_records += 1
+            else:
+                stats.failed_records += 1
+                logging.warning(
+                    "Fallback processing failed for record %s and Brevid %s: %s",
+                    result.record_id,
+                    result.brevid,
+                    result.error_message,
+                )
 
     def _create_batch_progress_callback(
         self,
@@ -747,7 +776,8 @@ class AsyncProcessor:
             if user_callback:
                 try:
                     user_callback(progress)
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001 - user callback is untrusted code
+                    # Robustness - batch processing continues even if user callbacks fail
                     logging.warning(
                         "Error in user progress callback: %s",
                         e,

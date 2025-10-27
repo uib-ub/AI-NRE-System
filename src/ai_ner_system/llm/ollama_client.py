@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import TYPE_CHECKING, Any
@@ -256,6 +257,9 @@ class OllamaClient(LLMBaseClient):
                 response.raise_for_status()
                 data = await response.json()
 
+        except asyncio.CancelledError:
+            logging.info("Ollama async call was cancelled")
+            raise
         except TimeoutError as e:
             error_msg = f"Ollama API request timed out after {self.timeout}s"
             self._raise_api_error(error_msg, operation="async_single_call", cause=e)

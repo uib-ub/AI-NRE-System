@@ -310,7 +310,6 @@ class MedievalTextProcessor:
                         annotated_records,
                     ),
                 )
-
                 tg.create_task(
                     asyncio.to_thread(
                         self.writer.write_metadata_output,
@@ -319,38 +318,35 @@ class MedievalTextProcessor:
                         metadata_records,
                     ),
                 )
-
                 # Write processing statistics, ASYNC method, no asyncio.to_thread needed
                 tg.create_task(self._write_stats_async(stats))
-
-            logging.info(
-                "Text output written to: %s (%d records)",
-                self.output_text_file,
-                len(annotated_records),
-            )
-            logging.info(
-                "Metadata output written to: %s (%d records)",
-                self.output_table_file,
-                len(metadata_records),
-            )
-
-        # --- ExceptionGroup handling (Python 3.11+) ---
         except* asyncio.CancelledError:
             # Propagate cooperative cancellation
             logging.info("write_output_async cancelled")
             raise
-        except* (OutputError, OSError) as eg:
+        except* (OutputError, OSError, UnicodeEncodeError) as eg:
             # Handle expected exception types specifically
             details = "; ".join(f"{type(e).__name__}: {e}" for e in eg.exceptions)
-            logging.exception("Failed to write async output: %s", details)
             msg = "Failed to write async output"
+            logging.exception("%s: %s", msg, details)
             raise ApplicationError(msg) from eg
         except* Exception as eg:
             # Handle unexpected exceptions
             details = "; ".join(f"{type(e).__name__}: {e}" for e in eg.exceptions)
-            logging.exception("Unexpected errors during async output: %s", details)
             msg = "Unexpected errors writing async output"
+            logging.exception("%s: %s", msg, details)
             raise ApplicationError(msg) from eg
+
+        logging.info(
+            "Text output written to: %s (%d records)",
+            self.output_text_file,
+            len(annotated_records),
+        )
+        logging.info(
+            "Metadata output written to: %s (%d records)",
+            self.output_table_file,
+            len(metadata_records),
+        )
 
     async def _write_stats_async(self, stats: AsyncProcessingStats) -> None:
         """Write processing statistics to file.
@@ -491,7 +487,6 @@ class MedievalTextProcessor:
         try:
             # Clean up existing output files first
             self._cleanup_output_files()
-
             # Use async context manager for better resource cleanup with timeout
             async with asyncio.timeout(timeout):
                 # Process all records asynchronously using async processor
@@ -507,11 +502,9 @@ class MedievalTextProcessor:
                     max_batch_wait_time=max_batch_wait_time,
                     poll_interval=poll_interval,
                 )
-
                 # Write output files asynchronously
                 await self.write_output_async(stats)
-
-        except TimeoutError:
+        except TimeoutError:  # the policy (timeout → cancellation propagates)
             logging.exception("Processing timed out after %.0f seconds", timeout)
             return 1
         except ApplicationError:

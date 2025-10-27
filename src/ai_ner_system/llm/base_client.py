@@ -7,6 +7,7 @@ NotImplementedError by default.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from abc import ABC, abstractmethod
@@ -425,6 +426,9 @@ class Client(ABC):
 
             msg = f"Batch {batch_num} (ID: {batch_id}) failed with status {final_status.value}"
             self._raise_llm_client_error(msg, operation="batch_processing")
+        except asyncio.CancelledError:
+            logging.info("Batch processing requests were cancelled")
+            raise
         except (LLMClientError, BatchTimeoutError):
             # Preserve domain-specific exceptions.
             raise
