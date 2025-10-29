@@ -44,7 +44,7 @@ jobs:
       
       - name: Install dependencies
         run: |
-          uv pip install -e ".[security]"
+          uv pip install --system -e ".[security]"
       
       - name: Run Bandit security scanner
         run: |
