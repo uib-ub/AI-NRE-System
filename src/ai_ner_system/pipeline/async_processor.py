@@ -103,6 +103,26 @@ class AsyncProcessor:
         """Check if incremental output mode is enabled."""
         return bool(self.main_processor.incremental_mode)
 
+    @property
+    def _batch_wait_time(self) -> float:
+        """Get default batch wait time."""
+        return self.DEFAULT_BATCH_WAIT_TIME
+
+    @property
+    def _poll_interval(self) -> float:
+        """Get default poll interval."""
+        return self.DEFAULT_POLL_INTERVAL
+
+    @property
+    def output_text_file(self) -> str:
+        """Get output text file path."""
+        return self.args.output_text or Settings.OUTPUT_TEXT_FILE
+
+    @property
+    def output_table_file(self) -> str:
+        """Get output table file path."""
+        return self.args.output_table or Settings.OUTPUT_TABLE_FILE
+
     async def process_all_records_async(
         self,
         progress_callback: Callable[[BatchProgress], None] | None = None,
@@ -138,10 +158,9 @@ class AsyncProcessor:
 
         try:
             logging.info("Starting async streaming processing...")
-            # TODO: move these defaults to properties
             # Use defaults if not specified
-            wait_time = max_batch_wait_time or self.DEFAULT_BATCH_WAIT_TIME
-            poll_time = poll_interval or self.DEFAULT_POLL_INTERVAL
+            wait_time = max_batch_wait_time or self._batch_wait_time
+            poll_time = poll_interval or self._poll_interval
 
             # check if the LLM client supports async batch processing and if batch processing is enabled
             if self.args.batch_size > 1 and self.llm_client.supports_async_batch():
@@ -204,7 +223,6 @@ class AsyncProcessor:
         record_count = 0
         batch_num = 0
         # Track batch tasks with their order information using a map (batch_num -> task)
-        # TODO: should we just use a list instead of a dict?
         batch_tasks: dict[int, asyncio.Task[BatchProcessingResult]] = {}
 
         # Limit to default 5 concurrent batch processing tasks,
@@ -493,10 +511,9 @@ class AsyncProcessor:
                 for entity in res.entities
             ]
 
-            # TODO: change to use properties?
             # Determine output file paths
-            output_text_file = self.args.output_text or Settings.OUTPUT_TEXT_FILE
-            output_table_file = self.args.output_table or Settings.OUTPUT_TABLE_FILE
+            output_text_file = self.output_text_file
+            output_table_file = self.output_table_file
 
             # Use headers from main processor to maintain consistency
             annotated_header = self.main_processor.ANNOTATED_HEADER
