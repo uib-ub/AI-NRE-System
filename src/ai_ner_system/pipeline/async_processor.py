@@ -101,7 +101,7 @@ class AsyncProcessor:
     @property
     def _incremental_mode(self) -> bool:
         """Check if incremental output mode is enabled."""
-        return self.main_processor.incremental_mode
+        return bool(self.main_processor.incremental_mode)
 
     async def process_all_records_async(
         self,

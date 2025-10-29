@@ -250,7 +250,11 @@ ignore = [
     # long messages outside exception class
     "TRY003", 
     # Prefer list over useless lambda
-    "PIE807", 
+    "PIE807",
+    # Conflicts with formatter
+    "COM812",  # Missing trailing comma (conflicts with formatter)
+    "COM819",  # Prohibited trailing comma (conflicts with formatter)
+    "ISC001",  # Implicit string concatenation (conflicts with formatter)
 ]
 
 # Allow autofix for all enabled rules

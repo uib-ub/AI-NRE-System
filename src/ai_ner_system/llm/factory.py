@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, NoReturn
 
 if TYPE_CHECKING:
     from .base_client import Client
@@ -38,6 +38,23 @@ def _require_config_value(name: str, value: str | None, client_type: str) -> str
             operation="factory_creation",
         )
     return value
+
+
+def _raise_unsupported_type_error(client_type: str) -> NoReturn:
+    """Raise error for unsupported client type.
+
+    Args:
+        client_type: The unsupported client type.
+
+    Raises:
+        LLMClientError: Always raised for unsupported types.
+    """
+    msg = f"Unsupported client type: {client_type}"
+    raise LLMClientError(
+        msg,
+        client_type=client_type,
+        operation="factory_creation",
+    )
 
 
 def create_llm_client(client_type: str) -> Client:
@@ -102,6 +119,9 @@ def create_llm_client(client_type: str) -> Client:
                 client_type,
             )
             return OllamaClient(endpoint=endpoint, token=token, model=model)
+
+        # Should never be reached due to the supported types check above
+        _raise_unsupported_type_error(client_type)
 
     except LLMClientError:
         # Preserve LLMClientError from _require_config_value or client initialization

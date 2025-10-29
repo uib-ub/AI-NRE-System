@@ -199,7 +199,7 @@ class ResponseParser:
         Raises:
             ParseError: If entities structure is invalid.
         """
-        entities_data: Any = data.get("entities", [])
+        entities_data = data.get("entities", [])
 
         if not isinstance(entities_data, list):
             raise ParseError(
@@ -208,8 +208,8 @@ class ResponseParser:
                 operation="parse_entities_json",
                 parse_type="entities_structure",
             )
-        # Type narrow and return entities data list
-        return cast("list[Any]", entities_data)
+        # Type narrowed to list by isinstance check above
+        return cast("list[Any]", entities_data)  # type: ignore[redundant-cast]
 
     @staticmethod
     def _create_entity_records(

@@ -364,7 +364,7 @@ class ClaudeClient(LLMBaseClient):
                 max_tokens=request.max_tokens,
                 temperature=request.temperature,
             )
-            message_params = MessageCreateParamsNonStreaming(**payload)
+            message_params = MessageCreateParamsNonStreaming(**payload)  # type: ignore[typeddict-item]
 
             # Create properly typed batch request
             batch_requests.append(
@@ -731,14 +731,9 @@ class ClaudeClient(LLMBaseClient):
                 error_message="Request expired (not processed within the batch time window).",
             )
 
-        # Unknown/undocumented type: fallback
-        counters["other"] += 1
-        return BatchResponse(
-            custom_id=custom_id,
-            response_text="",
-            success=False,
-            error_message=f"Unknown result type: {result_obj.type}",
-        )
+        # All known types are exhaustively handled above
+        # This is unreachable but kept for runtime safety
+        raise AssertionError(f"Unhandled result type: {result_obj.type}")
 
     @staticmethod
     def _log_batch_summary(
