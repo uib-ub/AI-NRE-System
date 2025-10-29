@@ -69,6 +69,8 @@ lint = [
     "ruff>=0.8.0",
     # Type checking
     "mypy>=1.8.0",
+    # Type stubs for third-party libraries
+    "types-requests>=2.31.0",
     # Import sorting (complementary to ruff)
     "isort>=5.13.0",
     # Code formatting
