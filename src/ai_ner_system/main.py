@@ -199,7 +199,7 @@ def validate_arguments(args: argparse.Namespace) -> None:
     _validate_template_files(args)
 
     # Validate client type using constant from Settings
-    if args.client.lower() not in Settings.SUPPORTED_CLIENTS:
+    if args.client not in Settings.SUPPORTED_CLIENTS:
         supported = ", ".join(sorted(Settings.SUPPORTED_CLIENTS))
         raise ApplicationError(
             f"Unsupported client type: {args.client}. Supported types: {supported}",
@@ -220,6 +220,10 @@ def validate_configuration(args: argparse.Namespace) -> None:
     Raises:
         ConfigError: If configuration is invalid.
     """
+    # Ensure Settings are initialized before applying overrides
+    # (safe to call multiple times - no-op if already initialized)
+    Settings.initialize()
+
     # Apply CLI overrides so configuration validation checks the same
     # effective paths accepted during argument validation.
     Settings.apply_cli_overrides(
@@ -407,7 +411,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--client",
         "-c",
-        type=str,
+        type=str.lower,
         choices=sorted(Settings.SUPPORTED_CLIENTS),
         default="claude",
         help="Select LLM Client (default: claude)",

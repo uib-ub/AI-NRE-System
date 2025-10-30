@@ -108,23 +108,14 @@ class MedievalTextProcessor:
                 raise ApplicationError(msg)
             raise ApplicationError(msg) from cause
 
-        client_type = self.args.client.lower()
-
-        # Use constant from Settings for supported clients validation
-        if client_type not in Settings.SUPPORTED_CLIENTS:
-            supported = ", ".join(sorted(Settings.SUPPORTED_CLIENTS))
-            _fail(
-                f"Unsupported client type: {client_type}. Supported types: {supported}",
-            )
-
         try:
-            llm_client = create_llm_client(client_type)
+            llm_client = create_llm_client(self.args.client)
         except LLMClientError as e:
             _fail(f'Failed to initialize LLM client "{self.args.client}"', cause=e)
         except Exception as e:  # noqa: BLE001 — boundary: convert unknown init errors
             _fail("Unexpected error got when initializing LLM client", cause=e)
         else:
-            logging.info("LLM client initialized: %s", client_type)
+            logging.info("LLM client initialized: %s", self.args.client)
             return llm_client
 
     def _initialize_prompt_builder(self) -> PromptBuilder:
