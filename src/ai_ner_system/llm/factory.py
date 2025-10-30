@@ -14,7 +14,7 @@ from .exceptions import LLMClientError
 from .ollama_client import OllamaClient
 
 # Client class registry: maps client type to client class
-_CLIENT_CLASSES = {
+_CLIENT_CLASSES: dict[str, type[Client]] = {
     "claude": ClaudeClient,
     "ollama": OllamaClient,
 }
@@ -79,7 +79,7 @@ def create_llm_client(client_type: str) -> Client:
         msg = "client_type must be provided"
         raise ValueError(msg)
 
-    client_type = client_type.lower().strip()
+    client_type = client_type.strip().lower()
 
     if client_type not in Settings.SUPPORTED_CLIENTS:
         supported_types = ", ".join(sorted(Settings.SUPPORTED_CLIENTS))
