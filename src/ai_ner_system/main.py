@@ -175,7 +175,7 @@ def _validate_async_arguments(args: argparse.Namespace) -> None:
 
 
 def validate_arguments(args: argparse.Namespace) -> None:
-    """Validate command line arguments.
+    """Uses command-line overrides OR Settings defaults.
 
     Args:
         args: Parsed command line arguments.
@@ -220,6 +220,17 @@ def validate_configuration(args: argparse.Namespace) -> None:
     Raises:
         ConfigError: If configuration is invalid.
     """
+    # Apply CLI overrides so configuration validation checks the same
+    # effective paths accepted during argument validation.
+    Settings.apply_cli_overrides(
+        input_file=args.input,
+        output_text_file=args.output_text,
+        output_table_file=args.output_table,
+        output_stats_file=args.output_stats,
+        prompt_template_file=args.prompt_template,
+        batch_template_file=args.batch_template,
+    )
+
     try:
         ConfigValidator.validate_all(args.client)
         logging.info("Configuration validation completed successfully")
