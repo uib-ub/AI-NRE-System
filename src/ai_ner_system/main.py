@@ -220,6 +220,10 @@ def validate_configuration(args: argparse.Namespace) -> None:
     Raises:
         ConfigError: If configuration is invalid.
     """
+    # Ensure Settings are initialized before applying overrides
+    # (safe to call multiple times - no-op if already initialized)
+    Settings.initialize()
+
     # Apply CLI overrides so configuration validation checks the same
     # effective paths accepted during argument validation.
     Settings.apply_cli_overrides(
