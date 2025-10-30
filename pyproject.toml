@@ -134,6 +134,8 @@ security = [
 ]
 
 # Complete development environment
+# NOTE: this points back to THIS PROJECT plus other extras.
+# This is valid and we keep it.
 dev = [
     "ai-ner-system[lint,test,dev-tools,docs]"
 ]
@@ -404,7 +406,8 @@ skips = ["B101"]  # Skip assert_used test
 skip = "*.git,*.pdf,*.svg,*.pyc,*.egg-info,*.mypy_cache,*__pycache__*"
 ignore-words-list = "hist,aks,ans,nd"
 
+# uv / tooling local groups
 [dependency-groups]
-dev = [
+dev-local = [
     "ruff>=0.12.1",
 ]

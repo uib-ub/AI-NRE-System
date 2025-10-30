@@ -125,12 +125,12 @@ class RecordProcessor:
                 annotated_text,
             )
             logging.debug("--- Entities for Brevid %s ---\n%s", brevid, entities)
-            logging.info(
+            logging.debug(
                 "--- Annotated record for Brevid %s ---\n%s",
                 brevid,
                 annotated_record,
             )
-            logging.info("--- Metadata for Brevid %s ---\n%s", brevid, metadata_record)
+            logging.debug("--- Metadata for Brevid %s ---\n%s", brevid, metadata_record)
             return [annotated_record], metadata_record
 
     # ---------------------------------------------------------------------

@@ -14,7 +14,6 @@ Concurrency:
 
 from __future__ import annotations
 
-import fcntl  # POSIX-only lock
 import json
 import logging
 import os
@@ -22,6 +21,15 @@ import tempfile
 from contextlib import suppress
 from pathlib import Path
 from typing import Any, BinaryIO, ClassVar, cast
+
+# fcntl is POSIX-only; gracefully handle Windows
+try:
+    import fcntl
+
+    _has_fcntl = True
+except ImportError:
+    _has_fcntl = False
+    fcntl = None  # type: ignore[assignment]
 
 from .exceptions import OutputError
 
@@ -31,14 +39,16 @@ Pathish = str | Path  # Type alias for path-like objects
 class OutputWriter:
     """Output file writer for annotated text, metadata, and JSON stats.
 
-    Note: This implementation uses POSIX file locking (fcntl) and is not
-    compatible with Windows. For cross-platform support, consider using
-    portalocker or similar libraries.
+    Cross-platform compatibility:
+        * `write_*` methods (atomic writes) work on all platforms.
+        * `append_*` methods require POSIX file locking (fcntl) and will raise
+          OutputError on Windows. For cross-platform append support, consider
+          using atomic writes or installing portalocker.
 
     Notes:
         * `write_*` methods are atomic (tempfile + os.replace).
         * `append_*` methods take an exclusive `flock()` on the target file to
-          serialize concurrent appenders across processes.
+          serialize concurrent appenders across processes (POSIX only).
         * Header emission on append is determined solely by "is the file empty?"
           (robust to file rotation/truncation).
     """
@@ -323,12 +333,24 @@ class OutputWriter:
         if not lines:
             msg = f"{log_label.capitalize()} list cannot be empty."
             raise ValueError(msg)
+
+        # Check if fcntl is available (POSIX-only)
+        if not _has_fcntl:
+            msg = (
+                "Append operations require fcntl (POSIX file locking), "
+                "which is not available on this platform. "
+                "Consider using atomic write operations instead, "
+                "or install portalocker for cross-platform file locking."
+            )
+            raise OutputError(msg, output_type=output_type)
+
         # Ensure output directory exists
         output_path = self._ensure_output_directory(file_path)
         try:
             # Open/create in binary append/update so we can check last byte reliably.
             with cast("BinaryIO", output_path.open("a+b")) as file:
-                fcntl.flock(file.fileno(), fcntl.LOCK_EX)
+                # fcntl is guaranteed to be available at this point (checked above)
+                fcntl.flock(file.fileno(), fcntl.LOCK_EX)  # pyright: ignore[reportOptionalMemberAccess]
                 try:
                     size, ends_with_newline = self._file_size_and_trailing_newline(file)
                     needs_header = size == 0
@@ -346,8 +368,8 @@ class OutputWriter:
                         file.write(data)
                         file.flush()
                 finally:
-                    fcntl.flock(file.fileno(), fcntl.LOCK_UN)
-
+                    # fcntl is guaranteed to be available at this point (checked above)
+                    fcntl.flock(file.fileno(), fcntl.LOCK_UN)  # pyright: ignore[reportOptionalMemberAccess]
             logging.info(
                 "Appended %d %s to %s",
                 len(lines),
