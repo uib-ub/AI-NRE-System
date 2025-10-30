@@ -342,14 +342,15 @@ class OutputWriter:
                 "Consider using atomic write operations instead, "
                 "or install portalocker for cross-platform file locking."
             )
-            raise OutputError(
-                msg, output_type=output_type
-            )  # Ensure output directory exists
+            raise OutputError(msg, output_type=output_type)
+
+        # Ensure output directory exists
         output_path = self._ensure_output_directory(file_path)
         try:
             # Open/create in binary append/update so we can check last byte reliably.
             with cast("BinaryIO", output_path.open("a+b")) as file:
-                fcntl.flock(file.fileno(), fcntl.LOCK_EX)  # type: ignore[union-attr]
+                # fcntl is guaranteed to be available at this point (checked above)
+                fcntl.flock(file.fileno(), fcntl.LOCK_EX)  # pyright: ignore[reportOptionalMemberAccess]
                 try:
                     size, ends_with_newline = self._file_size_and_trailing_newline(file)
                     needs_header = size == 0
@@ -367,7 +368,8 @@ class OutputWriter:
                         file.write(data)
                         file.flush()
                 finally:
-                    fcntl.flock(file.fileno(), fcntl.LOCK_UN)  # type: ignore[union-attr]
+                    # fcntl is guaranteed to be available at this point (checked above)
+                    fcntl.flock(file.fileno(), fcntl.LOCK_UN)  # pyright: ignore[reportOptionalMemberAccess]
             logging.info(
                 "Appended %d %s to %s",
                 len(lines),
