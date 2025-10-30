@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Final, NoReturn
+from typing import TYPE_CHECKING, NoReturn
 
 if TYPE_CHECKING:
     from .base_client import Client
@@ -12,8 +12,6 @@ from ai_ner_system.config.settings import Settings
 from .claude_client import ClaudeClient
 from .exceptions import LLMClientError
 from .ollama_client import OllamaClient
-
-_SUPPORTED_TYPES: Final[tuple[str, str]] = ("claude", "ollama")
 
 
 def _require_config_value(name: str, value: str | None, client_type: str) -> str:
@@ -79,8 +77,8 @@ def create_llm_client(client_type: str) -> Client:
 
     client_type = client_type.lower().strip()
 
-    if client_type not in _SUPPORTED_TYPES:
-        supported_types = ", ".join(_SUPPORTED_TYPES)
+    if client_type not in Settings.SUPPORTED_CLIENTS:
+        supported_types = ", ".join(sorted(Settings.SUPPORTED_CLIENTS))
         msg = f"Unsupported client type: {client_type}. Supported types: {supported_types}"
         raise LLMClientError(
             msg,
