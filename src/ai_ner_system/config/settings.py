@@ -208,6 +208,51 @@ class Settings:
             logging.info("Created output directory: %s", output_dir)
 
     @classmethod
+    def apply_cli_overrides(
+        cls,
+        *,
+        input_file: str | None = None,
+        output_text_file: str | None = None,
+        output_table_file: str | None = None,
+        output_stats_file: str | None = None,
+        prompt_template_file: str | None = None,
+        batch_template_file: str | None = None,
+    ) -> None:
+        """Apply command-line overrides to current configuration.
+
+        Updates Settings attributes with provided overrides and ensures
+        necessary directories exist for output files.
+
+        Args:
+            input_file: Override for input file path.
+            output_text_file: Override for output text file path.
+            output_table_file: Override for output table file path.
+            output_stats_file: Override for output stats file path.
+            prompt_template_file: Override for prompt template file path.
+            batch_template_file: Override for batch template file path.
+        """
+        if input_file:
+            cls.INPUT_FILE = input_file
+
+        # Apply output file overrides and ensure directories exist
+        output_overrides = {
+            "OUTPUT_TEXT_FILE": output_text_file,
+            "OUTPUT_TABLE_FILE": output_table_file,
+            "OUTPUT_STATS_FILE": output_stats_file,
+        }
+
+        for attr_name, override_value in output_overrides.items():
+            if override_value:
+                setattr(cls, attr_name, override_value)
+                cls._ensure_directory_exists(override_value)
+
+        if prompt_template_file:
+            cls.PROMPT_TEMPLATE_FILE = prompt_template_file
+
+        if batch_template_file:
+            cls.BATCH_TEMPLATE_FILE = batch_template_file
+
+    @classmethod
     def get_client_required_configs(cls, client_type: str) -> dict[str, str | None]:
         """Get required configurations for specified client type.
 
