@@ -49,13 +49,8 @@ class Settings:
     DEFAULT_BATCH_TEMPLATE_FILE: ClassVar[str] = "prompt/batch_template.txt"
     DEFAULT_CACHE_DIR: ClassVar[str] = ".cache_llm"
 
-    # Supported client types
-    SUPPORTED_CLIENTS: ClassVar[frozenset[str]] = frozenset(
-        {"claude", "ollama"},
-    )
-
-    # Client configuration registry: maps client type to required config keys,
-    """Format: {client_type: [(config_attr_name, init_param_name), ...]}"""
+    # Client configuration registry: maps client type to required config keys.
+    # Each entry maps a client type to a list of (Settings attribute, init parameter) pairs.
     _CLIENT_CONFIG_REGISTRY: ClassVar[dict[str, list[tuple[str, str]]]] = {
         "claude": [
             ("ANTHROPIC_API_KEY", "api_key"),
@@ -67,6 +62,11 @@ class Settings:
             ("OLLAMA_MODEL", "model"),
         ],
     }
+
+    # Supported client types - derived from registry keys
+    SUPPORTED_CLIENTS: ClassVar[frozenset[str]] = frozenset(
+        _CLIENT_CONFIG_REGISTRY.keys()
+    )
 
     # Flag to track initialization
     _initialized: ClassVar[bool] = False
