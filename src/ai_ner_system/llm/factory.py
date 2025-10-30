@@ -13,29 +13,11 @@ from .claude_client import ClaudeClient
 from .exceptions import LLMClientError
 from .ollama_client import OllamaClient
 
-
-def _require_config_value(name: str, value: str | None, client_type: str) -> str:
-    """Ensure a configuration value is a non-empty string.
-
-    Args:
-        name: Name of the configuration parameter.
-        value: The configuration value to check.
-        client_type: Type of client for error context.
-
-    Returns:
-        The validated string value.
-
-    Raises:
-        LLMClientError: If the value is None or empty.
-    """
-    if value is None or value.strip() == "":
-        msg = f"{name} must be set and non-empty"
-        raise LLMClientError(
-            msg,
-            client_type=client_type,
-            operation="factory_creation",
-        )
-    return value
+# Client class registry: maps client type to client class
+_CLIENT_CLASSES = {
+    "claude": ClaudeClient,
+    "ollama": OllamaClient,
+}
 
 
 def _raise_unsupported_type_error(client_type: str) -> NoReturn:
@@ -48,6 +30,28 @@ def _raise_unsupported_type_error(client_type: str) -> NoReturn:
         LLMClientError: Always raised for unsupported types.
     """
     msg = f"Unsupported client type: {client_type}"
+    raise LLMClientError(
+        msg,
+        client_type=client_type,
+        operation="factory_creation",
+    )
+
+
+def _raise_missing_config_error(
+    missing_params: list[str],
+    client_type: str,
+) -> NoReturn:
+    """Raise error for missing or empty configuration parameters.
+
+    Args:
+        missing_params: List of missing or empty parameter names.
+        client_type: The client type for error context.
+
+    Raises:
+        LLMClientError: Always raised for missing/empty configuration.
+    """
+    params_str = ", ".join(missing_params)
+    msg = f"Missing or empty required configuration: {params_str}"
     raise LLMClientError(
         msg,
         client_type=client_type,
@@ -87,42 +91,29 @@ def create_llm_client(client_type: str) -> Client:
         )
 
     try:
-        if client_type == "claude":
-            api_key = _require_config_value(
-                "ANTHROPIC_API_KEY",
-                Settings.ANTHROPIC_API_KEY,
-                client_type,
-            )
-            model = _require_config_value(
-                "CLAUDE_MODEL",
-                Settings.CLAUDE_MODEL,
-                client_type,
-            )
-            return ClaudeClient(api_key=api_key, model=model)
+        # Get initialization parameters from Settings registry
+        init_params = Settings.get_client_init_params(client_type)
 
-        if client_type == "ollama":
-            endpoint = _require_config_value(
-                "OPENWEBUI_ENDPOINT",
-                Settings.OPENWEBUI_ENDPOINT,
-                client_type,
-            )
-            token = _require_config_value(
-                "OPENWEBUI_TOKEN",
-                Settings.OPENWEBUI_TOKEN,
-                client_type,
-            )
-            model = _require_config_value(
-                "OLLAMA_MODEL",
-                Settings.OLLAMA_MODEL,
-                client_type,
-            )
-            return OllamaClient(endpoint=endpoint, token=token, model=model)
+        # Validate all required parameters are present and non-empty
+        missing_or_empty = [
+            param_name
+            for param_name, param_value in init_params.items()
+            if not param_value or not param_value.strip()
+        ]
 
-        # Should never be reached due to the supported types check above
-        _raise_unsupported_type_error(client_type)
+        if missing_or_empty:
+            _raise_missing_config_error(missing_or_empty, client_type)
+
+        # Get the client class and instantiate
+        client_class = _CLIENT_CLASSES.get(client_type)
+        if not client_class:
+            _raise_unsupported_type_error(client_type)
+
+        # Type checker doesn't know we've validated values above
+        return client_class(**init_params)  # type: ignore[arg-type]
 
     except LLMClientError:
-        # Preserve LLMClientError from _require_config_value or client initialization
+        # Preserve LLMClientError from validation or client initialization
         raise
     except Exception as e:
         # Wrap unexpected exceptions in LLMClientError

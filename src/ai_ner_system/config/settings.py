@@ -54,6 +54,20 @@ class Settings:
         {"claude", "ollama"},
     )
 
+    # Client configuration registry: maps client type to required config keys,
+    """Format: {client_type: [(config_attr_name, init_param_name), ...]}"""
+    _CLIENT_CONFIG_REGISTRY: ClassVar[dict[str, list[tuple[str, str]]]] = {
+        "claude": [
+            ("ANTHROPIC_API_KEY", "api_key"),
+            ("CLAUDE_MODEL", "model"),
+        ],
+        "ollama": [
+            ("OPENWEBUI_ENDPOINT", "endpoint"),
+            ("OPENWEBUI_TOKEN", "token"),
+            ("OLLAMA_MODEL", "model"),
+        ],
+    }
+
     # Flag to track initialization
     _initialized: ClassVar[bool] = False
 
@@ -274,21 +288,44 @@ class Settings:
             )
             raise ConfigError(msg)
 
-        if client_type == "claude":
-            return {
-                "ANTHROPIC_API_KEY": cls.ANTHROPIC_API_KEY,
-                "CLAUDE_MODEL": cls.CLAUDE_MODEL,
-            }
-        if client_type == "ollama":
-            return {
-                "OLLAMA_MODEL": cls.OLLAMA_MODEL,
-                "OPENWEBUI_TOKEN": cls.OPENWEBUI_TOKEN,
-                "OPENWEBUI_ENDPOINT": cls.OPENWEBUI_ENDPOINT,
-            }
+        # Build config dict from registry
+        config_keys = cls._CLIENT_CONFIG_REGISTRY.get(client_type, [])
+        return {
+            config_attr: getattr(cls, config_attr) for config_attr, _ in config_keys
+        }
 
-        # This should never be reached due to check above, but for type safety
-        msg = f"Unsupported client type: {client_type}"
-        raise ConfigError(msg)
+    @classmethod
+    def get_client_init_params(cls, client_type: str) -> dict[str, str | None]:
+        """Get client initialization parameters for specified client type.
+
+        Returns a dictionary mapping parameter names to their values,
+        ready to be unpacked into a client constructor.
+
+        Args:
+            client_type: Type of client ('claude' or 'ollama'), case-insensitive.
+
+        Returns:
+            Dictionary mapping init parameter names to their values.
+            Example: {"api_key": "...", "model": "..."}
+
+        Raises:
+            ConfigError: If client type is unsupported.
+        """
+        client_type = client_type.lower()
+
+        if client_type not in cls.SUPPORTED_CLIENTS:
+            supported = ", ".join(sorted(cls.SUPPORTED_CLIENTS))
+            msg = (
+                f"Unsupported client type: {client_type}. Supported types: {supported}"
+            )
+            raise ConfigError(msg)
+
+        # Build init params dict from registry
+        config_keys = cls._CLIENT_CONFIG_REGISTRY.get(client_type, [])
+        return {
+            init_param: getattr(cls, config_attr)
+            for config_attr, init_param in config_keys
+        }
 
     @classmethod
     def get_common_required_configs(cls) -> dict[str, str | None]:
