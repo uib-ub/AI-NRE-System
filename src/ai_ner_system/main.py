@@ -408,7 +408,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
         "--client",
         "-c",
         type=str,
-        choices=["claude", "ollama"],
+        choices=sorted(Settings.SUPPORTED_CLIENTS),
         default="claude",
         help="Select LLM Client (default: claude)",
     )

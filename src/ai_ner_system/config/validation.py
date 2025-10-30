@@ -20,9 +20,6 @@ class ConfigValidator:
     """Validates configuration settings for the AI NER System."""
 
     # Class constants for better maintainability and type safety
-    SUPPORTED_CLIENT_TYPES: ClassVar[frozenset[str]] = frozenset(
-        {"claude", "ollama"},
-    )
     TEMPLATE_FILES: ClassVar[dict[str, str]] = {
         "PROMPT_TEMPLATE_FILE": "prompt template",
         "BATCH_TEMPLATE_FILE": "batch template",
@@ -49,9 +46,9 @@ class ConfigValidator:
             raise ConfigValidationError(msg)
 
         client_type = client_type.strip().lower()
-        if client_type not in ConfigValidator.SUPPORTED_CLIENT_TYPES:
+        if client_type not in Settings.SUPPORTED_CLIENTS:
             supported_types = ", ".join(
-                sorted(ConfigValidator.SUPPORTED_CLIENT_TYPES),
+                sorted(Settings.SUPPORTED_CLIENTS),
             )
             msg = f"Unsupported client type: {client_type}. Supported types: {supported_types}."
             raise ConfigValidationError(msg)
