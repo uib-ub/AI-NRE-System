@@ -20,7 +20,9 @@ from ai_ner_system.llm import BatchProgress, Client, LLMClientError, create_llm_
 from ai_ner_system.processing import RecordProcessor
 from ai_ner_system.prompt import GenericPromptBuilder, PromptBuilder, PromptError
 
+from .async_processor import AsyncProcessor
 from .stats import ApplicationError, AsyncProcessingStats
+from .sync_processor import SyncProcessor
 
 if TYPE_CHECKING:
     import argparse
@@ -412,12 +414,6 @@ class MedievalTextProcessor:
             self._cleanup_output_files()
 
             # Process all records using synchronous processor
-            # import here to avoid circular imports
-            # TODO: refactor to avoid circular import if possible
-            from .sync_processor import (  # noqa: PLC0415 — avoid circular import
-                SyncProcessor,
-            )
-
             sync_processor = SyncProcessor(self)
 
             annotations, metadata = sync_processor.process_all_records()
@@ -481,12 +477,6 @@ class MedievalTextProcessor:
             # Use async context manager for better resource cleanup with timeout
             async with asyncio.timeout(timeout):
                 # Process all records asynchronously using async processor
-                # import here to avoid circular imports
-                # TODO: refactor to avoid circular import if possible
-                from .async_processor import (  # noqa: PLC0415 — avoid circular import
-                    AsyncProcessor,
-                )
-
                 async_processor = AsyncProcessor(self)
                 stats = await async_processor.process_all_records_async(
                     progress_callback,

@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from ai_ner_system.llm import BatchProgress, Client
     from ai_ner_system.processing import RecordProcessor
 
-    from .main_processor import MedievalTextProcessor
+    from .processor_protocol import ProcessorContext
 
 
 class AsyncProcessor:
@@ -61,7 +61,7 @@ class AsyncProcessor:
     DEFAULT_BATCH_WAIT_TIME: ClassVar[float] = 86400.0  # 24 hours in seconds
     DEFAULT_POLL_INTERVAL: ClassVar[float] = 30.0  # 30 seconds
 
-    def __init__(self, main_processor: MedievalTextProcessor) -> None:
+    def __init__(self, main_processor: ProcessorContext) -> None:
         """Initialize async processor with reference to main processor.
 
         Args:
