@@ -344,7 +344,7 @@ class ResponseParser:
                 all_metadata_records.extend(metadata_records)
             except Exception:
                 logging.exception("Error parsing record %d in batch", i + 1)
-                fallback_record = ResponseParser._format_csv_row(
+                fallback_record = ResponseParser.format_csv_row(
                     record.get("Bindnr", "unknown"),
                     record.get("Brevid", "unknown"),
                     record.get("Tekst", "unknown"),
@@ -387,7 +387,7 @@ class ResponseParser:
             result_content,
         )
 
-        annotated_record = ResponseParser._format_csv_row(
+        annotated_record = ResponseParser.format_csv_row(
             bindnr,
             brevid,
             annotated_text,
@@ -456,8 +456,12 @@ class ResponseParser:
         return metadata_records
 
     @staticmethod
-    def _format_csv_row(bindnr: str, brevid: str, text: str) -> str:
+    def format_csv_row(bindnr: str, brevid: str, text: str) -> str:
         """Format a CSV row with proper quoting.
+
+        This is the canonical CSV formatter for annotated records used across
+        the system. Both sync and batch processing paths use this to ensure
+        consistent output formatting.
 
         Args:
             bindnr: The Bindnr number.
@@ -485,7 +489,7 @@ class ResponseParser:
             Tuple of (annotated_records, empty_metadata_list).
         """
         fallback_records = [
-            ResponseParser._format_csv_row(
+            ResponseParser.format_csv_row(
                 record.get("Bindnr", "unknown"),
                 record.get("Brevid", "unknown"),
                 record.get("Tekst", "unknown"),
