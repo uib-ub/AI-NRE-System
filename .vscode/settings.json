@@ -1,0 +1,20 @@
+{
+  "[python]": {
+      // Formats the file *on save* using the default formatter below
+      "editor.formatOnSave": true,
+
+      // Use Ruff as the formatter
+      "editor.defaultFormatter": "charliermarsh.ruff",
+
+      // Run Ruff fixers and *Ruff's import organizer* on save
+      "editor.codeActionsOnSave": {
+        "source.fixAll.ruff": "explicit",
+        "source.organizeImports.ruff": "explicit"
+      }
+  },
+
+  // Pylance for IDE smarts + type checking
+  "python.languageServer": "Pylance",
+  // typeCheckingMode is configured in pyproject.toml
+  "python.analysis.autoImportCompletions": true
+}
