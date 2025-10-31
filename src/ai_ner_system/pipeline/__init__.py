@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from .async_processor import AsyncProcessor
 from .main_processor import MedievalTextProcessor
+from .processor_protocol import ProcessorContext
 from .stats import ApplicationError, AsyncProcessingStats
 from .sync_processor import SyncProcessor
 
@@ -20,5 +21,6 @@ __all__ = [
     "AsyncProcessingStats",
     "AsyncProcessor",
     "MedievalTextProcessor",
+    "ProcessorContext",
     "SyncProcessor",
 ]

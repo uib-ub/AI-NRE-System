@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from ai_ner_system.file_io import CSVReader, OutputWriter
     from ai_ner_system.processing import RecordProcessor
 
-    from .main_processor import MedievalTextProcessor
+    from .processor_protocol import ProcessorContext
 
 
 class SyncProcessor:
@@ -49,7 +49,7 @@ class SyncProcessor:
     # Class constant for the delay between batches
     BATCH_PROCESSING_DELAY: ClassVar[float] = 0.2
 
-    def __init__(self, main_processor: MedievalTextProcessor) -> None:
+    def __init__(self, main_processor: ProcessorContext) -> None:
         """Initialize sync processor with reference to main processor.
 
         Args:
