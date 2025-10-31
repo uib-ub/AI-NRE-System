@@ -7,8 +7,6 @@ the processing of medieval text records using LLM services.
 from __future__ import annotations
 
 import asyncio
-import csv
-import io
 import logging
 import time
 from typing import TYPE_CHECKING, ClassVar, NoReturn
@@ -739,6 +737,9 @@ class RecordProcessor:
     def _build_annotated_record(bindnr: str, brevid: str, annotated_text: str) -> str:
         """Build annotated text records for output.
 
+        This delegates to ResponseParser.format_csv_row() to ensure consistent
+        CSV formatting across all processing paths (sync, batch, async).
+
         Args:
             bindnr: The Bindnr identifier.
             brevid: The Brevid identifier.
@@ -747,10 +748,7 @@ class RecordProcessor:
         Returns:
             Formatted annotated record.
         """
-        buf = io.StringIO()
-        writer = csv.writer(buf, delimiter=";", quoting=csv.QUOTE_MINIMAL)
-        writer.writerow([bindnr, brevid, annotated_text])
-        return buf.getvalue().rstrip("\r\n")
+        return ResponseParser.format_csv_row(bindnr, brevid, annotated_text)
 
     @staticmethod
     def _build_metadata_record(entities: list[EntityRecord], brevid: str) -> list[str]:
