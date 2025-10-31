@@ -16,8 +16,8 @@ repos:
       - id: mypy
         additional_dependencies:
           - types-requests
-          - types-tqdm 
-          - types-aiohttp
+          - types-tqdm
+          - aiohttp
           - anthropic
           - python-dotenv
           - pytest
@@ -67,4 +67,4 @@ repos:
     rev: v3.21.0
     hooks:
       - id: pyupgrade
-        args: [--py311-plus]  # Match your Python version 
+        args: [--py311-plus]  # Match your Python version
