@@ -14,7 +14,14 @@ import logging
 import sys
 from typing import Final, Literal
 
-from ai_ner_system.config import ConfigError, ConfigValidator, Settings
+from ai_ner_system.config import (
+    ConfigError,
+    ConfigValidationError,
+    ConfigValidator,
+    DirectoryValidationError,
+    FileValidationError,
+    Settings,
+)
 from ai_ner_system.pipeline import ApplicationError, MedievalTextProcessor
 from ai_ner_system.processing import create_progress_logger
 
@@ -138,7 +145,12 @@ def validate_configuration(args: argparse.Namespace) -> None:
 
         logging.info("Configuration validation completed successfully")
 
-    except ConfigError as e:
+    except (
+        ConfigError,
+        ConfigValidationError,
+        FileValidationError,
+        DirectoryValidationError,
+    ) as e:
         raise ApplicationError(f"Configuration validation failed: {e}") from e
 
 
