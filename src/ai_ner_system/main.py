@@ -12,10 +12,16 @@ import argparse
 import asyncio
 import logging
 import sys
-from pathlib import Path
 from typing import Final, Literal
 
-from ai_ner_system.config import ConfigError, ConfigValidator, Settings
+from ai_ner_system.config import (
+    ConfigError,
+    ConfigValidationError,
+    ConfigValidator,
+    DirectoryValidationError,
+    FileValidationError,
+    Settings,
+)
 from ai_ner_system.pipeline import ApplicationError, MedievalTextProcessor
 from ai_ner_system.processing import create_progress_logger
 
@@ -72,79 +78,6 @@ def setup_logging(level: str = "INFO") -> None:
         logging.getLogger(logger_name).setLevel(logging.WARNING)
 
 
-def _validate_input_file(input_file: str) -> None:
-    """Validate the input file path.
-
-    Args:
-        input_file: Path to the input file.
-
-    Raises:
-        ApplicationError: If the input file is invalid.
-    """
-    input_path = Path(input_file)
-
-    if not input_path.exists():
-        raise ApplicationError(f"Input file does not exist: {input_path}")
-    if not input_path.is_file():
-        raise ApplicationError(f"Input path is not a file: {input_path}")
-
-    # Check if file is readable
-    try:
-        with input_path.open("rb"):
-            pass
-    except OSError as e:
-        raise ApplicationError(f"Input file is not readable: {e}") from e
-
-
-def _validate_output_directories(output_files: list[str]) -> None:
-    """Validate and create output directories if they do not exist.
-
-    Args:
-        output_files: List of output file paths.
-
-    Raises:
-        ApplicationError: If an output directory cannot be created.
-    """
-    for output_file in output_files:
-        output_path = Path(output_file)
-        output_dir = output_path.parent
-
-        if not output_dir.exists():
-            try:
-                output_dir.mkdir(parents=True, exist_ok=True)
-                logging.info("Created output directory: %s", output_dir)
-            except OSError as e:
-                raise ApplicationError(
-                    f"Failed to create output directory {output_dir}: {e}",
-                ) from e
-
-
-def _validate_template_files(args: argparse.Namespace) -> None:
-    """Validate template files exist if specified.
-
-    Args:
-        args: Parsed command line arguments.
-
-    Raises:
-        ValueError: If template files do not exist.
-    """
-    # Check if prompt template exists
-    if args.prompt_template and not Path(args.prompt_template).exists():
-        raise ApplicationError(
-            f"Prompt template file does not exist: {args.prompt_template}",
-        )
-
-    # Check batch template if batch processing is enabled
-    if (
-        args.use_batch
-        and args.batch_template
-        and not Path(args.batch_template).exists()
-    ):
-        raise ApplicationError(
-            f"Batch template file does not exist: {args.batch_template}",
-        )
-
-
 def _validate_async_arguments(args: argparse.Namespace) -> None:
     """Validate async-specific arguments.
 
@@ -174,71 +107,50 @@ def _validate_async_arguments(args: argparse.Namespace) -> None:
         raise ApplicationError(msg)
 
 
-def validate_arguments(args: argparse.Namespace) -> None:
-    """Uses command-line overrides OR Settings defaults.
+def validate_configuration(args: argparse.Namespace) -> None:
+    """Validate application configuration and arguments.
+
+    This function:
+    1. Initializes Settings (loads .env, creates directories)
+    2. Applies CLI overrides to Settings
+    3. Validates async-specific arguments
+    4. Delegates to ConfigValidator for comprehensive validation
 
     Args:
         args: Parsed command line arguments.
 
     Raises:
-        ApplicationError: If arguments are invalid.
+        ApplicationError: If validation fails.
     """
-    # Validate input files
-    input_file = args.input or Settings.INPUT_FILE
-    _validate_input_file(input_file)
+    try:
+        # Initialize settings (load .env file and create directories)
+        # Safe to call multiple times - no-op if already initialized
+        Settings.initialize()
 
-    # Validate output directories
-    output_files = [
-        args.output_text or Settings.OUTPUT_TEXT_FILE,
-        args.output_table or Settings.OUTPUT_TABLE_FILE,
-        args.output_stats or Settings.OUTPUT_STATS_FILE,
-    ]
-    _validate_output_directories(output_files)
-
-    # Validate template files
-    _validate_template_files(args)
-
-    # Validate client type using constant from Settings
-    if args.client not in Settings.SUPPORTED_CLIENTS:
-        supported = ", ".join(sorted(Settings.SUPPORTED_CLIENTS))
-        raise ApplicationError(
-            f"Unsupported client type: {args.client}. Supported types: {supported}",
+        # Apply CLI overrides so ConfigValidator checks the effective paths
+        Settings.apply_cli_overrides(
+            input_file=args.input,
+            output_text_file=args.output_text,
+            output_table_file=args.output_table,
+            output_stats_file=args.output_stats,
+            prompt_template_file=args.prompt_template,
+            batch_template_file=args.batch_template,
         )
 
-    # Validate async-specific arguments
-    _validate_async_arguments(args)
+        # Validate async-specific arguments (business logic)
+        _validate_async_arguments(args)
 
-    logging.info("Command line arguments validated successfully")
-
-
-def validate_configuration(args: argparse.Namespace) -> None:
-    """Validate application configuration.
-
-    Args:
-        args: Parsed command line arguments.
-
-    Raises:
-        ConfigError: If configuration is invalid.
-    """
-    # Ensure Settings are initialized before applying overrides
-    # (safe to call multiple times - no-op if already initialized)
-    Settings.initialize()
-
-    # Apply CLI overrides so configuration validation checks the same
-    # effective paths accepted during argument validation.
-    Settings.apply_cli_overrides(
-        input_file=args.input,
-        output_text_file=args.output_text,
-        output_table_file=args.output_table,
-        output_stats_file=args.output_stats,
-        prompt_template_file=args.prompt_template,
-        batch_template_file=args.batch_template,
-    )
-
-    try:
+        # Comprehensive validation: files, paths, and client config
         ConfigValidator.validate_all(args.client)
+
         logging.info("Configuration validation completed successfully")
-    except ConfigError as e:
+
+    except (
+        ConfigError,
+        ConfigValidationError,
+        FileValidationError,
+        DirectoryValidationError,
+    ) as e:
         raise ApplicationError(f"Configuration validation failed: {e}") from e
 
 
@@ -408,13 +320,15 @@ def create_argument_parser() -> argparse.ArgumentParser:
     )
 
     # Model client selection
+    # Dynamically generate choices from Settings.SUPPORTED_CLIENTS
+    supported_clients = sorted(Settings.SUPPORTED_CLIENTS)
     parser.add_argument(
         "--client",
         "-c",
         type=str.lower,
-        choices=sorted(Settings.SUPPORTED_CLIENTS),
+        choices=supported_clients,
         default="claude",
-        help="Select LLM Client (default: claude)",
+        help=f"Select LLM Client (choices: {', '.join(supported_clients)}, default: claude)",
     )
 
     # Add argument groups
@@ -514,11 +428,7 @@ def main() -> Literal[0, 1]:
         setup_logging(args.log_level)
         logging.info("AI NER System - Medieval Text Processing started")
 
-        # Initialize settings (load .env file and create directories)
-        Settings.initialize()
-
-        # Validate configuration and arguments
-        validate_arguments(args)
+        # Validate configuration (includes Settings initialization and all validation)
         validate_configuration(args)
 
         # Handle dry run

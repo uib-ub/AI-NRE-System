@@ -9,11 +9,15 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import ClassVar
+from typing import ClassVar, TypeAlias
 
 from dotenv import load_dotenv
 
 from .exceptions import ConfigError
+
+# Type alias for registry entries
+ClientConfigEntry: TypeAlias = tuple[str, str]  # (settings_attr, init_param)
+ClientConfigRegistry: TypeAlias = dict[str, list[ClientConfigEntry]]
 
 
 class Settings:
@@ -51,7 +55,7 @@ class Settings:
 
     # Client configuration registry: maps client type to required config keys.
     # Each entry maps a client type to a list of (Settings attribute, init parameter) pairs.
-    _CLIENT_CONFIG_REGISTRY: ClassVar[dict[str, list[tuple[str, str]]]] = {
+    _CLIENT_CONFIG_REGISTRY: ClassVar[ClientConfigRegistry] = {
         "claude": [
             ("ANTHROPIC_API_KEY", "api_key"),
             ("CLAUDE_MODEL", "model"),
@@ -62,6 +66,16 @@ class Settings:
             ("OLLAMA_MODEL", "model"),
         ],
     }
+
+    # Common configuration attributes required for all clients
+    # ellipsis literal to indicate any number of strings
+    _COMMON_CONFIG_ATTRS: ClassVar[tuple[str, ...]] = (
+        "INPUT_FILE",
+        "OUTPUT_TEXT_FILE",
+        "OUTPUT_TABLE_FILE",
+        "OUTPUT_STATS_FILE",
+        "PROMPT_TEMPLATE_FILE",
+    )
 
     # Supported client types - derived from registry keys
     SUPPORTED_CLIENTS: ClassVar[frozenset[str]] = frozenset(
@@ -94,17 +108,25 @@ class Settings:
     CACHE_DIR: Path = Path(DEFAULT_CACHE_DIR)
 
     @classmethod
-    def initialize(cls, *, reload_env: bool = False) -> None:
-        """Initialize configuration and create necessary directories.
+    def initialize(
+        cls,
+        *,
+        reload_env: bool = False,
+        validate: bool = False,
+        create_dirs: bool = True,
+    ) -> None:
+        """Initialize configuration and optionally validate/create directories.
 
         Should be called once at the application startup. Safe to call multiple
         times (subsequent calls are no-ops unless reload_env=True).
 
         Args:
             reload_env: If True, reload environment variables from .env file.
+            validate: If True, validate common configuration after loading.
+            create_dirs: If True, create necessary directories (cache and output).
 
         Raises:
-            ConfigError: If initialization fails.
+            ConfigError: If initialization or validation fails.
         """
         if cls._initialized and not reload_env:
             logging.debug("Settings already initialized, skipping")
@@ -117,9 +139,14 @@ class Settings:
             # Load configuration from environment
             cls._load_from_environment()
 
-            # Create necessary directories
-            cls._create_cache_directory()
-            cls._ensure_output_directories()
+            # Create necessary directories (optional)
+            if create_dirs:
+                cls._create_cache_directory()
+                cls._ensure_output_directories()
+
+            # Validate configuration (optional)
+            if validate:
+                cls.validate_common_config()
 
             cls._initialized = True
             logging.info("Configuration initialized successfully")
@@ -267,49 +294,40 @@ class Settings:
             cls.BATCH_TEMPLATE_FILE = batch_template_file
 
     @classmethod
-    def get_client_required_configs(cls, client_type: str) -> dict[str, str | None]:
-        """Get required configurations for specified client type.
+    def validate_client_config(cls, client_type: str) -> None:
+        """Validate that all required configuration for a client type is present.
+
+        This method checks that all required configuration values are non-empty.
+        It's intended for validation purposes (e.g., in ConfigValidator) where
+        the actual parameter values aren't needed, only confirmation they exist.
 
         Args:
             client_type: Type of client ('claude' or 'ollama'), case-insensitive.
-
-        Returns:
-            Dictionary of required configuration keys and their values.
 
         Raises:
-            ConfigError: If client type is unsupported.
+            ConfigError: If client type is unsupported or required parameters are missing/empty.
         """
-        client_type = client_type.lower()
-
-        if client_type not in cls.SUPPORTED_CLIENTS:
-            supported = ", ".join(sorted(cls.SUPPORTED_CLIENTS))
-            msg = (
-                f"Unsupported client type: {client_type}. Supported types: {supported}"
-            )
-            raise ConfigError(msg)
-
-        # Build config dict from registry
-        config_keys = cls._CLIENT_CONFIG_REGISTRY.get(client_type, [])
-        return {
-            config_attr: getattr(cls, config_attr) for config_attr, _ in config_keys
-        }
+        # Delegate to get_client_init_params which does the validation
+        # We don't need the return value, just the validation side effect
+        _ = cls.get_client_init_params(client_type)
 
     @classmethod
-    def get_client_init_params(cls, client_type: str) -> dict[str, str | None]:
+    def get_client_init_params(cls, client_type: str) -> dict[str, str]:
         """Get client initialization parameters for specified client type.
 
-        Returns a dictionary mapping parameter names to their values,
-        ready to be unpacked into a client constructor.
+        Returns a dictionary mapping parameter names to their non-empty string values,
+        ready to be unpacked into a client constructor. Only validated non-empty
+        values are included.
 
         Args:
             client_type: Type of client ('claude' or 'ollama'), case-insensitive.
 
         Returns:
-            Dictionary mapping init parameter names to their values.
+            Dictionary mapping init parameter names to their non-empty string values.
             Example: {"api_key": "...", "model": "..."}
 
         Raises:
-            ConfigError: If client type is unsupported.
+            ConfigError: If client type is unsupported or required parameters are missing/empty.
         """
         client_type = client_type.lower()
 
@@ -320,27 +338,50 @@ class Settings:
             )
             raise ConfigError(msg)
 
-        # Build init params dict from registry
+        # Build init params dict from registry, validating as we go
         config_keys = cls._CLIENT_CONFIG_REGISTRY.get(client_type, [])
-        return {
-            init_param: getattr(cls, config_attr)
-            for config_attr, init_param in config_keys
-        }
+        init_params: dict[str, str] = {}
+        missing_params: list[str] = []
+
+        for config_attr, init_param in config_keys:
+            value = getattr(cls, config_attr)
+            # Validate value is present and non-empty
+            if value is None or not value.strip():
+                missing_params.append(init_param)
+            else:
+                init_params[init_param] = value.strip()
+
+        if missing_params:
+            params_str = ", ".join(missing_params)
+            msg = (
+                f"Missing or empty required configuration for {client_type}: {params_str}. "
+                "Set them in environment variables or your .env file."
+            )
+            raise ConfigError(msg, config_key=f"{client_type}_client_params")
+
+        return init_params
 
     @classmethod
-    def get_common_required_configs(cls) -> dict[str, str | None]:
-        """Get common required configurations for all clients.
+    def validate_common_config(cls) -> None:
+        """Validate that all common required configuration is present.
 
-        Returns:
-            Dictionary of common required configuration keys and their values.
+        Common configuration includes file paths that are required for all clients
+        (input file, output files, template files, etc.).
+
+        Raises:
+            ConfigError: If any required common configuration is missing or empty.
         """
-        return {
-            "INPUT_FILE": cls.INPUT_FILE,
-            "OUTPUT_TEXT_FILE": cls.OUTPUT_TEXT_FILE,
-            "OUTPUT_TABLE_FILE": cls.OUTPUT_TABLE_FILE,
-            "OUTPUT_STATS_FILE": cls.OUTPUT_STATS_FILE,
-            "PROMPT_TEMPLATE_FILE": cls.PROMPT_TEMPLATE_FILE,
-        }
+        missing_configs = [
+            attr for attr in cls._COMMON_CONFIG_ATTRS if not getattr(cls, attr)
+        ]
+
+        if missing_configs:
+            params_str = ", ".join(missing_configs)
+            msg = (
+                f"Missing or empty required common configuration: {params_str}. "
+                "Set them in environment variables or your .env file."
+            )
+            raise ConfigError(msg, config_key="common_configs")
 
     @classmethod
     def reset(cls) -> None:

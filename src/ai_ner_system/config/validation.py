@@ -46,36 +46,14 @@ class ConfigValidator:
             raise ConfigValidationError(msg)
 
         client_type = client_type.strip().lower()
-        if client_type not in Settings.SUPPORTED_CLIENTS:
-            supported_types = ", ".join(
-                sorted(Settings.SUPPORTED_CLIENTS),
-            )
-            msg = f"Unsupported client type: {client_type}. Supported types: {supported_types}."
-            raise ConfigValidationError(msg)
 
         try:
             # Validate client-specific configuration
-            client_configs = Settings.get_client_required_configs(client_type)
-            missing_client_configs = [
-                key for key, value in client_configs.items() if not value
-            ]
+            # This will raise ConfigError if client type is unsupported
+            Settings.validate_client_config(client_type)
 
             # Validate common configuration
-            common_configs = Settings.get_common_required_configs()
-            missing_common_configs = [
-                key for key, value in common_configs.items() if not value
-            ]
-
-            # Combine all missing configurations
-            missing_configs = missing_client_configs + missing_common_configs
-
-            if missing_configs:
-                msg = (
-                    f"Missing required configuration for {client_type} client: "
-                    f"{', '.join(missing_configs)}. "
-                    "Set them in environment variables or your .env file."
-                )
-                raise ConfigValidationError(msg, missing_keys=missing_configs)
+            Settings.validate_common_config()
 
             logging.info(
                 "Configuration validation passed for %s client",
@@ -303,6 +281,9 @@ class ConfigValidator:
     def validate_all(client_type: str | None = None) -> None:
         """Perform comprehensive validation of all configuration.
 
+        Note: This method assumes Settings.initialize() has already been called
+        by the caller. It only validates configuration values and file paths.
+
         Args:
             client_type: Optional client type to validate client-specific config.
 
@@ -310,9 +291,6 @@ class ConfigValidator:
             ConfigValidationError: If any validation fails.
         """
         try:
-            # Initialize settings first (creates directories)
-            Settings.initialize()
-
             # Validate file paths (checks accessibility)
             ConfigValidator.validate_file_paths()
 
