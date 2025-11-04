@@ -24,11 +24,23 @@ class ConfigValidator:
         "PROMPT_TEMPLATE_FILE": "prompt template",
         "BATCH_TEMPLATE_FILE": "batch template",
     }
+
     OUTPUT_FILES: ClassVar[dict[str, str]] = {
         "OUTPUT_TEXT_FILE": "output text file",
         "OUTPUT_TABLE_FILE": "output table file",
         "OUTPUT_STATS_FILE": "output stats file",
     }
+
+    TEMPLATE_FILE_ATTRS: ClassVar[tuple[str, ...]] = (
+        "PROMPT_TEMPLATE_FILE",
+        "BATCH_TEMPLATE_FILE",
+    )
+
+    OUTPUT_FILE_ATTRS: ClassVar[tuple[str, ...]] = (
+        "OUTPUT_TEXT_FILE",
+        "OUTPUT_TABLE_FILE",
+        "OUTPUT_STATS_FILE",
+    )
 
     @staticmethod
     def validate_for_client(client_type: str) -> None:
@@ -128,12 +140,8 @@ class ConfigValidator:
         Raises:
             FileValidationError: If template files are invalid.
         """
-        template_configs = {
-            "PROMPT_TEMPLATE_FILE": Settings.PROMPT_TEMPLATE_FILE,
-            "BATCH_TEMPLATE_FILE": Settings.BATCH_TEMPLATE_FILE,
-        }
-
-        for config_key, file_path in template_configs.items():
+        for config_key in ConfigValidator.TEMPLATE_FILE_ATTRS:
+            file_path = getattr(Settings, config_key)
             if not file_path or not file_path.strip():
                 logging.debug(
                     "Template file %s not configured, skipping",
@@ -202,13 +210,8 @@ class ConfigValidator:
         Raises:
             DirectoryValidationError: If output paths are not writable.
         """
-        output_configs = {
-            "OUTPUT_TEXT_FILE": Settings.OUTPUT_TEXT_FILE,
-            "OUTPUT_TABLE_FILE": Settings.OUTPUT_TABLE_FILE,
-            "OUTPUT_STATS_FILE": Settings.OUTPUT_STATS_FILE,
-        }
-
-        for config_key, file_path in output_configs.items():
+        for config_key in ConfigValidator.OUTPUT_FILE_ATTRS:
+            file_path = getattr(Settings, config_key)
             if not file_path:
                 logging.debug(
                     "Output file %s not configured, skipping",

@@ -77,6 +77,12 @@ class Settings:
         "PROMPT_TEMPLATE_FILE",
     )
 
+    _OUTPUT_FILE_ATTRS: ClassVar[tuple[str, ...]] = (
+        "OUTPUT_TEXT_FILE",
+        "OUTPUT_TABLE_FILE",
+        "OUTPUT_STATS_FILE",
+    )
+
     # Supported client types - derived from registry keys
     SUPPORTED_CLIENTS: ClassVar[frozenset[str]] = frozenset(
         _CLIENT_CONFIG_REGISTRY.keys()
@@ -131,6 +137,11 @@ class Settings:
         if cls._initialized and not reload_env:
             logging.debug("Settings already initialized, skipping")
             return
+
+        # If reloading, reset initialization flag first
+        if reload_env:
+            cls._initialized = False
+            logging.info("Reloading configuration from environment")
 
         try:
             # Load environment variables from .env file
@@ -220,14 +231,9 @@ class Settings:
         Raises:
             OSError: If directory creation fails.
         """
-        output_files = [
-            cls.OUTPUT_TEXT_FILE,
-            cls.OUTPUT_TABLE_FILE,
-            cls.OUTPUT_STATS_FILE,
-        ]
-
         # Validate and create output directories
-        for file_path in output_files:
+        for attr_name in cls._OUTPUT_FILE_ATTRS:
+            file_path = getattr(cls, attr_name)
             if file_path:
                 cls._ensure_directory_exists(file_path)
 

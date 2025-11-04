@@ -126,7 +126,7 @@ test = [
 ]
 
 [package.dev-dependencies]
-dev = [
+dev-local = [
     { name = "ruff" },
 ]
 
@@ -171,7 +171,7 @@ requires-dist = [
 provides-extras = ["lint", "test", "dev-tools", "docs", "profiling", "security", "dev", "all", "ci"]
 
 [package.metadata.requires-dev]
-dev = [{ name = "ruff", specifier = ">=0.12.1" }]
+dev-local = [{ name = "ruff", specifier = ">=0.12.1" }]
 
 [[package]]
 name = "aiohappyeyeballs"
