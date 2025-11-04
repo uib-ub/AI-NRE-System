@@ -13,7 +13,6 @@ import logging
 import time
 from typing import TYPE_CHECKING, ClassVar, cast
 
-from ai_ner_system.config import Settings
 from ai_ner_system.processing import BatchProcessingResult, ProcessingResult
 
 from .stats import ApplicationError, AsyncProcessingStats
@@ -112,16 +111,6 @@ class AsyncProcessor:
     def _poll_interval(self) -> float:
         """Get default poll interval."""
         return self.DEFAULT_POLL_INTERVAL
-
-    @property
-    def output_text_file(self) -> str:
-        """Get output text file path."""
-        return self.args.output_text or Settings.OUTPUT_TEXT_FILE
-
-    @property
-    def output_table_file(self) -> str:
-        """Get output table file path."""
-        return self.args.output_table or Settings.OUTPUT_TABLE_FILE
 
     async def process_all_records_async(
         self,
@@ -511,9 +500,9 @@ class AsyncProcessor:
                 for entity in res.entities
             ]
 
-            # Determine output file paths
-            output_text_file = self.output_text_file
-            output_table_file = self.output_table_file
+            # Determine output file paths from main processor
+            output_text_file = self.main_processor.output_text_file
+            output_table_file = self.main_processor.output_table_file
 
             # Use headers from main processor to maintain consistency
             annotated_header = self.main_processor.ANNOTATED_HEADER

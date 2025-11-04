@@ -23,17 +23,33 @@ class ProcessorContext(Protocol):
     that AsyncProcessor and SyncProcessor actually use, without importing
     MedievalTextProcessor directly.
 
-    Note: These can be either instance attributes or properties - Protocol accepts both.
+    Note: Properties must be declared with @property decorator in the Protocol.
     """
 
     # Constants needed by processors
     ANNOTATED_HEADER: ClassVar[str]
     METADATA_HEADER: ClassVar[str]
 
-    # Instance attributes (or properties - both work with Protocol)
+    # Instance attributes
     args: Namespace
     reader: CSVReader
     writer: OutputWriter
     processor: RecordProcessor
     llm_client: Client
     incremental_mode: bool
+
+    # Output file path properties (resolved from CLI args or Settings)
+    @property
+    def output_text_file(self) -> str:
+        """Get output text file path."""
+        ...
+
+    @property
+    def output_table_file(self) -> str:
+        """Get output table file path."""
+        ...
+
+    @property
+    def output_stats_file(self) -> str:
+        """Get output stats file path."""
+        ...
