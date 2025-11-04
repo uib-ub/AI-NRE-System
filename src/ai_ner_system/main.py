@@ -78,43 +78,13 @@ def setup_logging(level: str = "INFO") -> None:
         logging.getLogger(logger_name).setLevel(logging.WARNING)
 
 
-def _validate_async_arguments(args: argparse.Namespace) -> None:
-    """Validate async-specific arguments.
-
-    Args:
-        args: Parsed command line arguments.
-
-    Raises:
-        ApplicationError: If arguments are invalid.
-    """
-    if not args.async_mode:
-        return
-
-    max_wait_time = args.max_wait_time
-    if max_wait_time < MIN_MAX_WAIT_TIME:
-        msg = (
-            f"Max wait time must be at least {MIN_MAX_WAIT_TIME} seconds for async mode, "
-            f"got {max_wait_time} seconds"
-        )
-        raise ApplicationError(msg)
-
-    poll_interval = args.poll_interval
-    if poll_interval < MIN_POLL_INTERVAL:
-        msg = (
-            f"Poll interval must be at least {MIN_POLL_INTERVAL} seconds for async mode, "
-            f"got {poll_interval} seconds"
-        )
-        raise ApplicationError(msg)
-
-
-def validate_configuration(args: argparse.Namespace) -> None:
+def _validate_configuration(args: argparse.Namespace) -> None:
     """Validate application configuration and arguments.
 
     This function:
     1. Initializes Settings (loads .env, creates directories)
     2. Applies CLI overrides to Settings
-    3. Validates async-specific arguments
-    4. Delegates to ConfigValidator for comprehensive validation
+    3. Delegates to ConfigValidator for comprehensive validation
 
     Args:
         args: Parsed command line arguments.
@@ -137,11 +107,10 @@ def validate_configuration(args: argparse.Namespace) -> None:
             batch_template_file=args.batch_template,
         )
 
-        # Validate async-specific arguments (business logic)
-        _validate_async_arguments(args)
-
         # Comprehensive validation: files, paths, and client config
         ConfigValidator.validate_all(args.client)
+
+        _log_configuration_summary(args)
 
         logging.info("Configuration validation completed successfully")
 
@@ -152,6 +121,29 @@ def validate_configuration(args: argparse.Namespace) -> None:
         DirectoryValidationError,
     ) as e:
         raise ApplicationError(f"Configuration validation failed: {e}") from e
+
+
+def _log_configuration_summary(args: argparse.Namespace) -> None:
+    """Log summary of effective configuration.
+
+    Helps with debugging and provides audit trail.
+
+    Args:
+        args: Parsed command line arguments.
+    """
+    logging.info("Configuration Summary:")
+    logging.info("  Client: %s", args.client)
+    logging.info("  Input: %s", Settings.INPUT_FILE)
+    logging.info("  Prompt Template: %s", Settings.PROMPT_TEMPLATE_FILE)
+    logging.info("  Output Text: %s", Settings.OUTPUT_TEXT_FILE)
+    logging.info("  Output Table: %s", Settings.OUTPUT_TABLE_FILE)
+    logging.info("  Async Mode: %s", args.async_mode)
+
+    if args.async_mode:
+        logging.info("  Batch Size: %d", args.batch_size)
+        logging.info("  Max Wait Time: %.1fs", args.max_wait_time)
+        logging.info("  Poll Interval: %.1fs", args.poll_interval)
+        logging.info("  Output Stats: %s", Settings.OUTPUT_STATS_FILE)
 
 
 def _get_example_text() -> str:
@@ -410,6 +402,57 @@ def _print_dry_run_success() -> None:
     logging.info("Dry run validation completed successfully")
 
 
+def _validate_arguments(args: argparse.Namespace) -> None:
+    """Quick validation of argument before full setup.
+
+    This provides faster feedback for obvious errors.
+
+    Args:
+        args: Parsed command line arguments.
+
+    Raises:
+        ApplicationError: If arguments are invalid.
+    """
+    if args.batch_size <= 0:
+        msg = f"Batch size must be a positive integer, got {args.batch_size}"
+        raise ApplicationError(msg)
+
+    # Only validate async-specific arguments if async mode is enabled
+    if not args.async_mode:
+        return
+
+    max_wait_time = args.max_wait_time
+    if max_wait_time < MIN_MAX_WAIT_TIME:
+        msg = (
+            f"Max wait time must be at least {MIN_MAX_WAIT_TIME} seconds for async mode, "
+            f"got {max_wait_time} seconds"
+        )
+        raise ApplicationError(msg)
+
+    poll_interval = args.poll_interval
+    if poll_interval < MIN_POLL_INTERVAL:
+        msg = (
+            f"Poll interval must be at least {MIN_POLL_INTERVAL} seconds for async mode, "
+            f"got {poll_interval} seconds"
+        )
+        raise ApplicationError(msg)
+
+    if poll_interval > max_wait_time:
+        msg = (
+            f"Poll interval ({poll_interval}s) cannot be greater than "
+            f"max wait time ({max_wait_time}s)"
+        )
+        raise ApplicationError(msg)
+
+    max_concurrent_batches = args.max_concurrent_batches
+    if max_concurrent_batches < 1:
+        msg = (
+            "Max concurrent batches must be at least 1 for async mode, "
+            f"got {max_concurrent_batches}"
+        )
+        raise ApplicationError(msg)
+
+
 # ------------------------------------------------------------------------------
 # Main function
 # ------------------------------------------------------------------------------
@@ -428,8 +471,11 @@ def main() -> Literal[0, 1]:
         setup_logging(args.log_level)
         logging.info("AI NER System - Medieval Text Processing started")
 
+        # Quick argument validation before full setup
+        _validate_arguments(args)
+
         # Validate configuration (includes Settings initialization and all validation)
-        validate_configuration(args)
+        _validate_configuration(args)
 
         # Handle dry run
         if args.dry_run:
@@ -441,14 +487,14 @@ def main() -> Literal[0, 1]:
         return _run_processor(processor, args)
 
     except KeyboardInterrupt:
-        logging.exception("Processing interrupted by user")
+        logging.warning("Processing interrupted by user")
         return 1
-    except ApplicationError:
-        logging.exception("Application error: %s")
+    except (ConfigError, ApplicationError):
+        logging.exception("Application error occurred")
         return 1
     except Exception:
         # Unexpected errors - log with full traceback
-        logging.exception("Unexpected error: %s")
+        logging.exception("Unexpected error occurred")
         return 1
 
 
