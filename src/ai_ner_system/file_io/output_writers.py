@@ -73,6 +73,10 @@ class OutputWriter:
     def _ensure_output_directory(file_path: Pathish) -> Path:
         """Ensure the output directory exists.
 
+        Note: Settings.initialize() should have already created output directories.
+        This method provides a safety check and creates directories if needed
+        (e.g., when OutputWriter is used standalone in tests).
+
         Args:
             file_path: Path to the output file.
 
