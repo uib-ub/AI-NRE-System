@@ -112,6 +112,42 @@ class AsyncProcessor:
         """Get default poll interval."""
         return self.DEFAULT_POLL_INTERVAL
 
+    @property
+    def _max_concurrent_batches(self) -> int:
+        """Get max concurrent batches from args or default."""
+        return getattr(
+            self.args,
+            "max_concurrent_batches",
+            self.MAX_CONCURRENT_BATCHES,
+        )
+
+    @property
+    def _max_concurrent_individual(self) -> int:
+        """Get max concurrent individual tasks from args or default."""
+        return getattr(
+            self.args,
+            "max_concurrent_individual",
+            self.MAX_CONCURRENT_INDIVIDUAL,
+        )
+
+    @property
+    def _fallback_concurrency(self) -> int:
+        """Get fallback concurrency from args or default."""
+        return getattr(
+            self.args,
+            "fallback_concurrency",
+            self.FALLBACK_CONCURRENCY,
+        )
+
+    @property
+    def _chunk_size(self) -> int:
+        """Get chunk size from args or default."""
+        return getattr(
+            self.args,
+            "chunk_size",
+            self.CHUNK_SIZE,
+        )
+
     async def process_all_records_async(
         self,
         progress_callback: Callable[[BatchProgress], None] | None = None,
@@ -214,12 +250,12 @@ class AsyncProcessor:
         # Track batch tasks with their order information using a map (batch_num -> task)
         batch_tasks: dict[int, asyncio.Task[BatchProcessingResult]] = {}
 
-        # Limit to default 5 concurrent batch processing tasks,
+        # Limit to default 5 (configured in settings) concurrent batch processing tasks,
         # otherwise it can reach 50 batch request limitation of Anthropic API
-        max_concurrent_batches = getattr(
-            self.args,
-            "max_concurrent_batches",
-            self.MAX_CONCURRENT_BATCHES,  # fallback default
+        max_concurrent_batches = self._max_concurrent_batches
+        logging.info(
+            "Using max concurrent batches: %d",
+            max_concurrent_batches,
         )
 
         try:
@@ -562,8 +598,13 @@ class AsyncProcessor:
 
         try:
             # Process records with limited concurrency to avoid overwhelming the API
-            # Limit to 5 (default) concurrent requests
-            semaphore = asyncio.Semaphore(self.MAX_CONCURRENT_INDIVIDUAL)
+            # Use configured concurrency limit (5 as default)
+            max_concurrent = self._max_concurrent_individual
+            semaphore = asyncio.Semaphore(max_concurrent)
+            logging.info(
+                "Using max concurrent individual tasks: %d",
+                max_concurrent,
+            )
 
             async def process_single_record(record: dict[str, str]) -> ProcessingResult:
                 async with semaphore:
@@ -582,8 +623,9 @@ class AsyncProcessor:
                 current_chunk_records.append(record)
 
                 # Process in chunks to avoid memory issues with large files
-                # Process 50 (default) records at a time
-                if len(tasks) >= self.CHUNK_SIZE:
+                # Use configured chunk size (50 as default)
+                chunk_size = self._chunk_size
+                if len(tasks) >= chunk_size:
                     await self._process_task_chunk(tasks, current_chunk_records, stats)
                     tasks.clear()
                     current_chunk_records.clear()
@@ -689,8 +731,13 @@ class AsyncProcessor:
         )
 
         # Process records with limited concurrency
-        # Lower concurrency for fallback
-        semaphore = asyncio.Semaphore(self.FALLBACK_CONCURRENCY)
+        # Use configured fallback concurrency (3 as default)
+        fallback_concurrency = self._fallback_concurrency
+        semaphore = asyncio.Semaphore(fallback_concurrency)
+        logging.info(
+            "Using fallback concurrency: %d",
+            fallback_concurrency,
+        )
 
         async def process_one(record: dict[str, str]) -> ProcessingResult:
             async with semaphore:
