@@ -200,27 +200,21 @@ class Settings:
 
         # File I/O Configuration - Expand user paths (~ to home directory)
         input_file_raw = os.getenv("INPUT_FILE", cls.DEFAULT_INPUT_FILE)
-        cls.INPUT_FILE = (
-            str(Path(input_file_raw).expanduser().resolve()) if input_file_raw else ""
-        )
+        cls.INPUT_FILE = cls._normalize_path(input_file_raw) if input_file_raw else ""
 
         output_text_raw = os.getenv("OUTPUT_TEXT_FILE", cls.DEFAULT_OUTPUT_TEXT_FILE)
         cls.OUTPUT_TEXT_FILE = (
-            str(Path(output_text_raw).expanduser().resolve()) if output_text_raw else ""
+            cls._normalize_path(output_text_raw) if output_text_raw else ""
         )
 
         output_table_raw = os.getenv("OUTPUT_TABLE_FILE", cls.DEFAULT_OUTPUT_TABLE_FILE)
         cls.OUTPUT_TABLE_FILE = (
-            str(Path(output_table_raw).expanduser().resolve())
-            if output_table_raw
-            else ""
+            cls._normalize_path(output_table_raw) if output_table_raw else ""
         )
 
         output_stats_raw = os.getenv("OUTPUT_STATS_FILE", cls.DEFAULT_OUTPUT_STATS_FILE)
         cls.OUTPUT_STATS_FILE = (
-            str(Path(output_stats_raw).expanduser().resolve())
-            if output_stats_raw
-            else ""
+            cls._normalize_path(output_stats_raw) if output_stats_raw else ""
         )
 
         # Template Configuration - Expand user paths
@@ -228,18 +222,14 @@ class Settings:
             "PROMPT_TEMPLATE_FILE", cls.DEFAULT_PROMPT_TEMPLATE_FILE
         )
         cls.PROMPT_TEMPLATE_FILE = (
-            str(Path(prompt_template_raw).expanduser().resolve())
-            if prompt_template_raw
-            else ""
+            cls._normalize_path(prompt_template_raw) if prompt_template_raw else ""
         )
 
         batch_template_raw = os.getenv(
             "BATCH_TEMPLATE_FILE", cls.DEFAULT_BATCH_TEMPLATE_FILE
         )
         cls.BATCH_TEMPLATE_FILE = (
-            str(Path(batch_template_raw).expanduser().resolve())
-            if batch_template_raw
-            else ""
+            cls._normalize_path(batch_template_raw) if batch_template_raw else ""
         )
 
         # Cache Configuration
@@ -262,6 +252,18 @@ class Settings:
                 cls.CACHE_DIR,
             )
             raise
+
+    @classmethod
+    def _normalize_path(cls, path: str) -> str:
+        """Normalize a path by expanding user home (~) and resolving to absolute path.
+
+        Args:
+            path: Path string that may contain ~ or be relative.
+
+        Returns:
+            Absolute path string with ~ expanded.
+        """
+        return str(Path(path).expanduser().resolve())
 
     @classmethod
     def _ensure_output_directories(cls) -> None:
@@ -318,8 +320,7 @@ class Settings:
             batch_template_file: Override for batch template file path.
         """
         if input_file:
-            # Expand ~ and resolve to absolute path
-            cls.INPUT_FILE = str(Path(input_file).expanduser().resolve())
+            cls.INPUT_FILE = cls._normalize_path(input_file)
 
         # Apply output file overrides and ensure directories exist
         output_overrides = {
@@ -330,24 +331,15 @@ class Settings:
 
         for attr_name, override_value in output_overrides.items():
             if override_value:
-                # Expand ~ and resolve to absolute path
-                expanded_path = Path(override_value).expanduser().resolve()
-                normalized_path = str(expanded_path)
+                normalized_path = cls._normalize_path(override_value)
                 setattr(cls, attr_name, normalized_path)
-                # Use the already-expanded path for directory creation
                 cls._ensure_directory_exists(normalized_path)
 
         if prompt_template_file:
-            # Expand ~ and resolve to absolute path
-            cls.PROMPT_TEMPLATE_FILE = str(
-                Path(prompt_template_file).expanduser().resolve()
-            )
+            cls.PROMPT_TEMPLATE_FILE = cls._normalize_path(prompt_template_file)
 
         if batch_template_file:
-            # Expand ~ and resolve to absolute path
-            cls.BATCH_TEMPLATE_FILE = str(
-                Path(batch_template_file).expanduser().resolve()
-            )
+            cls.BATCH_TEMPLATE_FILE = cls._normalize_path(batch_template_file)
 
     @classmethod
     def validate_client_config(cls, client_type: str) -> None:
