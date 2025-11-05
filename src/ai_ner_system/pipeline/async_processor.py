@@ -648,21 +648,16 @@ class AsyncProcessor:
         try:
             # Process results in the same order as input
             for i, result in enumerate(results):
-                # Get original record by index and extract brevid
+                # Get original record by index and extract brevid and bindnr
                 brevid = chunk_records[i].get("Brevid", "unknown")
+                bindnr = chunk_records[i].get("Bindnr", "unknown")
 
                 # Any other exception => convert to failed ProcessingResult
                 if isinstance(result, Exception):
                     # Handle failed task
                     stats.failed_records += 1
                     # Create a failed ProcessingResult for consistency
-                    failed_result = ProcessingResult(
-                        # TODO: check record_id format, with "failed" prefix?
-                        record_id=f"failed_{brevid}",
-                        brevid=brevid,
-                        success=False,
-                        error_message=f"Processing failed for Brevid {brevid}: {result}",
-                    )
+                    failed_result = self._create_failed_result(brevid, result, bindnr)
                     stats.results.append(failed_result)
                     logging.error(
                         "Task failed for Brevid %s with exception: %s",
@@ -733,8 +728,9 @@ class AsyncProcessor:
 
         # Process results in original order and update statistics
         for i, result in enumerate(results):
-            # Get original record by index and extract brevid
+            # Get original record by index and extract brevid and bindnr
             brevid = batch_records[i].get("Brevid", "unknown")
+            bindnr = batch_records[i].get("Bindnr", "unknown")
             if isinstance(result, asyncio.CancelledError):
                 # Cooperate with cancellation policy
                 raise result
@@ -742,12 +738,7 @@ class AsyncProcessor:
                 # Handle failed task
                 stats.failed_records += 1
                 # Create a failed ProcessingResult for the exception
-                failed_result = ProcessingResult(
-                    record_id=f"failed_{brevid}",
-                    brevid=brevid,
-                    success=False,
-                    error_message=f"Processing failed for Brevid {brevid}: {result}",
-                )
+                failed_result = self._create_failed_result(brevid, result, bindnr)
                 stats.results.append(failed_result)
                 logging.warning(
                     "Fallback processing exception for Brevid %s: %s",
@@ -819,3 +810,33 @@ class AsyncProcessor:
                     )
 
         return progress_callback
+
+    @staticmethod
+    def _create_failed_result(
+        brevid: str,
+        error: Exception,
+        bindnr: str = "unknown",
+    ) -> ProcessingResult:
+        """Create a standardized failed ProcessingResult.
+
+        This factory method centralizes the creation of failed results to ensure
+        consistent formatting of record IDs and error messages across async processing.
+        The record_id format matches successful processing: "{Bindnr}_{Brevid}".
+
+        Args:
+            brevid: The Brevid identifier for the record.
+            error: The exception that caused the failure.
+            bindnr: The Bindnr identifier (defaults to "unknown" if not available).
+
+        Returns:
+            A ProcessingResult instance marked as failed with formatted error message.
+        """
+        # Use the same format as successful individual processing for consistency
+        record_id = f"{bindnr}_{brevid}"
+
+        return ProcessingResult(
+            record_id=record_id,
+            brevid=brevid,
+            success=False,
+            error_message=f"Processing failed for Brevid {brevid}: {error}",
+        )
