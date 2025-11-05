@@ -33,15 +33,6 @@ from ai_ner_system.processing import create_progress_logger
 MIN_MAX_WAIT_TIME: Final[float] = 60.0  # Minimum max wait time in seconds
 MIN_POLL_INTERVAL: Final[float] = 5.0  # Minimum poll interval in seconds
 
-# Default values for processing
-DEFAULT_BATCH_SIZE: Final[int] = 5  # Records per batch
-# Max concurrent batches in async mode
-DEFAULT_MAX_CONCURRENT_BATCHES: Final[int] = 5
-
-# Default values for async arguments
-DEFAULT_MAX_WAIT_TIME: Final[float] = 86400.0  # 24 hours in seconds
-DEFAULT_POLL_INTERVAL: Final[float] = 30.0  # 30 seconds
-
 # Progress logging interval
 PROGRESS_LOG_INTERVAL: Final[float] = 60.0  # Log progress every 60 seconds
 
@@ -141,8 +132,13 @@ def _log_configuration_summary(args: argparse.Namespace) -> None:
 
     if args.async_mode:
         logging.info("  Batch Size: %d", args.batch_size)
+        logging.info("  Max Concurrent Batches: %d", args.max_concurrent_batches)
+        logging.info("  Max Concurrent Individual: %d", args.max_concurrent_individual)
+        logging.info("  Fallback Concurrency: %d", args.fallback_concurrency)
+        logging.info("  Chunk Size: %d", args.chunk_size)
         logging.info("  Max Wait Time: %.1fs", args.max_wait_time)
         logging.info("  Poll Interval: %.1fs", args.poll_interval)
+        logging.info("  Incremental Output: %s", args.incremental_output)
         logging.info("  Output Stats: %s", Settings.OUTPUT_STATS_FILE)
 
 
@@ -231,8 +227,8 @@ def _add_batch_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=DEFAULT_BATCH_SIZE,
-        help=f"Number of records to process in each batch (default: {DEFAULT_BATCH_SIZE})",
+        default=Settings.DEFAULT_BATCH_SIZE,
+        help=f"Number of records to process in each batch (default: {Settings.DEFAULT_BATCH_SIZE})",
     )
 
 
@@ -274,8 +270,29 @@ def _add_async_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--max-concurrent-batches",
         type=int,
-        default=DEFAULT_MAX_CONCURRENT_BATCHES,
-        help=f"Maximum number of concurrent batches (default: {DEFAULT_MAX_CONCURRENT_BATCHES})",
+        default=Settings.DEFAULT_MAX_CONCURRENT_BATCHES,
+        help=f"Maximum number of concurrent batch processing tasks (default: {Settings.DEFAULT_MAX_CONCURRENT_BATCHES})",
+    )
+
+    parser.add_argument(
+        "--max-concurrent-individual",
+        type=int,
+        default=Settings.DEFAULT_MAX_CONCURRENT_INDIVIDUAL,
+        help=f"Maximum concurrent individual record processing tasks (default: {Settings.DEFAULT_MAX_CONCURRENT_INDIVIDUAL})",
+    )
+
+    parser.add_argument(
+        "--fallback-concurrency",
+        type=int,
+        default=Settings.DEFAULT_FALLBACK_CONCURRENCY,
+        help=f"Concurrency limit for fallback processing (default: {Settings.DEFAULT_FALLBACK_CONCURRENCY})",
+    )
+
+    parser.add_argument(
+        "--chunk-size",
+        type=int,
+        default=Settings.DEFAULT_CHUNK_SIZE,
+        help=f"Number of records to process per chunk for memory management (default: {Settings.DEFAULT_CHUNK_SIZE})",
     )
 
     parser.add_argument(
@@ -287,15 +304,15 @@ def _add_async_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--max-wait-time",
         type=float,
-        default=DEFAULT_MAX_WAIT_TIME,
-        help=f"Maximum time to wait for async batch completion in seconds (default: {DEFAULT_MAX_WAIT_TIME}, i.e. 24 hours)",
+        default=Settings.DEFAULT_MAX_WAIT_TIME,
+        help=f"Maximum time to wait for async batch completion in seconds (default: {Settings.DEFAULT_MAX_WAIT_TIME}, i.e. 24 hours)",
     )
 
     parser.add_argument(
         "--poll-interval",
         type=float,
-        default=DEFAULT_POLL_INTERVAL,
-        help=f"Time between progress checks for async processing in seconds (default: {DEFAULT_POLL_INTERVAL})",
+        default=Settings.DEFAULT_POLL_INTERVAL,
+        help=f"Time between progress checks for async processing in seconds (default: {Settings.DEFAULT_POLL_INTERVAL})",
     )
 
 
@@ -450,6 +467,27 @@ def _validate_arguments(args: argparse.Namespace) -> None:
             "Max concurrent batches must be at least 1 for async mode, "
             f"got {max_concurrent_batches}"
         )
+        raise ApplicationError(msg)
+
+    max_concurrent_individual = args.max_concurrent_individual
+    if max_concurrent_individual < 1:
+        msg = (
+            "Max concurrent individual tasks must be at least 1 for async mode, "
+            f"got {max_concurrent_individual}"
+        )
+        raise ApplicationError(msg)
+
+    fallback_concurrency = args.fallback_concurrency
+    if fallback_concurrency < 1:
+        msg = (
+            "Fallback concurrency must be at least 1 for async mode, "
+            f"got {fallback_concurrency}"
+        )
+        raise ApplicationError(msg)
+
+    chunk_size = args.chunk_size
+    if chunk_size < 1:
+        msg = f"Chunk size must be at least 1 for async mode, got {chunk_size}"
         raise ApplicationError(msg)
 
 
