@@ -463,7 +463,7 @@ class RecordProcessor:
         successful_count = sum(1 for r in results if r.success)
         failed_count = len(results) - successful_count
 
-        batch_id = f"batch_{batch_num}_failed" if failed else f"batch_{batch_num}"
+        batch_id = f"batch_{batch_num}"
 
         if not failed:
             logging.info(
@@ -501,7 +501,7 @@ class RecordProcessor:
             A BatchProcessingResult containing all processed records.
         """
         start_time = time.monotonic()
-        batch_id = f"batch_{batch_num}_individual"
+        batch_id = f"batch_{batch_num}"
 
         # Process records concurrently using individual async calls
         tasks = [self.process_record_async(record) for record in records]
