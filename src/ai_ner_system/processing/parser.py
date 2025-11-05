@@ -451,7 +451,7 @@ class ResponseParser:
         metadata_records: list[str] = []
         for entity in entities:
             metadata_record = entity.to_csv_row()
-            logging.info("--- Metadata for Brevid %s ---\n%s", brevid, metadata_record)
+            logging.debug("--- Metadata for Brevid %s ---\n%s", brevid, metadata_record)
             metadata_records.append(metadata_record)
         return metadata_records
 

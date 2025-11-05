@@ -11,8 +11,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import TYPE_CHECKING, ClassVar, cast
+from typing import TYPE_CHECKING, cast
 
+from ai_ner_system.config import Settings
 from ai_ner_system.processing import BatchProcessingResult, ProcessingResult
 
 from .stats import ApplicationError, AsyncProcessingStats
@@ -35,30 +36,10 @@ class AsyncProcessor:
     including batch processing with fallback, streaming modes, incremental
     output, and comprehensive progress monitoring.
 
-    Class Attributes:
-        MAX_CONCURRENT_BATCHES: Maximum number of batch processing tasks to run
-            concurrently (default: 5).
-        MAX_CONCURRENT_INDIVIDUAL: Maximum concurrent individual record processing
-            tasks (default: 5).
-        FALLBACK_CONCURRENCY: Reduced concurrency limit for fallback processing
-            (default: 3).
-        CHUNK_SIZE: Number of records to process per chunk to manage memory
-            (default: 50).
-        DEFAULT_BATCH_WAIT_TIME: Default maximum time in seconds to wait for batch
-            completion (default: 86400 = 24 hours).
-        DEFAULT_POLL_INTERVAL: Default time in seconds between batch progress checks
-            (default: 30).
+    All default values for concurrency, timeouts, and intervals are pulled from
+    Settings, ensuring a single source of truth for configuration. These can be
+    overridden via command-line arguments.
     """
-
-    # Concurrency limits
-    MAX_CONCURRENT_BATCHES: ClassVar[int] = 5
-    MAX_CONCURRENT_INDIVIDUAL: ClassVar[int] = 5
-    FALLBACK_CONCURRENCY: ClassVar[int] = 3
-    CHUNK_SIZE: ClassVar[int] = 50
-
-    # Batch processing timeouts and intervals
-    DEFAULT_BATCH_WAIT_TIME: ClassVar[float] = 86400.0  # 24 hours in seconds
-    DEFAULT_POLL_INTERVAL: ClassVar[float] = 30.0  # 30 seconds
 
     def __init__(self, main_processor: ProcessorContext) -> None:
         """Initialize async processor with reference to main processor.
@@ -105,12 +86,12 @@ class AsyncProcessor:
     @property
     def _batch_wait_time(self) -> float:
         """Get default batch wait time."""
-        return self.DEFAULT_BATCH_WAIT_TIME
+        return Settings.DEFAULT_MAX_WAIT_TIME
 
     @property
     def _poll_interval(self) -> float:
         """Get default poll interval."""
-        return self.DEFAULT_POLL_INTERVAL
+        return Settings.DEFAULT_POLL_INTERVAL
 
     @property
     def _max_concurrent_batches(self) -> int:
@@ -118,7 +99,7 @@ class AsyncProcessor:
         return getattr(
             self.args,
             "max_concurrent_batches",
-            self.MAX_CONCURRENT_BATCHES,
+            Settings.DEFAULT_MAX_CONCURRENT_BATCHES,
         )
 
     @property
@@ -127,7 +108,7 @@ class AsyncProcessor:
         return getattr(
             self.args,
             "max_concurrent_individual",
-            self.MAX_CONCURRENT_INDIVIDUAL,
+            Settings.DEFAULT_MAX_CONCURRENT_INDIVIDUAL,
         )
 
     @property
@@ -136,7 +117,7 @@ class AsyncProcessor:
         return getattr(
             self.args,
             "fallback_concurrency",
-            self.FALLBACK_CONCURRENCY,
+            Settings.DEFAULT_FALLBACK_CONCURRENCY,
         )
 
     @property
@@ -145,7 +126,7 @@ class AsyncProcessor:
         return getattr(
             self.args,
             "chunk_size",
-            self.CHUNK_SIZE,
+            Settings.DEFAULT_CHUNK_SIZE,
         )
 
     async def process_all_records_async(
