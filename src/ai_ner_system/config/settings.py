@@ -198,29 +198,48 @@ class Settings:
         cls.OLLAMA_MODEL = os.getenv("OLLAMA_MODEL")
         cls.CLAUDE_MODEL = os.getenv("CLAUDE_MODEL")
 
-        # File I/O Configuration
-        cls.INPUT_FILE = os.getenv("INPUT_FILE", cls.DEFAULT_INPUT_FILE)
-        cls.OUTPUT_TEXT_FILE = os.getenv(
-            "OUTPUT_TEXT_FILE",
-            cls.DEFAULT_OUTPUT_TEXT_FILE,
-        )
-        cls.OUTPUT_TABLE_FILE = os.getenv(
-            "OUTPUT_TABLE_FILE",
-            cls.DEFAULT_OUTPUT_TABLE_FILE,
-        )
-        cls.OUTPUT_STATS_FILE = os.getenv(
-            "OUTPUT_STATS_FILE",
-            cls.DEFAULT_OUTPUT_STATS_FILE,
+        # File I/O Configuration - Expand user paths (~ to home directory)
+        input_file_raw = os.getenv("INPUT_FILE", cls.DEFAULT_INPUT_FILE)
+        cls.INPUT_FILE = (
+            str(Path(input_file_raw).expanduser().resolve()) if input_file_raw else ""
         )
 
-        # Template Configuration
-        cls.PROMPT_TEMPLATE_FILE = os.getenv(
-            "PROMPT_TEMPLATE_FILE",
-            cls.DEFAULT_PROMPT_TEMPLATE_FILE,
+        output_text_raw = os.getenv("OUTPUT_TEXT_FILE", cls.DEFAULT_OUTPUT_TEXT_FILE)
+        cls.OUTPUT_TEXT_FILE = (
+            str(Path(output_text_raw).expanduser().resolve()) if output_text_raw else ""
         )
-        cls.BATCH_TEMPLATE_FILE = os.getenv(
-            "BATCH_TEMPLATE_FILE",
-            cls.DEFAULT_BATCH_TEMPLATE_FILE,
+
+        output_table_raw = os.getenv("OUTPUT_TABLE_FILE", cls.DEFAULT_OUTPUT_TABLE_FILE)
+        cls.OUTPUT_TABLE_FILE = (
+            str(Path(output_table_raw).expanduser().resolve())
+            if output_table_raw
+            else ""
+        )
+
+        output_stats_raw = os.getenv("OUTPUT_STATS_FILE", cls.DEFAULT_OUTPUT_STATS_FILE)
+        cls.OUTPUT_STATS_FILE = (
+            str(Path(output_stats_raw).expanduser().resolve())
+            if output_stats_raw
+            else ""
+        )
+
+        # Template Configuration - Expand user paths
+        prompt_template_raw = os.getenv(
+            "PROMPT_TEMPLATE_FILE", cls.DEFAULT_PROMPT_TEMPLATE_FILE
+        )
+        cls.PROMPT_TEMPLATE_FILE = (
+            str(Path(prompt_template_raw).expanduser().resolve())
+            if prompt_template_raw
+            else ""
+        )
+
+        batch_template_raw = os.getenv(
+            "BATCH_TEMPLATE_FILE", cls.DEFAULT_BATCH_TEMPLATE_FILE
+        )
+        cls.BATCH_TEMPLATE_FILE = (
+            str(Path(batch_template_raw).expanduser().resolve())
+            if batch_template_raw
+            else ""
         )
 
         # Cache Configuration
@@ -299,7 +318,8 @@ class Settings:
             batch_template_file: Override for batch template file path.
         """
         if input_file:
-            cls.INPUT_FILE = input_file
+            # Expand ~ and resolve to absolute path
+            cls.INPUT_FILE = str(Path(input_file).expanduser().resolve())
 
         # Apply output file overrides and ensure directories exist
         output_overrides = {
@@ -310,14 +330,24 @@ class Settings:
 
         for attr_name, override_value in output_overrides.items():
             if override_value:
-                setattr(cls, attr_name, override_value)
-                cls._ensure_directory_exists(override_value)
+                # Expand ~ and resolve to absolute path
+                expanded_path = Path(override_value).expanduser().resolve()
+                normalized_path = str(expanded_path)
+                setattr(cls, attr_name, normalized_path)
+                # Use the already-expanded path for directory creation
+                cls._ensure_directory_exists(normalized_path)
 
         if prompt_template_file:
-            cls.PROMPT_TEMPLATE_FILE = prompt_template_file
+            # Expand ~ and resolve to absolute path
+            cls.PROMPT_TEMPLATE_FILE = str(
+                Path(prompt_template_file).expanduser().resolve()
+            )
 
         if batch_template_file:
-            cls.BATCH_TEMPLATE_FILE = batch_template_file
+            # Expand ~ and resolve to absolute path
+            cls.BATCH_TEMPLATE_FILE = str(
+                Path(batch_template_file).expanduser().resolve()
+            )
 
     @classmethod
     def validate_client_config(cls, client_type: str) -> None:
