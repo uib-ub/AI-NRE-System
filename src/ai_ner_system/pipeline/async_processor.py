@@ -401,7 +401,7 @@ class AsyncProcessor:
             )
             # Convert to BatchProcessingResult format
             return BatchProcessingResult(
-                batch_id=f"fallback_batch_{batch_num}",
+                batch_id=f"batch_{batch_num}",
                 results=fallback_stats.results,
                 total_processing_time=0.0,
                 successful_count=fallback_stats.processed_records,
