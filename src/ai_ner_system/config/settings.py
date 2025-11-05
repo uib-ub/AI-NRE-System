@@ -42,6 +42,13 @@ class Settings:
         PROMPT_TEMPLATE_FILE: Path to the prompt template file.
         BATCH_TEMPLATE_FILE: Path to the batch processing template file.
         CACHE_DIR: Directory for caching LLM responses.
+        DEFAULT_BATCH_SIZE: Default number of records per batch.
+        DEFAULT_MAX_CONCURRENT_BATCHES: Maximum concurrent batch processing tasks.
+        DEFAULT_MAX_CONCURRENT_INDIVIDUAL: Maximum concurrent individual record tasks.
+        DEFAULT_FALLBACK_CONCURRENCY: Concurrency limit for fallback processing.
+        DEFAULT_CHUNK_SIZE: Records per chunk for memory management.
+        DEFAULT_MAX_WAIT_TIME: Default maximum wait time for async batch completion.
+        DEFAULT_POLL_INTERVAL: Default polling interval for async progress checks.
     """
 
     # Default values as class constants
@@ -52,6 +59,19 @@ class Settings:
     DEFAULT_PROMPT_TEMPLATE_FILE: ClassVar[str] = "prompt/prompt.txt"
     DEFAULT_BATCH_TEMPLATE_FILE: ClassVar[str] = "prompt/batch_template.txt"
     DEFAULT_CACHE_DIR: ClassVar[str] = ".cache_llm"
+
+    # Processing defaults
+    DEFAULT_BATCH_SIZE: ClassVar[int] = 5  # Records per batch
+
+    # Async processing concurrency defaults
+    DEFAULT_MAX_CONCURRENT_BATCHES: ClassVar[int] = 5
+    DEFAULT_MAX_CONCURRENT_INDIVIDUAL: ClassVar[int] = 5
+    DEFAULT_FALLBACK_CONCURRENCY: ClassVar[int] = 3
+    DEFAULT_CHUNK_SIZE: ClassVar[int] = 50
+
+    # Async processing timeout and polling defaults
+    DEFAULT_MAX_WAIT_TIME: ClassVar[float] = 86400.0  # 24 hours in seconds
+    DEFAULT_POLL_INTERVAL: ClassVar[float] = 30.0  # 30 seconds
 
     # Client configuration registry: maps client type to required config keys.
     # Each entry maps a client type to a list of (Settings attribute, init parameter) pairs.
