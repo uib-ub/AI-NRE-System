@@ -222,7 +222,7 @@ class RecordProcessor:
         start_time = time.monotonic()
         brevid = record.get("Brevid", "unknown")
         bindnr = record.get("Bindnr", "unknown")
-        record_id = self._create_record_id(bindnr, brevid)
+        record_id = self.create_record_id(bindnr, brevid)
 
         try:
             # Validate record
@@ -524,7 +524,7 @@ class RecordProcessor:
             if isinstance(result, Exception):
                 brevid = records[i].get("Brevid", "unknown")
                 bindnr = records[i].get("Bindnr", "unknown")
-                record_id = self._create_record_id(bindnr, brevid)
+                record_id = self.create_record_id(bindnr, brevid)
 
                 processed_results.append(
                     self._create_processing_result(
@@ -786,7 +786,7 @@ class RecordProcessor:
         return f"BATCH-{'-'.join(brevids)}"
 
     @staticmethod
-    def _create_record_id(bindnr: str, brevid: str) -> str:
+    def create_record_id(bindnr: str, brevid: str) -> str:
         """Create a unique record identifier from Bindnr and Brevid.
 
         Args:

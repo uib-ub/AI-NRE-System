@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, cast
 
 from ai_ner_system.config import Settings
 from ai_ner_system.processing import BatchProcessingResult, ProcessingResult
+from ai_ner_system.processing.processor import RecordProcessor
 
 from .stats import ApplicationError, AsyncProcessingStats
 
@@ -24,7 +25,6 @@ if TYPE_CHECKING:
 
     from ai_ner_system.file_io import CSVReader, OutputWriter
     from ai_ner_system.llm import BatchProgress, Client
-    from ai_ner_system.processing import RecordProcessor
 
     from .processor_protocol import ProcessorContext
 
@@ -831,8 +831,8 @@ class AsyncProcessor:
         Returns:
             A ProcessingResult instance marked as failed with formatted error message.
         """
-        # Use the same format as successful individual processing for consistency
-        record_id = f"{bindnr}_{brevid}"
+        # Use RecordProcessor's helper to ensure consistent record_id formatting
+        record_id = RecordProcessor.create_record_id(bindnr, brevid)
 
         return ProcessingResult(
             record_id=record_id,
