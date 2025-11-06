@@ -11,7 +11,7 @@ import asyncio
 import logging
 import time
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncGenerator, Callable
 from typing import Any, ClassVar, NoReturn
 
 from .batch_models import BatchProgress, BatchRequest, BatchResponse, BatchStatus
@@ -238,12 +238,12 @@ class Client(ABC):
         raise NotImplementedError(msg)
 
     # Abstract batch orchestration methods - must be implemented by concrete classes
-    def monitor_batch_progress_async(
+    async def monitor_batch_progress_async(
         self,
-        batch_num: int,
-        batch_id: str,
-        poll_interval: float | None = None,
-    ) -> AsyncIterator[BatchProgress]:
+        batch_num: int,  # noqa: ARG002 - required for subclass signature
+        batch_id: str,  # noqa: ARG002 - required for subclass signature
+        poll_interval: float | None = None,  # noqa: ARG002 - required for subclass signature
+    ) -> AsyncGenerator[BatchProgress]:
         """Yields progress updates for a batch job.
 
         Subclasses that support async batches should implement this as an
@@ -261,6 +261,9 @@ class Client(ABC):
         Raises:
             NotImplementedError: If batch processing is not supported.
         """
+        # Make this an async generator function while still raising NotImplementedError
+        if False:
+            yield  # type: ignore[unreachable]
         msg = f"{self.__class__.__name__} does not support async batch monitoring"
         raise NotImplementedError(msg)
 
