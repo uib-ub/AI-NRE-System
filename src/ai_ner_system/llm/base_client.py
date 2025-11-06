@@ -34,6 +34,13 @@ class Client(ABC):
     DEFAULT_MAX_WAIT_TIME: ClassVar[float] = 86400.0
     # 30 seconds polling default
     DEFAULT_POLL_INTERVAL: ClassVar[float] = 30.0
+    # Error response sentinels
+    ERROR_RESPONSE_SENTINELS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "Claude API call failed",
+            "Ollama API call failed",
+        }
+    )
 
     def __init__(self, model: str) -> None:
         """Initialize the client with the LLM name.
