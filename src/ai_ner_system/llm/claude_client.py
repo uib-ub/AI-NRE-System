@@ -14,7 +14,7 @@ from anthropic.types.message_create_params import MessageCreateParamsNonStreamin
 from anthropic.types.messages.batch_create_params import Request
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator
 
     from anthropic.types import Message
     from anthropic.types.messages import (
@@ -860,7 +860,7 @@ class ClaudeClient(LLMBaseClient):
         batch_num: int,
         batch_id: str,
         poll_interval: float | None = None,
-    ) -> AsyncIterator[BatchProgress]:
+    ) -> AsyncGenerator[BatchProgress]:
         """Yield progress updates for a batch job.
 
         This async generator polls the Anthropic batches API at a fixed interval and
