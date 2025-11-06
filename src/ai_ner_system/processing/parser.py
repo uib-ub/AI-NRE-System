@@ -208,7 +208,7 @@ class ResponseParser:
                 operation="parse_entities_json",
                 parse_type="entities_structure",
             )
-        # Type narrowed to list by isinstance check above
+        # Cast to list[Any] to satisfy type checker (runtime check done above)
         return cast("list[Any]", entities_data)  # type: ignore[redundant-cast]
 
     @staticmethod
