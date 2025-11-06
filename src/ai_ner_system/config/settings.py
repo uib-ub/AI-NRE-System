@@ -29,6 +29,15 @@ class Settings:
     All configuration values are class-level attributes that can be accessed
     without instantiating the class.
 
+    Attribute Pattern:
+        This class uses a two-tier attribute system:
+        - DEFAULT_* attributes: ClassVar constants that never change (e.g., DEFAULT_INPUT_FILE)
+        - Other attributes: Class-level but dynamically loaded from environment (NOT ClassVar)
+
+        The non-ClassVar attributes are shared across the application but can be updated
+        at runtime via initialize() or apply_cli_overrides(). This pattern allows both
+        compile-time defaults and runtime configuration while maintaining type safety.
+
     Attributes:
         ANTHROPIC_API_KEY: API key for Anthropic Claude service.
         OPENWEBUI_TOKEN: Authentication token for OpenWebUI.

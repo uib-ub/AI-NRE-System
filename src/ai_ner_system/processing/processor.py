@@ -720,10 +720,10 @@ class RecordProcessor:
                 cause=e,
             )
 
-        if not raw_response or raw_response.strip() in {
-            "Claude API call failed",
-            "Ollama API call failed",
-        }:
+        if (
+            not raw_response
+            or raw_response.strip() in self.llm_client.ERROR_RESPONSE_SENTINELS
+        ):
             _fail(f"LLM returned error response for {identifier}", operation="call_llm")
 
         logging.debug(
