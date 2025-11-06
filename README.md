@@ -24,23 +24,6 @@ and generate structured metadata.
 
 ## Usage
 
-### Quick Start with Example Scripts
-
-The easiest way to run the system is using the provided example scripts:
-
-```bash
-# Async batch processing with Claude (recommended for large datasets)
-./scripts/examples/run-async-batch-example.sh
-
-# Synchronous batch processing with Ollama
-./scripts/examples/run-sync-batch-example.sh
-
-# Single record processing with Ollama
-./scripts/examples/run-sync-example.sh
-```
-
-See [scripts/README.md](scripts/README.md) for more details on available scripts.
-
 ### Command Line Usage
 
 **Example 1: Claude API with async batch processing**
