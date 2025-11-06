@@ -248,11 +248,11 @@ ignore = [
     # Too many statements
     "PLR0915",
     # Exception must not use a string literal messages
-    "EM101",  
+    "EM101",
     # f-string in raise
-    "EM102",  
+    "EM102",
     # long messages outside exception class
-    "TRY003", 
+    "TRY003",
     # Prefer list over useless lambda
     "PIE807",
     # Conflicts with formatter
@@ -283,7 +283,7 @@ unfixable = []
 convention = "google"
 
 [tool.ruff.lint.isort]
-known-first-party = ["ai_ner_system"] 
+known-first-party = ["ai_ner_system"]
 section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
 
 # Black configuration
@@ -354,7 +354,7 @@ addopts = [
     "--cov-report=xml",
     "--cov-fail-under=10",  # TODO: Gradually increase to 80% as tests are added
 ]
-testpaths = ["test"]
+testpaths = ["tests"]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
