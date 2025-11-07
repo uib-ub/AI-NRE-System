@@ -189,7 +189,7 @@ class CSVReader:
             )
 
         # Strip whitespace from all values and return cleaned row
-        return {key: str(value).strip() if value else "" for key, value in row.items()}
+        return {key: str(value or "").strip() for key, value in row.items()}
 
     @staticmethod
     def _is_empty_row(row: dict[str, str]) -> bool:
