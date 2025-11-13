@@ -93,6 +93,8 @@ test = [
     "pytest-asyncio>=0.23.0",
     # Mock and fixtures
     "pytest-mock>=3.12.0",
+    # Allure reporting
+    "allure-pytest>=2.13.0",
 ]
 
 # Development tools and utilities
@@ -345,26 +347,44 @@ ignore_missing_imports = true
 # Pytest configuration
 [tool.pytest.ini_options]
 minversion = "8.0"
+pythonpath = ["src"]
+asyncio_mode = "strict"  # Use strict mode for async tests (Python 3.11+)
+asyncio_default_fixture_loop_scope = "function"
 addopts = [
+    "-ra",  # Show extra summary info for all test outcomes
+    "-v",  # Verbose output
     "--strict-config",
     "--strict-markers",
-    "--cov=ai_ner_system",
-    "--cov-report=term-missing",
-    "--cov-report=html",
-    "--cov-report=xml",
-    "--cov-fail-under=10",  # TODO: Gradually increase to 80% as tests are added
+    "--tb=short",  # Shorter traceback format
+    "--cov=src/ai_ner_system",
+    # "--cov-report=term-missing:skip-covered",
+    "--cov-report=html:htmlcov",
+    "--cov-report=xml:coverage.xml",
+    "--cov-fail-under=10",  # Will gradually increase to 85% as tests are added
+    "--cov-branch",  # Branch coverage
 ]
 testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
 markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "integration: marks tests as integration tests",
-    "unit: marks tests as unit tests",
+    "unit: Unit tests (fast, isolated component testing)",
+    "integration: Integration tests (slower, cross-component testing)",
+    "system: System/acceptance tests (slowest, end-to-end workflows)",
+    "slow: Slow-running tests that may take several seconds",
+    "asyncio: Async tests requiring asyncio event loop",
 ]
 filterwarnings = [
     "error",
     "ignore::UserWarning",
     "ignore::DeprecationWarning",
+    "ignore::pytest.PytestUnraisableExceptionWarning",
 ]
+# Log configuration for debugging tests
+log_cli = false
+log_cli_level = "INFO"
+log_cli_format = "%(asctime)s [%(levelname)8s] %(name)s: %(message)s"
+log_cli_date_format = "%H:%M:%S"
 
 # Coverage configuration
 [tool.coverage.run]
