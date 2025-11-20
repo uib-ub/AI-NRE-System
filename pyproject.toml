@@ -269,10 +269,13 @@ unfixable = []
 
 [tool.ruff.lint.per-file-ignores]
 # Test files can have additional flexibility
-"test/**/*.py" = [
-    "S101",    # Use of assert
-    "PLR2004", # Magic value used in comparison
-    "ANN",     # Missing type annotations
+"tests/**/*.py" = [
+    "S101",    # Allow pytest-style `assert` in tests
+    "PLR2004", # Permit "magic values" in comparisons
+    "ANN",     # Skip mandatory type hints in tests
+    "S105",    # Allow hardcoded dummy secrets/tokens in tests
+    "SLF001",  # Permit access to private members in tests
+    "FBT001",  # Allow boolean positional args in tests (e.g., parametrizations)
 ]
 
 # Example files don't need full documentation

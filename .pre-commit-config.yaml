@@ -21,6 +21,7 @@ repos:
           - anthropic
           - python-dotenv
           - pytest
+          - pytest-mock
         pass_filenames: false
         args: [--config-file=pyproject.toml, .]
 
