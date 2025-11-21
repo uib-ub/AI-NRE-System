@@ -39,7 +39,6 @@ def setup_test_logging() -> None:
         level=getattr(logging, level, logging.INFO),
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%H:%M:%S",
-        force=True,
     )
     # Reduce noise from external libraries
     logging.getLogger("anthropic").setLevel(logging.WARNING)
