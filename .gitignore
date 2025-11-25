@@ -208,3 +208,8 @@ output
 input
 # Package build artifacts
 src/ai_ner_system.egg-info/
+
+
+# Davia
+.davia/
+.github/prompts/davia-documentation.md

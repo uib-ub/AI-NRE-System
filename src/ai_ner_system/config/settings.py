@@ -82,6 +82,11 @@ class Settings:
     DEFAULT_MAX_WAIT_TIME: ClassVar[float] = 86400.0  # 24 hours in seconds
     DEFAULT_POLL_INTERVAL: ClassVar[float] = 30.0  # 30 seconds
 
+    # Medieval text CSV required headers
+    REQUIRED_CSV_HEADERS: ClassVar[frozenset[str]] = frozenset(
+        {"Bindnr", "Brevid", "Tekst"}
+    )
+
     # Client configuration registry: maps client type to required config keys.
     # Each entry maps a client type to a list of (Settings attribute, init parameter) pairs.
     _CLIENT_CONFIG_REGISTRY: ClassVar[ClientConfigRegistry] = {

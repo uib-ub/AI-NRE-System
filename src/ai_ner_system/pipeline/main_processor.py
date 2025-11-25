@@ -167,7 +167,10 @@ class MedievalTextProcessor:
             _fail(f"Input file does not exist: {input_file}")
 
         try:
-            reader = CSVReader(input_file, delimiter=";", encoding="utf-8")
+            # Use required headers from Settings
+            reader = CSVReader(
+                input_file, required_headers=Settings.REQUIRED_CSV_HEADERS
+            )
         except CSVError as e:
             _fail("Failed to initialize CSV reader", cause=e)
         except Exception as e:  # noqa: BLE001 — boundary: convert unknown init errors

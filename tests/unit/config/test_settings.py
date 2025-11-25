@@ -260,6 +260,27 @@ class TestSettingsInitialization:
         # Assert: actually hit the code path we intended
         mock_create.assert_called_once()
 
+    def test_initialize_with_validation_enabled(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test that validate=True triggers validation during initialization.
+
+        When a required configuration field (PROMPT_TEMPLATE_FILE) is set to empty
+        in the environment, initialization with validate=True should fail.
+        """
+        monkeypatch.chdir(tmp_path)
+
+        # Set one of the required fields to empty in environment
+        # This will cause validation to fail
+        monkeypatch.setenv("PROMPT_TEMPLATE_FILE", "")
+
+        with pytest.raises(ConfigError) as exc_info:
+            Settings.initialize(reload_env=False, create_dirs=False, validate=True)
+
+        # Verify it's a validation error about missing config
+        assert "Missing or empty required common configuration" in str(exc_info.value)
+        assert "PROMPT_TEMPLATE_FILE" in str(exc_info.value)
+
 
 @pytest.mark.usefixtures("no_dotenv")
 class TestSettingsClientConfiguration:
