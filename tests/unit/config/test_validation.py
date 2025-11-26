@@ -71,7 +71,11 @@ class TestConfigValidatorClientValidation:
         assert "Client type must be provided" in str(exc_info.value)
 
     def test_validate_for_client_missing_api_key(self, tmp_path: Path) -> None:
-        """Test validation fails when API key is missing."""
+        """Test validation fails when API key is missing.
+
+        Args:
+            tmp_path: Pytest fixture providing a temporary directory.
+        """
         # Create minimal valid file structure
         input_file = tmp_path / "input.txt"
         input_file.write_text("Test\n")
@@ -116,7 +120,11 @@ class TestConfigValidatorInputFileValidation:
     """Test input file validation."""
 
     def test_validate_input_file_exists_and_readable(self, tmp_path: Path) -> None:
-        """Test validation passes for existing, readable input file."""
+        """Test validation passes for existing, readable input file.
+
+        Args:
+            tmp_path: Pytest fixture providing a temporary directory.
+        """
         input_file = tmp_path / "test_input.txt"
         input_file.write_text("Bindnr;Brevid;Tekst\n001;Test\n")
 
@@ -138,7 +146,11 @@ class TestConfigValidatorInputFileValidation:
         assert exc_info.value.config_key == "INPUT_FILE"
 
     def test_validate_input_file_empty(self, tmp_path: Path) -> None:
-        """Test validation fails for empty input file."""
+        """Test validation fails for empty input file.
+
+        Args:
+            tmp_path: Pytest fixture providing a temporary directory.
+        """
         empty_file = tmp_path / "empty.txt"
         empty_file.touch()
 
@@ -152,7 +164,11 @@ class TestConfigValidatorInputFileValidation:
         assert exc_info.value.config_key == "INPUT_FILE"
 
     def test_validate_input_file_is_directory(self, tmp_path: Path) -> None:
-        """Test validation fails when input path is a directory."""
+        """Test validation fails when input path is a directory.
+
+        Args:
+            tmp_path: Pytest fixture providing a temporary directory.
+        """
         dir_path = tmp_path / "not_a_file"
         dir_path.mkdir()
 
@@ -170,7 +186,11 @@ class TestConfigValidatorInputFileValidation:
         reason="Permission tests unreliable on Windows",
     )
     def test_validate_input_file_not_readable(self, tmp_path: Path) -> None:
-        """Test validation fails for unreadable input file."""
+        """Test validation fails for unreadable input file.
+
+        Args:
+            tmp_path: Pytest fixture providing a temporary directory.
+        """
         unreadable_file = tmp_path / "unreadable.txt"
         unreadable_file.write_text("Test content")
         unreadable_file.chmod(0o000)  # No permissions
@@ -201,7 +221,11 @@ class TestConfigValidatorTemplateFileValidation:
     """Test template file validation."""
 
     def test_validate_template_files_exist(self, tmp_path: Path) -> None:
-        """Test validation passes for existing template files."""
+        """Test validation passes for existing template files.
+
+        Args:
+            tmp_path: Pytest fixture providing a temporary directory.
+        """
         prompt_template = tmp_path / "prompt.txt"
         prompt_template.write_text("Template: {text}")
 
@@ -241,7 +265,11 @@ class TestConfigValidatorOutputValidation:
     """Test output directory and path validation."""
 
     def test_validate_output_paths_writable(self, tmp_path: Path) -> None:
-        """Test validation passes for writable output directories."""
+        """Test validation passes for writable output directories.
+
+        Args:
+            tmp_path: Pytest fixture providing a temporary directory.
+        """
         output_dir = tmp_path / "output"
         output_dir.mkdir()
 
@@ -269,7 +297,11 @@ class TestConfigValidatorOutputValidation:
         assert exc_info.value.config_key == "OUTPUT_TEXT_FILE"
 
     def test_validate_output_path_parent_is_file(self, tmp_path: Path) -> None:
-        """Test validation fails when output path parent is a file."""
+        """Test validation fails when output path parent is a file.
+
+        Args:
+            tmp_path: Pytest fixture providing a temporary directory.
+        """
         # Create a file where directory should be
         not_a_dir = tmp_path / "not_a_directory"
         not_a_dir.write_text("I'm a file, not a directory")
@@ -290,7 +322,11 @@ class TestConfigValidatorOutputValidation:
         reason="Permission tests unreliable on Windows",
     )
     def test_validate_output_directory_not_writable(self, tmp_path: Path) -> None:
-        """Test validation fails for non-writable output directory."""
+        """Test validation fails for non-writable output directory.
+
+        Args:
+            tmp_path: Pytest fixture providing a temporary directory.
+        """
         readonly_dir = tmp_path / "readonly"
         readonly_dir.mkdir()
         readonly_dir.chmod(0o444)  # Read-only
@@ -317,7 +353,11 @@ class TestConfigValidatorFilePathValidation:
 
     @pytest.mark.usefixtures("mock_env_claude")
     def test_validate_file_paths_success(self, tmp_path: Path) -> None:
-        """Test successful file path validation."""
+        """Test successful file path validation.
+
+        Args:
+            tmp_path: Pytest fixture providing a temporary directory.
+        """
         # Create input file
         input_file = tmp_path / "input.txt"
         input_file.write_text("Bindnr;Brevid;Tekst\n001;Test\n")
@@ -360,7 +400,11 @@ class TestConfigValidatorComprehensiveValidation:
 
     @pytest.mark.usefixtures("mock_env_claude")
     def test_validate_all_success(self, tmp_path: Path) -> None:
-        """Test successful comprehensive validation."""
+        """Test successful comprehensive validation.
+
+        Args:
+            tmp_path: Pytest fixture providing a temporary directory.
+        """
         # Set up complete valid configuration
         input_file = tmp_path / "input.txt"
         input_file.write_text("Bindnr;Brevid;Tekst\n001;Test\n")
@@ -385,7 +429,11 @@ class TestConfigValidatorComprehensiveValidation:
         ConfigValidator.validate_all(client_type="claude")
 
     def test_validate_all_without_client_type(self, tmp_path: Path) -> None:
-        """Test validation without client type only validates paths."""
+        """Test validation without client type only validates paths.
+
+        Args:
+            tmp_path: Pytest fixture providing a temporary directory.
+        """
         input_file = tmp_path / "input.txt"
         input_file.write_text("Test")
 
@@ -403,7 +451,11 @@ class TestConfigValidatorComprehensiveValidation:
 
     @pytest.mark.usefixtures("mock_env_claude")
     def test_is_valid_returns_true(self, tmp_path: Path) -> None:
-        """Test is_valid returns True for valid configuration."""
+        """Test is_valid returns True for valid configuration.
+
+        Args:
+            tmp_path: Pytest fixture providing a temporary directory.
+        """
         # Set up valid configuration
         input_file = tmp_path / "input.txt"
         input_file.write_text("Test\n")
@@ -435,7 +487,11 @@ class TestConfigValidatorComprehensiveValidation:
         assert ConfigValidator.is_valid(client_type="claude") is False
 
     def test_is_valid_silent_mode(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Test is_valid in silent mode suppresses warnings."""
+        """Test is_valid in silent mode suppresses warnings.
+
+        Args:
+            caplog: Pytest fixture for capturing log output.
+        """
         # Capture only WARNING level (silent mode shouldn't produce warnings)
         caplog.set_level(logging.WARNING)
 
@@ -451,7 +507,11 @@ class TestConfigValidatorComprehensiveValidation:
         assert len(warning_records) == 0
 
     def test_is_valid_non_silent_mode(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Test is_valid in non-silent mode logs warnings."""
+        """Test is_valid in non-silent mode logs warnings.
+
+        Args:
+            caplog: Pytest fixture for capturing log output.
+        """
         caplog.set_level(logging.WARNING)
 
         Settings.initialize(reload_env=False, create_dirs=False)
@@ -468,7 +528,11 @@ class TestConfigValidatorHelperMethods:
     """Test ConfigValidator helper methods and edge cases."""
 
     def test_validate_file_exists_and_readable_success(self, tmp_path: Path) -> None:
-        """Test file existence and readability check passes."""
+        """Test file existence and readability check passes.
+
+        Args:
+            tmp_path: Pytest fixture providing a temporary directory.
+        """
         test_file = tmp_path / "test.txt"
         test_file.write_text("Content")
 
@@ -480,7 +544,11 @@ class TestConfigValidatorHelperMethods:
         )
 
     def test_validate_file_exists_and_readable_not_exists(self, tmp_path: Path) -> None:
-        """Test file validation fails for non-existent file."""
+        """Test file validation fails for non-existent file.
+
+        Args:
+            tmp_path: Pytest fixture providing a temporary directory.
+        """
         nonexistent = tmp_path / "nonexistent.txt"
 
         with pytest.raises(FileValidationError) as exc_info:
@@ -494,7 +562,11 @@ class TestConfigValidatorHelperMethods:
         assert exc_info.value.config_key == "TEST_KEY"
 
     def test_validate_output_directory_writable_success(self, tmp_path: Path) -> None:
-        """Test output directory writability check passes."""
+        """Test output directory writability check passes.
+
+        Args:
+            tmp_path: Pytest fixture providing a temporary directory.
+        """
         output_dir = tmp_path / "output"
         output_dir.mkdir()
 

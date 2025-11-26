@@ -38,7 +38,11 @@ class TestCSVReader:
         self,
         tmp_input_file: Path,
     ) -> None:
-        """Test initializing CSVReader with a valid CSV file."""
+        """Test initializing CSVReader with a valid CSV file.
+
+        Args:
+            tmp_input_file: A temporary CSV file path fixture defined in conftest.py.
+        """
         csv_file: Path = tmp_input_file
 
         reader = CSVReader(file_path=str(csv_file))
@@ -57,7 +61,11 @@ class TestCSVReader:
         assert "CSV file does not exist" in str(exc_info.value)
 
     def test_init_file_not_file(self, tmp_path: Path) -> None:
-        """Test initializing CSVReader with a path that is not a file."""
+        """Test initializing CSVReader with a path that is not a file.
+
+        Args:
+            tmp_path: Pytest fixture providing a temporary directory.
+        """
         dir_path: Path = tmp_path / "a_directory"
         dir_path.mkdir()
 
@@ -67,7 +75,11 @@ class TestCSVReader:
         assert "is not a file" in str(exc_info.value)
 
     def test_init_file_empty(self, tmp_path: Path) -> None:
-        """Test initializing CSVReader with an empty file."""
+        """Test initializing CSVReader with an empty file.
+
+        Args:
+            tmp_path: Pytest fixture providing a temporary directory.
+        """
         empty_file: Path = tmp_path / "empty.csv"
         empty_file.touch()
 
@@ -78,7 +90,11 @@ class TestCSVReader:
         assert "CSV file is empty" in str(exc_info.value)
 
     def test_init_with_custom_delimiter_and_encoding(self, tmp_path: Path) -> None:
-        """Test CSVReader with custom delimiter and encoding."""
+        """Test CSVReader with custom delimiter and encoding.
+
+        Args:
+            tmp_path: Pytest fixture providing a temporary directory.
+        """
         csv_content = "col1,col2,col3\nvalue1,value2,value3\n"
         csv_file = tmp_path / "comma_delimited.csv"
         csv_file.write_text(csv_content, encoding="utf-8")
@@ -94,6 +110,9 @@ class TestCSVReader:
 
         When required_headers is None, CSVReader should accept any headers
         and successfully read the records.
+
+        Args:
+            tmp_path: Pytest fixture providing a temporary directory.
         """
         csv_content = "col1;col2;col3\nvalue1;value2;value3\nvalue4;value5;value6\n"
         csv_file: Path = tmp_path / "generic_headers.csv"
@@ -110,7 +129,11 @@ class TestCSVReader:
         assert records[0]["col3"] == "value3"
 
     def test_stream_records_missing_required_headers(self, tmp_path: Path) -> None:
-        """Test that CSVReader raises error when required headers are missing."""
+        """Test that CSVReader raises error when required headers are missing.
+
+        Args:
+            tmp_path: Pytest fixture providing a temporary directory.
+        """
         # CSV with wrong headers
         csv_content = "col1;col2;col3\nvalue1;value2;value3\n"
         csv_file: Path = tmp_path / "wrong_headers.csv"
@@ -132,7 +155,11 @@ class TestCSVReader:
         assert "Tekst" in str(exc_info.value)
 
     def test_stream_records_with_expected_headers(self, tmp_input_file: Path) -> None:
-        """Test streaming records from a CSV with expected headers."""
+        """Test streaming records from a CSV with expected headers.
+
+        Args:
+            tmp_input_file: A temporary CSV file path fixture defined in conftest.py.
+        """
         required_headers = frozenset({"Bindnr", "Brevid", "Tekst"})
         reader = CSVReader(
             file_path=str(tmp_input_file), required_headers=required_headers
@@ -147,7 +174,11 @@ class TestCSVReader:
         assert all("Tekst" in record for record in records)
 
     def test_stream_records_with_extra_headers(self, tmp_path: Path) -> None:
-        """Test that CSVReader accepts files with more headers than required."""
+        """Test that CSVReader accepts files with more headers than required.
+
+        Args:
+            tmp_path: Pytest fixture providing a temporary directory.
+        """
         csv_content = "Bindnr;Brevid;Tekst;Extra1;Extra2\n1;001;Text;foo;bar\n"
         csv_file = tmp_path / "extra_headers.csv"
         csv_file.write_text(csv_content, encoding="utf-8")
@@ -168,6 +199,9 @@ class TestCSVReader:
         When a row has more values than headers, csv.DictReader assigns
         extra values to None key. This is expected behavior but worth testing
         as it's a common data quality issue.
+
+        Args:
+            tmp_path: Pytest fixture providing a temporary directory.
         """
         csv_content = "Bindnr;Brevid;Tekst\n1;001;Text;extra_value\n"
         csv_file = tmp_path / "extra_values.csv"
@@ -197,7 +231,13 @@ class TestCSVReader:
         caplog: pytest.LogCaptureFixture,
         csv_content: str,
     ) -> None:
-        """Test that CSVReader skips empty rows with a warning."""
+        """Test that CSVReader skips empty rows with a warning.
+
+        Args:
+            tmp_path: Pytest fixture providing a temporary directory.
+            caplog: Pytest fixture to capture log output.
+            csv_content: CSV content string with an empty row.
+        """
         csv_file: Path = tmp_path / "empty_line.csv"
         csv_file.write_text(csv_content, encoding="utf-8")
 
@@ -219,7 +259,12 @@ class TestCSVReader:
     def test_stream_records_skip_multiple_empty_rows(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """Test that CSVReader skips multiple consecutive empty rows."""
+        """Test that CSVReader skips multiple consecutive empty rows.
+
+        Args:
+            tmp_path: Pytest fixture providing a temporary directory.
+            caplog: Pytest fixture to capture log output.
+        """
         csv_content = "Bindnr;Brevid;Tekst\n;;\n\t\n  \n1;001;Text\n"
         csv_file = tmp_path / "multiple_empty.csv"
         csv_file.write_text(csv_content, encoding="utf-8")
@@ -237,7 +282,12 @@ class TestCSVReader:
     def test_stream_records_handles_validation_error(
         self, tmp_path: Path, mocker: MockerFixture
     ) -> None:
-        """Test that validation errors are wrapped in CSVError with context."""
+        """Test that validation errors are wrapped in CSVError with context.
+
+        Args:
+            tmp_path: Pytest fixture providing a temporary directory.
+            mocker: Pytest fixture for mocking.
+        """
         csv_content = "Bindnr;Brevid;Tekst\n1;001;Some text\n2;002;Another text\n"
         csv_file: Path = tmp_path / "validation_error.csv"
         csv_file.write_text(csv_content, encoding="utf-8")
@@ -266,7 +316,11 @@ class TestCSVReader:
         assert "Simulated validation error" in str(exc_info.value)
 
     def test_stream_records_handles_unicode_decode_error(self, tmp_path: Path) -> None:
-        """Test that UnicodeDecodeError is wrapped in EncodingError."""
+        """Test that UnicodeDecodeError is wrapped in EncodingError.
+
+        Args:
+            tmp_path: Pytest fixture providing a temporary directory.
+        """
         csv_file: Path = tmp_path / "invalid_encoding.csv"
         # Create a file with latin-1 encoding
         csv_file.write_bytes("Bindnr;Brevid;Tekst\n1;001;Åæø\n".encode("latin-1"))
@@ -282,7 +336,11 @@ class TestCSVReader:
         assert "utf-8" in str(exc_info.value)
 
     def test_stream_records_handles_os_error(self, tmp_path: Path) -> None:
-        """Test that OSError during file read is wrapped in CSVError."""
+        """Test that OSError during file read is wrapped in CSVError.
+
+        Args:
+            tmp_path: Pytest fixture providing a temporary directory.
+        """
         csv_file: Path = tmp_path / "permission_denied.csv"
         csv_file.write_text("Bindnr;Brevid;Tekst\n1;001;Some text\n", encoding="utf-8")
 
@@ -301,7 +359,11 @@ class TestCSVReader:
             csv_file.chmod(0o755)
 
     def test_stream_records_handles_csv_error(self, tmp_path: Path) -> None:
-        """Test that csv.Error during parsing is wrapped in CSVError."""
+        """Test that csv.Error during parsing is wrapped in CSVError.
+
+        Args:
+            tmp_path: Pytest fixture providing a temporary directory.
+        """
         csv_file: Path = tmp_path / "field_too_large.csv"
         # Create CSV with a field that exceeds the field size limit
         large_field = "x" * 200000  # 200KB field
@@ -325,7 +387,11 @@ class TestCSVReader:
             csv.field_size_limit(original_limit)
 
     def test_stream_records_trims_whitespace(self, tmp_path: Path) -> None:
-        """Test that CSVReader trims whitespace from values."""
+        """Test that CSVReader trims whitespace from values.
+
+        Args:
+            tmp_path: Pytest fixture providing a temporary directory.
+        """
         csv_content = "Bindnr;Brevid;Tekst\n  1  ;  001  ;  Some text  \n"
         csv_file = tmp_path / "whitespace.csv"
         csv_file.write_text(csv_content, encoding="utf-8")
