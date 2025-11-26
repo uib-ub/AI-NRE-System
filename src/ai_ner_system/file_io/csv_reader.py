@@ -105,7 +105,9 @@ class CSVReader:
 
         try:
             with self.file_path.open(encoding=self.encoding, newline="") as file:
-                reader = csv.DictReader(file, delimiter=self.delimiter)
+                reader = csv.DictReader(
+                    file, delimiter=self.delimiter, restval=""
+                )  # make sure missing values are empty strings
 
                 # Store headers (csv.DictReader always uses first row as headers)
                 self._headers = list(reader.fieldnames) if reader.fieldnames else []
@@ -128,7 +130,7 @@ class CSVReader:
                             continue
 
                         # Validate row data
-                        validated_row = self._validate_row(row, row_number)
+                        validated_row = self._validate_row(row)
                         record_count += 1
                         yield validated_row
 
@@ -169,28 +171,15 @@ class CSVReader:
                 file_path=str(self.file_path),
             ) from e
 
-    def _validate_row(self, row: dict[str, str], row_number: int) -> dict[str, str]:
+    def _validate_row(self, row: dict[str, str]) -> dict[str, str]:
         """Validate and clean a CSV row.
 
         Args:
             row: Dictionary representing a CSV row.
-            row_number: Line number of the row.
 
         Returns:
             Validated and cleaned row dictionary.
-
-        Raises:
-            CSVError: If row validation fails.
         """
-        # Check for completely empty row (handled separately)
-        if self._is_empty_row(row):
-            msg = f"Empty row encountered at line {row_number}"
-            raise CSVError(
-                msg,
-                file_path=str(self.file_path),
-                line_number=row_number,
-            )
-
         # Strip whitespace from all values and return cleaned row
         return {key: str(value).strip() if value else "" for key, value in row.items()}
 

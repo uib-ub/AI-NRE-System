@@ -20,6 +20,7 @@ from ai_ner_system.file_io.exceptions import CSVError, FileValidationError
 if TYPE_CHECKING:
     from pathlib import Path
 
+
 log = logging.getLogger(__name__)
 
 
@@ -125,3 +126,35 @@ class TestCSVReader:
         assert all("Bindnr" in record for record in records)
         assert all("Brevid" in record for record in records)
         assert all("Tekst" in record for record in records)
+
+    @pytest.mark.parametrize(
+        ("csv_content"),
+        [
+            "Bindnr;Brevid;Tekst\n\t\n1;001;Some text\n",
+            "Bindnr;Brevid;Tekst\n;;\n1;001;Some text\n",
+        ],
+    )
+    def test_stream_records_skip_empty_row(
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+        csv_content: str,
+    ) -> None:
+        """Test that CSVReader skips empty rows with a warning."""
+        csv_file: Path = tmp_path / "empty_line.csv"
+        csv_file.write_text(csv_content, encoding="utf-8")
+
+        reader = CSVReader(file_path=str(csv_file))  # with restval="" in your CSVReader
+
+        with caplog.at_level(logging.WARNING):
+            rows = list(reader.stream_records())
+
+        for record in rows:
+            log.debug("Record: %s", record)
+
+        assert len(rows) == 1
+        assert rows == [{"Bindnr": "1", "Brevid": "001", "Tekst": "Some text"}]
+        # confirm a warning was logged about skipping the empty row
+        assert any(
+            "Skipping empty row at line 2" in rec.message for rec in caplog.records
+        )
