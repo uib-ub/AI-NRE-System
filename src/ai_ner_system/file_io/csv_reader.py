@@ -131,6 +131,7 @@ class CSVReader:
 
                         # Validate row data
                         validated_row = self._validate_row(row)
+                        logging.debug("Validated row %d: %s", row_number, validated_row)
                         record_count += 1
                         yield validated_row
 
