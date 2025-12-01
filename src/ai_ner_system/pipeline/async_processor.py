@@ -252,7 +252,7 @@ class AsyncProcessor:
                 # Process batch when it reaches the specified size, eg: 10, 100
                 if len(batch_records) >= self.args.batch_size:
                     batch_num += 1  # batch_num starts from 1
-                    # Create and start coroutine task with batch number tracking
+                    # Create and start coroutine task (now running in background) with batch number tracking,
                     batch_tasks[batch_num] = asyncio.create_task(
                         self._process_batch_with_order_async(
                             batch_records.copy(),
@@ -265,8 +265,8 @@ class AsyncProcessor:
                     # Clear batch records after processing a batch
                     batch_records.clear()
 
-                    # Limit concurrent batch processing tasks by
-                    # keep up max_concurrent_batches (5 as default) tasks running at any time
+                    # Limit concurrent batch processing tasks by keeping up
+                    # max_concurrent_batches (5 as default) tasks running at any time
                     if len(batch_tasks) >= max_concurrent_batches:
                         # Wait for the OLDEST(smallest batch_num) batch to complete (maintain order)
                         oldest_batch_num = min(batch_tasks.keys())
@@ -294,8 +294,9 @@ class AsyncProcessor:
                 )
 
             # Process any remaining batch tasks in ORDER
-            for batch_num in sorted(batch_tasks.keys()):
-                batch_result = await batch_tasks[batch_num]
+            # Since dict preserves insertion order (Python 3.7+), so no need to sort
+            for batch_num, task in batch_tasks.items():
+                batch_result = await task
                 # Add results to stats in order
                 await self._add_batch_results_in_order(stats, batch_result, batch_num)
 
