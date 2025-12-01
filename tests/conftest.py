@@ -173,6 +173,54 @@ def mock_env_ollama(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
     return env_vars
 
 
+@pytest.fixture
+def sample_header() -> str:
+    """Provide sample output header for testing output writers.
+
+    Returns:
+        Standard CSV header string.
+    """
+    return "Bindnr;Brevid;Tekst"
+
+
+@pytest.fixture
+def sample_annotated_lines() -> list[str]:
+    """Provide sample annotated text lines for testing output writers.
+
+    Returns:
+        List of annotated text records with medieval text.
+    """
+    return [
+        "1;601;Ollum monnum þæim sæm þetta bref sea æder høyra sændir < Olauer;Person Name;N/A;1;601 >",
+        "1;602;Ollom monnom þæim sæm þetta bref sea æder høyra sænda < Halbiorn Biornsson;Person Name;N/A;1;602 >",
+        "1;603;Ollom monnom thæim sæm thetta bref sæ ædr høyra sendr < Sandr;Person Name;N/A;1;603 >",
+    ]
+
+
+@pytest.fixture
+def sample_metadata_header() -> str:
+    """Provide sample metadata header for testing output writers.
+
+    Returns:
+        Metadata CSV header string.
+    """
+    return "Proper Noun;Type of Proper Noun;Preposition;Order of Occurrence in Doc;Brevid;Status/Occupation/Description;Gender;Language"
+
+
+@pytest.fixture
+def sample_metadata_lines() -> list[str]:
+    """Provide sample metadata lines for testing output writers.
+
+    Returns:
+        List of metadata records.
+    """
+    return [
+        "Olauer;Person Name;N/A;1;601;Abbot;Male;non",
+        "Olafsklaustre;Place Name;j;2;601;Monastery;N/A;non",
+        "Tunsbergi;Place Name;j;3;601;Town/City;N/A;non",
+    ]
+
+
 def pytest_configure(config: pytest.Config) -> None:
     """Configure pytest with custom markers and options.
 
