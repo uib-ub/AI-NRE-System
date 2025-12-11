@@ -221,6 +221,28 @@ def sample_metadata_lines() -> list[str]:
     ]
 
 
+@pytest.fixture
+def single_template_file(tmp_path: Path) -> Path:
+    """Create a simple single-record template file."""
+    template = tmp_path / "single_template.txt"
+    template.write_text(
+        "Brevid: {brevid}\nText: {text}",
+        encoding="utf-8",
+    )
+    return template
+
+
+@pytest.fixture
+def batch_template_file(tmp_path: Path) -> Path:
+    """Create a simple batch template file."""
+    template = tmp_path / "batch_template.txt"
+    template.write_text(
+        "Processing {num_records} records:\n{batch_content}",
+        encoding="utf-8",
+    )
+    return template
+
+
 def pytest_configure(config: pytest.Config) -> None:
     """Configure pytest with custom markers and options.
 

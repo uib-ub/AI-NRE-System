@@ -353,4 +353,6 @@ class GenericPromptBuilder(PromptBuilder):
                 f'RECORD {i}:\nBrevid: {record["brevid"]}\nText: """{record["text"]}"""'
             )
             record_sections.append(section)
-        return "\n\n".join(record_sections)
+        return "\n\n".join(
+            record_sections
+        )  # create an empty line between records by '\n'
