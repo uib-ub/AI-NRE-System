@@ -359,6 +359,25 @@ class TestGenericPromptBuilder:
 
         log.debug("Build prompt error: %s", exc_info.value)
 
+    def test_build_single_record_whitespace_only_brevid(
+        self,
+        single_template_file: Path,
+    ) -> None:
+        """Test building single-record prompt raises error when brevid is whitespace only.
+
+        Args:
+            single_template_file: fixture providing a simple single-record template file.
+        """
+        builder = GenericPromptBuilder(single_template_file)
+        record = {self.SRC_KEY_BREVID: "   \n\t  ", self.SRC_KEY_TEXT: "Valid text"}
+
+        with pytest.raises(
+            ValueError, match=r"(?i)brevid must be a non-empty string"
+        ) as exc_info:
+            builder.build(record)
+
+        log.debug("Build prompt error: %s", exc_info.value)
+
     def test_build_single_record_empty_text(
         self,
         single_template_file: Path,
@@ -482,6 +501,27 @@ class TestGenericPromptBuilder:
         log.debug("Batch prompt build error: %s", exc_info.value)
 
         assert "text must be a non-empty string" in str(exc_info.value).lower()
+        assert "validation failed" in str(exc_info.value).lower()
+
+    def test_build_batch_prompt_invalid_record_first_position(
+        self,
+        batch_template_file: Path,
+    ) -> None:
+        """Test building batch with invalid record at first position."""
+        builder = GenericPromptBuilder(batch_template_file)
+        records = [
+            {self.SRC_KEY_BREVID: ""},  # Invalid first
+            {self.SRC_KEY_BREVID: "002", self.SRC_KEY_TEXT: "Valid"},
+        ]
+
+        with pytest.raises(
+            PromptBuildError, match=r"(?i)validation failed"
+        ) as exc_info:
+            builder.build(records)
+
+        log.debug("Batch prompt build error: %s", exc_info.value)
+
+        assert "brevid must be a non-empty string" in str(exc_info.value).lower()
         assert "validation failed" in str(exc_info.value).lower()
 
     def test_build_batch_prompt_with_unicode(
