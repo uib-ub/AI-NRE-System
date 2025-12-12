@@ -443,6 +443,8 @@ class TestConfigValidatorComprehensiveValidation:
         Settings.initialize(reload_env=False, create_dirs=False)
         Settings.INPUT_FILE = str(input_file)
         Settings.OUTPUT_TEXT_FILE = str(output_dir / "text.txt")
+        Settings.OUTPUT_TABLE_FILE = str(output_dir / "table.txt")
+        Settings.OUTPUT_STATS_FILE = str(output_dir / "stats.txt")
         Settings.PROMPT_TEMPLATE_FILE = ""
         Settings.BATCH_TEMPLATE_FILE = ""
 
