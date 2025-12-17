@@ -110,6 +110,8 @@ class APIError(LLMClientError):
             parts.append(f"Status: {self.status_code}")
         if self.request_id:
             parts.append(f"Request ID: {self.request_id}")
+        if self.response_text:
+            parts.append(f"Response: {self.response_text}")
         return " | ".join(parts)
 
 
@@ -290,6 +292,7 @@ class BatchProcessingError(LLMClientError):
         return " | ".join(parts)
 
 
+# TODO: LLMValidationError is not used anywhere in the code, consider removing it
 class LLMValidationError(LLMClientError):
     """Exception for request validation failures.
 
