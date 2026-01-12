@@ -357,7 +357,7 @@ class Client(ABC):
                     client_type=self.client_type,
                     operation="batch_waiting",
                     batch_id=batch_id,
-                    timeout_seconds=int(max_wait_time),
+                    timeout_seconds=max_wait_time,
                 )
         # Fallback status check; if monitor exits without ENDED, query once more.
         return await self.get_batch_status_async(batch_id)
