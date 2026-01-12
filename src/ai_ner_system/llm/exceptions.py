@@ -228,7 +228,7 @@ class BatchTimeoutError(LLMClientError):
         client_type: str | None = None,
         operation: str | None = None,
         batch_id: str | None = None,
-        timeout_seconds: int | None = None,
+        timeout_seconds: float | None = None,
     ) -> None:
         """Initialize BatchTimeoutError with timeout context.
 
