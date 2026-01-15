@@ -30,7 +30,7 @@ class OllamaClient(LLMBaseClient):
         token: str,
         model: str,
         *,
-        timeout: int = 10800,  # 3 hours default
+        timeout: float = 10800.0,  # 3 hours default
         temperature: float = 0.0,
     ) -> None:
         """Initialize Ollama client.
@@ -39,7 +39,7 @@ class OllamaClient(LLMBaseClient):
             endpoint: OpenWebUI endpoint URL.
             token: Authentication token for OpenWebUI.
             model: Ollama model to use.
-            timeout: Request timeout in seconds, default 10800 seconds (3 hours).
+            timeout: Request timeout in seconds, default 10800.0 seconds (3 hours).
             temperature: Response randomness (0.0 = deterministic).
 
         Raises:
@@ -53,7 +53,7 @@ class OllamaClient(LLMBaseClient):
             raise ValueError("Token must be provided for OllamaClient.")
         if not model:
             raise ValueError("Model must be provided for OllamaClient.")
-        if timeout <= 0:
+        if timeout <= 0.0:
             raise ValueError("timeout must be > 0.")
         if not (0.0 <= temperature <= 1.0):
             raise ValueError("temperature must be in [0.0, 1.0].")
@@ -68,7 +68,7 @@ class OllamaClient(LLMBaseClient):
         self.temperature = temperature
 
         logging.info(
-            "Ollama Client initialized with model=%s, endpoint=%s, timeout=%ds",
+            "Ollama Client initialized with model=%s, endpoint=%s, timeout=%.1fs",
             model,
             self.endpoint,
             self.timeout,
