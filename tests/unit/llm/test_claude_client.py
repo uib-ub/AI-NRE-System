@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from collections.abc import Generator
 
 from ai_ner_system.llm.claude_client import ClaudeClient
-from ai_ner_system.llm.exceptions import LLMClientError
+from ai_ner_system.llm.exceptions import AuthenticationError, LLMClientError
 
 log = logging.getLogger(__name__)
 
@@ -186,3 +186,142 @@ class TestClaudeClientInit:
                 model=TEST_MODEL,
             )
         log.debug("LLMClientError raised as expected: %s", exc_info.value)
+
+
+# =============================================================================
+# TestClaudeClientProperties
+# =============================================================================
+class TestClaudeClientProperties:
+    """Tests for ClaudeClient properties."""
+
+    def test_client_type(self, claude_client: ClaudeClient) -> None:
+        """Test client_type return 'claude'."""
+        assert claude_client.client_type == "claude"
+
+    def test_supports_async_batch_true(self, claude_client: ClaudeClient) -> None:
+        """Test supports_async_batch returns True."""
+        assert claude_client.supports_async_batch() is True
+
+
+# =============================================================================
+# TestClaudeClientHelpers
+# =============================================================================
+class TestClaudeClientHelpers:
+    """Tests for ClaudeClient helper methods."""
+
+    def test_count_tokens(
+        self,
+        claude_client: ClaudeClient,
+    ) -> None:
+        """Test _count_tokens returns token count."""
+        prompt = "This is a test prompt."
+        expected_token_count = 5  # Based on mock tiktoken encoder in fixture
+
+        token_count = claude_client._count_tokens(prompt)  # pyright: ignore[reportPrivateUsage]
+        log.debug("Token count for prompt '%s': %d", prompt, token_count)
+        assert token_count == expected_token_count
+
+    def test_count_tokens_returns_zero_on_error(
+        self,
+        mock_anthropic_clients: dict[str, MagicMock],
+    ) -> None:
+        """Test _count_tokens returns 0 when tokenizer fails."""
+        mock_anthropic_clients["encoder"].encode.side_effect = RuntimeError("Failed")
+        client = ClaudeClient(
+            api_key=TEST_API_KEY,
+            model=TEST_MODEL,
+        )
+
+        prompt = "This is a test prompt."
+        token_count = client._count_tokens(prompt)  # pyright: ignore[reportPrivateUsage]
+        assert token_count == 0
+
+    def test_system_message(self, claude_client: ClaudeClient) -> None:
+        """Test _system_message returns expected system prompt."""
+        message = claude_client._system_message()  # pyright: ignore[reportPrivateUsage]
+        log.debug("System message: %s", message)
+        assert "medieval" in message.lower()
+        assert "proper nouns" in message.lower()
+
+    @pytest.mark.parametrize(
+        ("prompt", "match_pattern"),
+        [
+            ("", r"(?i)prompt must not be empty"),
+            ("   ", r"(?i)prompt must not be empty"),
+            ("\n\t", r"(?i)prompt must not be empty"),
+        ],
+    )
+    def test_validate_prompt_raises_for_empty(
+        self,
+        claude_client: ClaudeClient,
+        prompt: str,
+        match_pattern: str,
+    ) -> None:
+        """Test _validate_prompt raises ValueError for empty prompts."""
+        with pytest.raises(ValueError, match=match_pattern) as exc_info:
+            claude_client._validate_prompt(prompt)  # pyright: ignore[reportPrivateUsage]
+
+        log.debug("ValueError raised as expected: %s", exc_info.value)
+
+    def test_message_payload_structure(
+        self,
+        claude_client: ClaudeClient,
+    ) -> None:
+        """Test _message_payload returns correct payload structure."""
+        payload = claude_client._message_payload("Test prompt")  # pyright: ignore[reportPrivateUsage]
+
+        log.debug("Message payload: %s", payload)
+
+        assert payload["model"] == TEST_MODEL
+        assert payload["messages"] == [{"role": "user", "content": "Test prompt"}]
+        assert payload["max_tokens"] == ClaudeClient.MAX_ALLOWED_TOKENS
+        assert payload["temperature"] == ClaudeClient.DEFAULT_TEMPERATURE
+        assert payload["top_p"] == 1.0
+        assert payload["top_k"] == 1
+        assert payload["stream"] is False
+        assert "system" in payload
+
+    def test_message_payload_with_overrides(
+        self,
+        claude_client: ClaudeClient,
+    ) -> None:
+        """Test _message_payload accepts max_tokens and temperature overrides."""
+        custom_max_tokens = 5000
+        custom_temperature = 0.3
+
+        payload = claude_client._message_payload(  # pyright: ignore[reportPrivateUsage]
+            "Test prompt",
+            max_tokens=custom_max_tokens,
+            temperature=custom_temperature,
+        )
+
+        log.debug("Message payload with overrides: %s", payload)
+
+        assert payload["max_tokens"] == custom_max_tokens
+        assert payload["temperature"] == custom_temperature
+
+    def test_handle_auth_error(
+        self,
+        claude_client: ClaudeClient,
+    ) -> None:
+        """Test _handle_auth_error returns AuthenticationError."""
+        exc = Exception("Invalid API key")
+        result = claude_client._handle_auth_error(exc, operation="test_op")  # pyright: ignore[reportPrivateUsage]
+
+        assert isinstance(result, AuthenticationError)
+        assert "authentication failed" in str(result).lower()
+        assert result.client_type == "claude"
+        assert result.operation == "test_op"
+
+    def test_handle_rate_limit_error(
+        self,
+        claude_client: ClaudeClient,
+    ) -> None:
+        """Test _handle_rate_limit_error returns RateLimitError."""
+        exc = Exception("Rate limit exceeded")
+        result = claude_client._handle_rate_limit_error(exc, operation="test_op")  # pyright: ignore[reportPrivateUsage]
+
+        assert isinstance(result, LLMClientError)
+        assert "rate limit exceeded" in str(result).lower()
+        assert result.client_type == "claude"
+        assert result.operation == "test_op"
