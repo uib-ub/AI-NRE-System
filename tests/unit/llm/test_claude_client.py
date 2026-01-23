@@ -11,13 +11,12 @@ Tests cover:
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
-from unittest.mock import MagicMock, patch
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
+    from pytest_mock import MockerFixture
 
 from ai_ner_system.llm.claude_client import ClaudeClient
 from ai_ner_system.llm.exceptions import AuthenticationError, LLMClientError
@@ -33,28 +32,29 @@ TEST_MODEL = "claude-sonnet-4-20240307"
 # Fixtures
 # =============================================================================
 @pytest.fixture
-def mock_anthropic_clients() -> Generator[dict[str, MagicMock]]:
+def mock_anthropic_clients(mocker: MockerFixture) -> dict[str, Any]:
     """Create mock for both Anthropic and AsyncAnthropic clients."""
-    with (
-        patch("ai_ner_system.llm.claude_client.Anthropic") as mock_anthropic,
-        patch("ai_ner_system.llm.claude_client.AsyncAnthropic") as mock_async_anthropic,
-        patch("ai_ner_system.llm.claude_client.tiktoken.get_encoding") as mock_tiktoken,
-    ):
-        # Configure tiktoken mock
-        mock_encoder = MagicMock()
-        mock_encoder.encode.return_value = [1, 2, 3, 4, 5]  # 5 tokens
-        mock_tiktoken.return_value = mock_encoder
+    mock_sync = mocker.patch("ai_ner_system.llm.claude_client.Anthropic")
+    mock_async = mocker.patch("ai_ner_system.llm.claude_client.AsyncAnthropic")
+    mock_tiktoken = mocker.patch(
+        "ai_ner_system.llm.claude_client.tiktoken.get_encoding"
+    )
 
-        yield {
-            "anthropic_client": mock_anthropic,
-            "async_anthropic_client": mock_async_anthropic,
-            "tiktoken": mock_tiktoken,
-            "encoder": mock_encoder,
-        }
+    # Configure tiktoken mock
+    mock_encoder = mocker.MagicMock()
+    mock_encoder.encode.return_value = [1, 2, 3, 4, 5]  # 5 tokens
+    mock_tiktoken.return_value = mock_encoder
+
+    return {
+        "sync_client": mock_sync,
+        "async_client": mock_async,
+        "tiktoken": mock_tiktoken,
+        "encoder": mock_encoder,
+    }
 
 
 @pytest.fixture
-def claude_client(mock_anthropic_clients: dict[str, MagicMock]) -> ClaudeClient:  # noqa: ARG001 silences "unused argument" warning
+def claude_client(mock_anthropic_clients: dict[str, Any]) -> ClaudeClient:  # noqa: ARG001 silences "unused argument" warning
     """Create a ClaudeClient instance with mocked dependencies."""
     return ClaudeClient(
         api_key=TEST_API_KEY,
@@ -69,7 +69,7 @@ class TestClaudeClientInit:
     """Tests for ClaudeClient initialization."""
 
     def test_init_with_valid_params(
-        self, mock_anthropic_clients: dict[str, MagicMock]
+        self, mock_anthropic_clients: dict[str, Any]
     ) -> None:
         """Test successful initialization with valid parameters."""
         client = ClaudeClient(
@@ -83,10 +83,10 @@ class TestClaudeClientInit:
         assert client.temperature == ClaudeClient.DEFAULT_TEMPERATURE
 
         # Verify clients were initialized
-        mock_anthropic_clients["anthropic_client"].assert_called_once_with(
+        mock_anthropic_clients["sync_client"].assert_called_once_with(
             api_key=TEST_API_KEY
         )
-        mock_anthropic_clients["async_anthropic_client"].assert_called_once_with(
+        mock_anthropic_clients["async_client"].assert_called_once_with(
             api_key=TEST_API_KEY
         )
         mock_anthropic_clients["tiktoken"].assert_called_once_with("cl100k_base")
@@ -144,6 +144,7 @@ class TestClaudeClientInit:
             (1000, 1.5, r"(?i)temperature must be between"),
         ],
     )
+    @pytest.mark.usefixtures("mock_anthropic_clients")
     def test_init_raises_for_invalid_max_tokens_or_temperature(
         self,
         max_tokens: int,
@@ -169,22 +170,21 @@ class TestClaudeClientInit:
         ],
     )
     def test_init_raises_llm_client_error_on_client_initialization_failure(
-        self, client_sync_async: str
+        self, client_sync_async: str, mocker: MockerFixture
     ) -> None:
         """Test initialization raises LLMClientError when client init fails."""
-        with (
-            patch(
-                client_sync_async,
-                side_effect=Exception("Connection failed"),
-            ),
-            pytest.raises(
-                LLMClientError, match=r"(?i)failed to initialize"
-            ) as exc_info,
-        ):
+        mocker.patch(
+            client_sync_async,
+            side_effect=RuntimeError("Connection failed"),
+        )
+        with pytest.raises(
+            LLMClientError, match=r"(?i)failed to initialize"
+        ) as exc_info:
             ClaudeClient(
                 api_key=TEST_API_KEY,
                 model=TEST_MODEL,
             )
+
         log.debug("LLMClientError raised as expected: %s", exc_info.value)
 
 
@@ -223,7 +223,7 @@ class TestClaudeClientHelpers:
 
     def test_count_tokens_returns_zero_on_error(
         self,
-        mock_anthropic_clients: dict[str, MagicMock],
+        mock_anthropic_clients: dict[str, Any],
     ) -> None:
         """Test _count_tokens returns 0 when tokenizer fails."""
         mock_anthropic_clients["encoder"].encode.side_effect = RuntimeError("Failed")
