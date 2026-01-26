@@ -11,6 +11,7 @@ Tests cover:
 from __future__ import annotations
 
 import logging
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -325,3 +326,79 @@ class TestClaudeClientHelpers:
         assert "rate limit exceeded" in str(result).lower()
         assert result.client_type == "claude"
         assert result.operation == "test_op"
+
+
+# =============================================================================
+# TestClaudeClientCall
+# =============================================================================
+class TestClaudeClientCall:
+    """Tests for ClaudeClient.call() synchronous method."""
+
+    def test_call_success(
+        self,
+        claude_client: ClaudeClient,
+    ) -> None:
+        """Test successful synchronous call."""
+        text_block = SimpleNamespace(type="text", text="Generated response.")
+        mock_message = SimpleNamespace(content=[text_block])
+
+        claude_client.client.messages.create.return_value = mock_message  # type: ignore[attr-defined]
+
+        result = claude_client.call("Test prompt")
+
+        log.debug("Call result: %s", result)
+
+        assert result == "Generated response."
+        claude_client.client.messages.create.assert_called_once()  # type: ignore[attr-defined]
+
+
+# =============================================================================
+# TestClaudeClientCallAsync
+# =============================================================================
+
+
+class TestClaudeClientCallAsync:
+    """Tests for ClaudeClient.call_async() asynchronous method."""
+
+    @pytest.mark.asyncio
+    async def test_call_async_success(
+        self,
+        claude_client: ClaudeClient,
+        mocker: MockerFixture,
+    ) -> None:
+        """Test successful asynchronous call."""
+        # Build a realistic Message object using SimpleNamespace
+        text_block_1 = SimpleNamespace(type="text", text="Hi there! ")
+        tool_block = SimpleNamespace(
+            type="tool_use",
+            id="toolu_123",
+            name="web_search",
+            input={"q": "x"},
+        )
+        thinking_block = SimpleNamespace(
+            type="thinking",
+            thinking="(internal reasoning here)",
+            signature="sig_12345",  # any placeholder string is fine for unit tests
+        )
+        text_block_2 = SimpleNamespace(type="text", text="My name is Claude.")
+
+        mock_message = SimpleNamespace(
+            id="msg_123456",
+            model="claude-sonnet-4-5-20250929",
+            role="assistant",
+            type="message",
+            stop_reason="end_turn",
+            stop_sequence=None,
+            content=[text_block_1, tool_block, thinking_block, text_block_2],
+            usage=SimpleNamespace(input_tokens=2095, output_tokens=503),
+        )
+        # Patch the async create method
+        create_mock = mocker.AsyncMock(return_value=mock_message)
+        claude_client.async_client.messages.create = create_mock  # type: ignore[method-assign]
+
+        result = await claude_client.call_async("Test prompt")
+
+        log.debug("Async call result: %s", result)
+
+        assert result == "Hi there! My name is Claude."
+        create_mock.assert_awaited_once()
