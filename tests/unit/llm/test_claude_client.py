@@ -14,13 +14,19 @@ import logging
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
+import anthropic
 import pytest
 
 if TYPE_CHECKING:
     from pytest_mock import MockerFixture
 
 from ai_ner_system.llm.claude_client import ClaudeClient
-from ai_ner_system.llm.exceptions import AuthenticationError, LLMClientError
+from ai_ner_system.llm.exceptions import (
+    APIError,
+    AuthenticationError,
+    LLMClientError,
+    RateLimitError,
+)
 
 log = logging.getLogger(__name__)
 
@@ -350,6 +356,119 @@ class TestClaudeClientCall:
 
         assert result == "Generated response."
         claude_client.client.messages.create.assert_called_once()  # type: ignore[attr-defined]
+
+    def test_call_raises_for_empty_prompt(
+        self,
+        claude_client: ClaudeClient,
+    ) -> None:
+        """Test call raises ValueError for empty prompt."""
+        with pytest.raises(
+            ValueError, match=r"(?i)prompt must not be empty"
+        ) as exc_info:
+            claude_client.call("")
+
+        log.debug("ValueError raised as expected: %s", exc_info.value)
+
+    def test_call_raises_api_error_for_empty_response(
+        self,
+        claude_client: ClaudeClient,
+    ) -> None:
+        """Test call raises LLMClientError when response is empty."""
+        mock_message = SimpleNamespace(content=[])
+        claude_client.client.messages.create.return_value = mock_message  # type: ignore[attr-defined]
+
+        with pytest.raises(LLMClientError, match=r"(?i)empty response") as exc_info:
+            claude_client.call("Test prompt")
+
+        log.debug("LLMClientError raised as expected: %s", exc_info.value)
+        assert "empty response received from claude api" in str(exc_info.value).lower()
+        assert exc_info.value.client_type == "claude"
+        assert exc_info.value.operation == "single_call"
+
+    def test_call_authentication_error(
+        self,
+        claude_client: ClaudeClient,
+        mocker: MockerFixture,
+    ) -> None:
+        """Test call raises AuthenticationError on auth failure."""
+        claude_client.client.messages.create.side_effect = (  # type: ignore[attr-defined]
+            anthropic.AuthenticationError(
+                message="claude authentication failed",
+                response=mocker.MagicMock(status_code=401),
+                body=None,
+            )
+        )
+
+        with pytest.raises(
+            AuthenticationError, match=r"(?i)authentication failed"
+        ) as exc_info:
+            claude_client.call("Test prompt")
+
+        log.debug("AuthenticationError raised as expected: %s", exc_info.value)
+        assert exc_info.value.client_type == "claude"
+        assert exc_info.value.operation == "single_call"
+        assert "claude authentication failed" in str(exc_info.value).lower()
+
+    def test_call_rate_limit_error(
+        self,
+        claude_client: ClaudeClient,
+        mocker: MockerFixture,
+    ) -> None:
+        """Test call raises RateLimitError on rate limit."""
+        claude_client.client.messages.create.side_effect = anthropic.RateLimitError(  # type: ignore[attr-defined]
+            message="Rate limit exceeded",
+            response=mocker.MagicMock(status_code=429),
+            body=None,
+        )
+
+        with pytest.raises(
+            RateLimitError, match=r"(?i)rate limit exceeded"
+        ) as exc_info:
+            claude_client.call("Test prompt")
+
+        log.debug("RateLimitError raised as expected: %s", exc_info.value)
+        assert "rate limit exceeded" in str(exc_info.value).lower()
+        assert exc_info.value.client_type == "claude"
+        assert exc_info.value.operation == "single_call"
+
+    def test_call_api_error(
+        self,
+        claude_client: ClaudeClient,
+        mocker: MockerFixture,
+    ) -> None:
+        """Test call raises APIError on API failure."""
+        claude_client.client.messages.create.side_effect = anthropic.APIError(  # type: ignore[attr-defined]
+            message="API error occurred",
+            request=mocker.MagicMock(),
+            body=None,
+        )
+
+        with pytest.raises(APIError, match=r"(?i)claude api error") as exc_info:
+            claude_client.call("Test prompt")
+
+        log.debug("APIError raised as expected: %s", exc_info.value)
+
+        assert "api error" in str(exc_info.value).lower()
+        assert exc_info.value.client_type == "claude"
+        assert exc_info.value.operation == "single_call"
+
+    def test_call_unexpected_exception(
+        self,
+        claude_client: ClaudeClient,
+    ) -> None:
+        """Test call raises LLMClientError on unexpected exception."""
+        claude_client.client.messages.create.side_effect = RuntimeError("Unexpected")  # type: ignore[attr-defined]
+
+        with pytest.raises(
+            LLMClientError, match=r"(?i)claude api call failed"
+        ) as exc_info:
+            claude_client.call("Test prompt")
+
+        log.debug("Exception raised as expected: %s", exc_info.value)
+
+        assert "claude api call failed" in str(exc_info.value).lower()
+        assert exc_info.value.client_type == "claude"
+        assert exc_info.value.operation == "single_call"
 
 
 # =============================================================================
