@@ -258,7 +258,7 @@ class OllamaClient(LLMBaseClient):
                 data = await response.json()
 
         except asyncio.CancelledError:
-            logging.info("Ollama async call was cancelled")
+            logging.debug("Ollama async call was cancelled")
             raise
         except TimeoutError as e:
             error_msg = f"Ollama API request timed out after {self.timeout}s"

@@ -10,6 +10,7 @@ Tests cover:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
@@ -521,3 +522,153 @@ class TestClaudeClientCallAsync:
 
         assert result == "Hi there! My name is Claude."
         create_mock.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_call_async_raises_for_empty_prompt(
+        self,
+        claude_client: ClaudeClient,
+    ) -> None:
+        """Test call_async raises ValueError for empty prompt."""
+        with pytest.raises(
+            ValueError, match=r"(?i)prompt must not be empty"
+        ) as exc_info:
+            await claude_client.call_async("")
+
+        log.debug("ValueError raised as expected: %s", exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_call_async_raises_api_error_for_empty_response(
+        self,
+        claude_client: ClaudeClient,
+        mocker: MockerFixture,
+    ) -> None:
+        """Test call_async raises LLMClientError when response is empty."""
+        # mock an empty message response
+        mock_message_resp = SimpleNamespace(content=[])
+        # Patch the async create method
+        create_mock = mocker.AsyncMock(return_value=mock_message_resp)
+        claude_client.async_client.messages.create = create_mock  # type: ignore[method-assign]
+
+        with pytest.raises(
+            LLMClientError, match=r"(?i)empty response received"
+        ) as exc_info:
+            await claude_client.call_async("Test prompt")
+
+        log.debug("LLMClientError raised as expected: %s", exc_info.value)
+        assert "empty response received from claude api" in str(exc_info.value).lower()
+        assert exc_info.value.client_type == "claude"
+        assert exc_info.value.operation == "async_single_call"
+
+    @pytest.mark.asyncio
+    async def test_call_async_cancelled_error_propagates(
+        self, claude_client: ClaudeClient, mocker: MockerFixture
+    ) -> None:
+        """Test asyncio.CancelledError propagates."""
+        # Patch the async create method to raise CancelledError
+        create_mock = mocker.AsyncMock(side_effect=asyncio.CancelledError())
+        claude_client.async_client.messages.create = create_mock  # type: ignore[method-assign]
+
+        with pytest.raises(asyncio.CancelledError):
+            await claude_client.call_async("Test prompt")
+
+    @pytest.mark.asyncio
+    async def test_call_async_authentication_error(
+        self,
+        claude_client: ClaudeClient,
+        mocker: MockerFixture,
+    ) -> None:
+        """Test call_async raises AuthenticationError on auth failure."""
+        # Patch the async create method to raise AuthenticationError
+        create_mock = mocker.AsyncMock(
+            side_effect=anthropic.AuthenticationError(
+                message="claude authentication failed",
+                response=mocker.MagicMock(status_code=401),
+                body=None,
+            )
+        )
+        claude_client.async_client.messages.create = create_mock  # type: ignore[method-assign]
+
+        with pytest.raises(
+            AuthenticationError, match=r"(?i)authentication failed"
+        ) as exc_info:
+            await claude_client.call_async("Test prompt")
+
+        log.debug("AuthenticationError raised expected: %s", exc_info.value)
+        assert "claude authentication failed" in str(exc_info.value).lower()
+        assert exc_info.value.client_type == "claude"
+        assert exc_info.value.operation == "async_single_call"
+
+    @pytest.mark.asyncio
+    async def test_call_async_rate_limit_error(
+        self,
+        claude_client: ClaudeClient,
+        mocker: MockerFixture,
+    ) -> None:
+        """Test call_async raises RateLimitError on rate limit."""
+        # Patch the async create method to raise RateLimitError
+        create_mock = mocker.AsyncMock(
+            side_effect=anthropic.RateLimitError(
+                message="Rate limit exceeded",
+                response=mocker.MagicMock(status_code=429),
+                body=None,
+            )
+        )
+        claude_client.async_client.messages.create = create_mock  # type: ignore[method-assign]
+
+        with pytest.raises(
+            RateLimitError, match=r"(?i)rate limit exceeded"
+        ) as exc_info:
+            await claude_client.call_async("Test prompt")
+
+        log.debug("RateLimitError raised as expected: %s", exc_info.value)
+        assert "rate limit exceeded" in str(exc_info.value).lower()
+        assert exc_info.value.client_type == "claude"
+        assert exc_info.value.operation == "async_single_call"
+
+    @pytest.mark.asyncio
+    async def test_call_async_api_error(
+        self,
+        claude_client: ClaudeClient,
+        mocker: MockerFixture,
+    ) -> None:
+        """Test call_async raises APIError on API failure."""
+        # Patch the async create method to raise APIError
+        create_mock = mocker.AsyncMock(
+            side_effect=anthropic.APIError(
+                message="API error occurred",
+                request=mocker.MagicMock(),
+                body=None,
+            )
+        )
+        claude_client.async_client.messages.create = create_mock  # type: ignore[method-assign]
+
+        with pytest.raises(APIError, match=r"(?i)claude api error") as exc_info:
+            await claude_client.call_async("Test prompt")
+
+        log.debug("APIError raised as expected: %s", exc_info.value)
+
+        assert "api error occurred" in str(exc_info.value).lower()
+        assert exc_info.value.client_type == "claude"
+        assert exc_info.value.operation == "async_single_call"
+
+    @pytest.mark.asyncio
+    async def test_call_async_unexpected_exception(
+        self,
+        claude_client: ClaudeClient,
+        mocker: MockerFixture,
+    ) -> None:
+        """Test call_async raises LLMClientError on unexpected exception."""
+        # Patch the async create method to raise RuntimeError
+        create_mock = mocker.AsyncMock(side_effect=RuntimeError("Unexpected"))
+        claude_client.async_client.messages.create = create_mock  # type: ignore[method-assign]
+
+        with pytest.raises(
+            LLMClientError, match=r"(?i)claude api call failed"
+        ) as exc_info:
+            await claude_client.call_async("Test prompt")
+
+        log.debug("LLMClientError raised as expected: %s", exc_info.value)
+
+        assert "claude api call failed" in str(exc_info.value).lower()
+        assert exc_info.value.client_type == "claude"
+        assert exc_info.value.operation == "async_single_call"

@@ -926,7 +926,7 @@ class ClaudeClient(LLMBaseClient):
                 # Wait before next poll (non-blocking)
                 await asyncio.sleep(poll_interval)
             except asyncio.CancelledError:
-                logging.info("Batch monitor cancelled for %s", batch_id)
+                logging.debug("Batch monitor cancelled for %s", batch_id)
                 raise
             except Exception:
                 logging.exception(
