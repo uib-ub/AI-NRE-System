@@ -21,6 +21,7 @@ import pytest
 if TYPE_CHECKING:
     from pytest_mock import MockerFixture
 
+from ai_ner_system.llm.batch_models import BatchRequest
 from ai_ner_system.llm.claude_client import ClaudeClient
 from ai_ner_system.llm.exceptions import (
     APIError,
@@ -672,3 +673,49 @@ class TestClaudeClientCallAsync:
         assert "claude api call failed" in str(exc_info.value).lower()
         assert exc_info.value.client_type == "claude"
         assert exc_info.value.operation == "async_single_call"
+
+
+# =============================================================================
+# TestClaudeClientCreateBatchAsync
+# =============================================================================
+
+
+class TestClaudeClientCreateBatchAsync:
+    """Tests for ClaudeClient.create_batch_async() method."""
+
+    @pytest.mark.asyncio
+    async def test_create_batch_async_success(
+        self,
+        claude_client: ClaudeClient,
+        mocker: MockerFixture,
+    ) -> None:
+        """Test successful batch creation."""
+        mock_batch_resp = SimpleNamespace(
+            id="msgbatch_013Zva2CMHLNnXjNJJKqJ2EF",
+            type="message_batch",
+            processing_status="in_progress",
+            request_counts={
+                "canceled": 0,
+                "errored": 0,
+                "expired": 0,
+                "processing": 1,
+                "succeeded": 1,
+            },
+            results_url="https://api.anthropic.com/v1/messages/batches/msgbatch_013Zva2CMHLNnXjNJJKqJ2EF/results",
+        )
+        # Patch the batches create method
+        batches_create_mock = mocker.AsyncMock(return_value=mock_batch_resp)
+        claude_client.async_client.messages.batches.create = batches_create_mock  # type: ignore[method-assign]
+
+        # Prepare batch requests
+        requests = [
+            BatchRequest(custom_id="req1", prompt="Test Prompt 1"),
+            BatchRequest(custom_id="req2", prompt="Test Prompt 2"),
+        ]
+
+        # Call create_batch_async
+        batch_id = await claude_client.create_batch_async(requests)
+        log.debug("Created batch ID: %s", batch_id)
+
+        assert batch_id == "msgbatch_013Zva2CMHLNnXjNJJKqJ2EF"
+        batches_create_mock.assert_awaited_once()
