@@ -476,8 +476,6 @@ class TestClaudeClientCall:
 # =============================================================================
 # TestClaudeClientCallAsync
 # =============================================================================
-
-
 class TestClaudeClientCallAsync:
     """Tests for ClaudeClient.call_async() asynchronous method."""
 
@@ -678,8 +676,6 @@ class TestClaudeClientCallAsync:
 # =============================================================================
 # TestClaudeClientCreateBatchAsync
 # =============================================================================
-
-
 class TestClaudeClientCreateBatchAsync:
     """Tests for ClaudeClient.create_batch_async() method."""
 
@@ -719,3 +715,160 @@ class TestClaudeClientCreateBatchAsync:
 
         assert batch_id == "msgbatch_013Zva2CMHLNnXjNJJKqJ2EF"
         batches_create_mock.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_create_batch_async_empty_requests_raises(
+        self,
+        claude_client: ClaudeClient,
+    ) -> None:
+        """Test create_batch_async raises ValueError for empty requests."""
+        with pytest.raises(
+            ValueError, match=r"(?i)batch requests list cannot be empty"
+        ) as exc_info:
+            await claude_client.create_batch_async([])
+
+        log.debug("ValueError raised as expected: %s", exc_info.value)
+        assert "batch requests list cannot be empty" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_create_batch_async_cancelled_error_propagates(
+        self,
+        claude_client: ClaudeClient,
+        mocker: MockerFixture,
+    ) -> None:
+        """Test asyncio.CancelledError propagates in create_batch_async."""
+        # Patch the batches create method to raise CancelledError
+        batches_create_mock = mocker.AsyncMock(side_effect=asyncio.CancelledError())
+        claude_client.async_client.messages.batches.create = batches_create_mock  # type: ignore[method-assign]
+
+        # Prepare batch requests
+        requests = [
+            BatchRequest(custom_id="req1", prompt="Test Prompt 1"),
+            BatchRequest(custom_id="req2", prompt="Test Prompt 2"),
+        ]
+
+        with pytest.raises(asyncio.CancelledError):
+            await claude_client.create_batch_async(requests)
+
+    @pytest.mark.asyncio
+    async def test_create_batch_async_authentication_error(
+        self,
+        claude_client: ClaudeClient,
+        mocker: MockerFixture,
+    ) -> None:
+        """Test create_batch_async raises AuthenticationError."""
+        # Patch the batches create method to raise AuthenticationError
+        batches_create_mock = mocker.AsyncMock(
+            side_effect=anthropic.AuthenticationError(
+                message="claude authentication failed",
+                response=mocker.MagicMock(status_code=401),
+                body=None,
+            )
+        )
+        claude_client.async_client.messages.batches.create = batches_create_mock  # type: ignore[method-assign]
+
+        # Prepare batch requests
+        requests = [
+            BatchRequest(custom_id="req1", prompt="Test Prompt 1"),
+            BatchRequest(custom_id="req2", prompt="Test Prompt 2"),
+        ]
+
+        with pytest.raises(
+            AuthenticationError, match=r"(?i)claude authentication failed"
+        ) as exc_info:
+            await claude_client.create_batch_async(requests)
+
+        log.debug("AuthenticationError raised as expected: %s", exc_info.value)
+        assert "claude authentication failed" in str(exc_info.value).lower()
+        assert exc_info.value.client_type == "claude"
+        assert exc_info.value.operation == "async_create_batch"
+
+    @pytest.mark.asyncio
+    async def test_create_batch_async_rate_limit_error(
+        self,
+        claude_client: ClaudeClient,
+        mocker: MockerFixture,
+    ) -> None:
+        """Test create_batch_async raises RateLimitError."""
+        # Patch the batches create method to raise RateLimitError
+        batches_create_mock = mocker.AsyncMock(
+            side_effect=anthropic.RateLimitError(
+                message="Rate limit exceeded",
+                response=mocker.MagicMock(status_code=429),
+                body=None,
+            )
+        )
+        claude_client.async_client.messages.batches.create = batches_create_mock  # type: ignore[method-assign]
+
+        # Prepare batch requests
+        requests = [
+            BatchRequest(custom_id="req1", prompt="Test Prompt 1"),
+            BatchRequest(custom_id="req2", prompt="Test Prompt 2"),
+        ]
+        with pytest.raises(
+            RateLimitError, match=r"(?i)rate limit exceeded"
+        ) as exc_info:
+            await claude_client.create_batch_async(requests)
+
+        log.debug("RateLimitError raised as expected: %s", exc_info.value)
+        assert "rate limit exceeded" in str(exc_info.value).lower()
+        assert exc_info.value.client_type == "claude"
+        assert exc_info.value.operation == "async_create_batch"
+
+    @pytest.mark.asyncio
+    async def test_create_batch_async_api_error(
+        self,
+        claude_client: ClaudeClient,
+        mocker: MockerFixture,
+    ) -> None:
+        """Test create_batch_async raises RateLimitError."""
+        # Patch the batches create method to raise APIError
+        batches_create_mock = mocker.AsyncMock(
+            side_effect=anthropic.APIError(
+                message="API error occurred",
+                request=mocker.MagicMock(),
+                body=None,
+            )
+        )
+        claude_client.async_client.messages.batches.create = batches_create_mock  # type: ignore[method-assign]
+
+        # Prepare batch requests
+        requests = [
+            BatchRequest(custom_id="req1", prompt="Test Prompt 1"),
+            BatchRequest(custom_id="req2", prompt="Test Prompt 2"),
+        ]
+        with pytest.raises(APIError, match=r"(?i)claude api error") as exc_info:
+            await claude_client.create_batch_async(requests)
+
+        log.debug("APIError raised as expected: %s", exc_info.value)
+
+        assert "api error occurred" in str(exc_info.value).lower()
+        assert exc_info.value.client_type == "claude"
+        assert exc_info.value.operation == "async_create_batch"
+
+    @pytest.mark.asyncio
+    async def test_create_batch_async_unexpected_exception(
+        self,
+        claude_client: ClaudeClient,
+        mocker: MockerFixture,
+    ) -> None:
+        """Test create_batch_async raises unexpected exception."""
+        # Patch the batches create method to raise RuntimeError
+        batches_create_mock = mocker.AsyncMock(side_effect=RuntimeError("Unexpected"))
+        claude_client.async_client.messages.batches.create = batches_create_mock  # type: ignore[method-assign]
+
+        # Prepare batch requests
+        requests = [
+            BatchRequest(custom_id="req1", prompt="Test Prompt 1"),
+            BatchRequest(custom_id="req2", prompt="Test Prompt 2"),
+        ]
+        with pytest.raises(
+            LLMClientError, match=r"(?i)failed to create batch job"
+        ) as exc_info:
+            await claude_client.create_batch_async(requests)
+
+        log.debug("LLMClientError raised as expected: %s", exc_info.value)
+
+        assert "failed to create batch job: unexpected" in str(exc_info.value).lower()
+        assert exc_info.value.client_type == "claude"
+        assert exc_info.value.operation == "async_create_batch"
