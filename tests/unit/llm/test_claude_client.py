@@ -16,12 +16,13 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
 import anthropic
+import httpx
 import pytest
 
 if TYPE_CHECKING:
     from pytest_mock import MockerFixture
 
-from ai_ner_system.llm.batch_models import BatchRequest
+from ai_ner_system.llm.batch_models import BatchRequest, BatchStatus
 from ai_ner_system.llm.claude_client import ClaudeClient
 from ai_ner_system.llm.exceptions import (
     APIError,
@@ -35,6 +36,17 @@ log = logging.getLogger(__name__)
 # Test constants to avoid S106 warnings
 TEST_API_KEY = "sk-ant-test-key-123456789"
 TEST_MODEL = "claude-sonnet-4-20240307"
+
+
+def httpx_request() -> httpx.Request:
+    """Helper to create a dummy httpx.Request for testing."""
+    return httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+
+
+def httpx_response(status_code: int) -> httpx.Response:
+    """Helper to create a dummy httpx.Response for testing."""
+    req = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    return httpx.Response(status_code=status_code, request=req)
 
 
 # =============================================================================
@@ -872,3 +884,138 @@ class TestClaudeClientCreateBatchAsync:
         assert "failed to create batch job: unexpected" in str(exc_info.value).lower()
         assert exc_info.value.client_type == "claude"
         assert exc_info.value.operation == "async_create_batch"
+
+
+# =============================================================================
+# TestClaudeClientGetBatchStatusAsync
+# =============================================================================
+class TestClaudeClientGetBatchStatusAsync:
+    """Tests for ClaudeClient.get_batch_status_async() method."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("processing_status", "expected_status"),
+        [
+            ("in_progress", BatchStatus.IN_PROGRESS),
+            ("canceling", BatchStatus.ENDED),
+            ("ended", BatchStatus.ENDED),
+        ],
+    )
+    async def test_get_batch_status(
+        self,
+        claude_client: ClaudeClient,
+        mocker: MockerFixture,
+        processing_status: str,
+        expected_status: BatchStatus,
+    ) -> None:
+        """Test get_batch_status_async returns correct status based on processing_status."""
+        batch_id = "msgbatch_013Zva2CMHLNnXjNJJKqJ2EF"
+        mock_batch_status = SimpleNamespace(
+            id=batch_id,
+            type="message_batch",
+            processing_status=processing_status,
+            results_url=None,
+        )
+
+        # Patch the batches retrieve method
+        batches_retrieve_mock = mocker.AsyncMock(return_value=mock_batch_status)
+        claude_client.async_client.messages.batches.retrieve = batches_retrieve_mock  # type: ignore[method-assign]
+        # Call get_batch_status_async
+        status = await claude_client.get_batch_status_async(batch_id)
+
+        log.debug("Batch status for %s: %s", batch_id, status)
+        assert status == expected_status
+        batches_retrieve_mock.assert_awaited_once_with(batch_id)
+
+    @pytest.mark.asyncio
+    async def test_get_batch_no_batch_id_raise(
+        self,
+        claude_client: ClaudeClient,
+    ) -> None:
+        """Test get batch_status_async raises ValueError for empty batch_id."""
+        with pytest.raises(
+            ValueError, match=r"(?i)batch_id cannot be empty"
+        ) as exc_info:
+            await claude_client.get_batch_status_async("")
+
+        log.debug("ValueError raised as expected: %s", exc_info.value)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("side_effect", "exception_type", "match_pattern", "expected_info"),
+        [
+            (
+                asyncio.CancelledError(),
+                asyncio.CancelledError,
+                None,  # No error pattern since we expect the error to propagate
+                None,  # No expected info since we expect the error to propagate
+            ),
+            (
+                anthropic.AuthenticationError(
+                    message="claude authentication failed",
+                    response=httpx_response(status_code=401),
+                    body=None,
+                ),
+                AuthenticationError,
+                r"(?i)authentication failed",
+                "claude authentication failed",
+            ),
+            (
+                anthropic.RateLimitError(
+                    message="Rate limit exceeded",
+                    response=httpx_response(status_code=429),
+                    body=None,
+                ),
+                RateLimitError,
+                r"(?i)rate limit exceeded",
+                "rate limit exceeded",
+            ),
+            (
+                anthropic.APIError(
+                    message="API error occurred",
+                    request=httpx_request(),
+                    body=None,
+                ),
+                APIError,
+                r"(?i)api error occurred",
+                "api error occurred",
+            ),
+            (
+                RuntimeError("Unexpected error"),
+                LLMClientError,
+                r"(?i)failed to get batch status",
+                "unexpected error",
+            ),
+        ],
+    )
+    async def test_get_batch_status_errors(
+        self,
+        claude_client: ClaudeClient,
+        mocker: MockerFixture,
+        side_effect: Exception,
+        exception_type: type[Exception],
+        match_pattern: str | None,
+        expected_info: str | None,
+    ) -> None:
+        """Test get_batch_status_async error handling."""
+        batch_id = "msgbatch_013Zva2CMHLNnXjNJJKqJ2EF"
+
+        # Patch the batches retrieve method to raise the specified side effect
+        batches_retrieve_mock = mocker.AsyncMock(side_effect=side_effect)
+        claude_client.async_client.messages.batches.retrieve = batches_retrieve_mock  # type: ignore[method-assign]
+
+        if isinstance(side_effect, asyncio.CancelledError):
+            with pytest.raises(asyncio.CancelledError):
+                await claude_client.get_batch_status_async(batch_id)
+            log.debug("asyncio.CancelledError propagated as expected")
+        else:
+            with pytest.raises(exception_type, match=match_pattern) as exc_info:
+                await claude_client.get_batch_status_async(batch_id)
+
+            log.debug("Exception raised as expected: %s", exc_info.value)
+            if expected_info:
+                assert expected_info in str(exc_info.value).lower()
+                assert "client: claude" in str(exc_info.value).lower()
+                assert (
+                    "operation: async_get_batch_status" in str(exc_info.value).lower()
+                )
