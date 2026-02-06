@@ -646,7 +646,7 @@ class ClaudeClient(LLMBaseClient):
                     custom_id=custom_id,
                     response_text="",
                     success=False,
-                    error_message="Missing result object.",
+                    error_message="Missing result object",
                 )
 
             return self._create_batch_response_for_result_type(
@@ -718,7 +718,7 @@ class ClaudeClient(LLMBaseClient):
                 custom_id=custom_id,
                 response_text="",
                 success=False,
-                error_message="Request was canceled before execution.",
+                error_message="Request was canceled before execution",
             )
 
         # Expired path: MessageBatchExpiredResult
@@ -728,7 +728,7 @@ class ClaudeClient(LLMBaseClient):
                 custom_id=custom_id,
                 response_text="",
                 success=False,
-                error_message="Request expired (not processed within the batch time window).",
+                error_message="Request expired (not processed within the batch time window)",
             )
 
         # All known types are exhaustively handled above
