@@ -1381,3 +1381,146 @@ class TestClaudeClientGetBatchResultsAsync:
                 assert (
                     "operation: async_get_batch_results" in str(exc_info.value).lower()
                 )
+
+
+# =============================================================================
+# TestClaudeClientCancelBatchAsync
+# =============================================================================
+
+
+class TestClaudeClientCancelBatchAsync:
+    """Tests for ClaudeClient.cancel_batch_async() method."""
+
+    @pytest.mark.asyncio
+    async def test_cancel_batch_async_success(
+        self,
+        claude_client: ClaudeClient,
+        mocker: MockerFixture,
+    ) -> None:
+        """Test cancel_batch_async successfully cancels a batch."""
+        batch_id = "msgbatch_013Zva2CMHLNnXjNJJKqJ2EF"
+        results_url = (
+            f"https://api.anthropic.com/v1/messages/batches/{batch_id}/results"
+        )
+
+        cancelled_batch = SimpleNamespace(
+            id=batch_id,
+            type="message_batch",
+            processing_status="canceling",
+            created_at="2026-01-20T18:37:24.100435Z",
+            expires_at="2026-01-20T18:37:24.100435Z",
+            cancel_initiated_at="2026-01-20T18:40:00.000000Z",
+            ended_at=None,
+            archived_at=None,
+            request_counts={
+                "processing": 0,
+                "succeeded": 0,
+                "errored": 0,
+                "canceled": 2,
+                "expired": 0,
+            },
+            results_url=results_url,
+        )
+
+        # Patch the batches cancel method to return None (indicating success)
+        batches_cancel_mock = mocker.AsyncMock(return_value=cancelled_batch)
+        claude_client.async_client.messages.batches.cancel = batches_cancel_mock  # type: ignore[method-assign]
+
+        # Call cancel_batch_async
+        result = await claude_client.cancel_batch_async(batch_id)
+
+        log.debug("Batch %s canceled successfully", batch_id)
+        assert result is True
+        batches_cancel_mock.assert_awaited_once_with(batch_id)
+
+    @pytest.mark.asyncio
+    async def test_cancel_batch_async_no_batch_id_raise(
+        self,
+        claude_client: ClaudeClient,
+    ) -> None:
+        """Test cancel_batch_async raises ValueError for empty batch_id."""
+        with pytest.raises(
+            ValueError, match=r"(?i)batch_id cannot be empty"
+        ) as exc_info:
+            await claude_client.cancel_batch_async("")
+
+        log.debug("ValueError raised as expected: %s", exc_info.value)
+        assert "batch_id cannot be empty" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("side_effect", "exception_type", "match_pattern", "expected_info"),
+        [
+            (
+                asyncio.CancelledError(),
+                asyncio.CancelledError,
+                None,  # No error pattern since we expect the error to propagate
+                None,  # No expected info since we expect the error to propagate
+            ),
+            (
+                anthropic.AuthenticationError(
+                    message="Authentication failed",
+                    response=httpx_response(status_code=401),
+                    body=None,
+                ),
+                AuthenticationError,
+                r"(?i)authentication failed",
+                "authentication failed",
+            ),
+            (
+                anthropic.RateLimitError(
+                    message="Rate limit exceeded",
+                    response=httpx_response(status_code=429),
+                    body=None,
+                ),
+                RateLimitError,
+                r"(?i)rate limit exceeded",
+                "rate limit exceeded",
+            ),
+            (
+                anthropic.APIError(
+                    message="API error occurred",
+                    request=httpx_request(),
+                    body=None,
+                ),
+                APIError,
+                r"(?i)api error occurred",
+                "api error occurred",
+            ),
+            (
+                RuntimeError("Unexpected error"),
+                LLMClientError,
+                r"(?i)failed to cancel batch",
+                "unexpected error",
+            ),
+        ],
+    )
+    async def test_cancel_batch_async_errors(
+        self,
+        claude_client: ClaudeClient,
+        mocker: MockerFixture,
+        side_effect: Exception,
+        exception_type: type[Exception],
+        match_pattern: str | None,
+        expected_info: str | None,
+    ) -> None:
+        """Test cancel_batch_async error handling."""
+        batch_id = "msgbatch_013Zva2CMHLNnXjNJJKqJ2EF"
+
+        # Patch the batches cancel method to raise the specified side effect
+        batches_cancel_mock = mocker.AsyncMock(side_effect=side_effect)
+        claude_client.async_client.messages.batches.cancel = batches_cancel_mock  # type: ignore[method-assign]
+
+        if isinstance(side_effect, asyncio.CancelledError):
+            with pytest.raises(asyncio.CancelledError):
+                await claude_client.cancel_batch_async(batch_id)
+            log.debug("asyncio.CancelledError propagated as expected")
+        else:
+            with pytest.raises(exception_type, match=match_pattern) as exc_info:
+                await claude_client.cancel_batch_async(batch_id)
+
+            log.debug("Exception raised as expected: %s", exc_info.value)
+            if expected_info:
+                assert expected_info in str(exc_info.value).lower()
+                assert "client: claude" in str(exc_info.value).lower()
+                assert "operation: async_cancel_batch" in str(exc_info.value).lower()
