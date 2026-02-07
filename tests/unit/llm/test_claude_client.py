@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
     from pytest_mock import MockerFixture
 
-from ai_ner_system.llm.batch_models import BatchRequest, BatchStatus
+from ai_ner_system.llm.batch_models import BatchProgress, BatchRequest, BatchStatus
 from ai_ner_system.llm.claude_client import ClaudeClient
 from ai_ner_system.llm.exceptions import (
     APIError,
@@ -1524,3 +1524,104 @@ class TestClaudeClientCancelBatchAsync:
                 assert expected_info in str(exc_info.value).lower()
                 assert "client: claude" in str(exc_info.value).lower()
                 assert "operation: async_cancel_batch" in str(exc_info.value).lower()
+
+
+# =============================================================================
+# TestClaudeClientMonitorBatchProgressAsync
+# =============================================================================
+
+
+class TestClaudeClientMonitorBatchProgressAsync:
+    """Tests for ClaudeClient.monitor_batch_progress_async() method."""
+
+    @pytest.mark.asyncio
+    async def test_monitor_batch_progress_async_yields_progress(
+        self,
+        claude_client: ClaudeClient,
+        mocker: MockerFixture,
+    ) -> None:
+        """Test monitor yields BatchProgress until ENDED."""
+        batch_id = "msgbatch_013Zva2CMHLNnXjNJJKqJ2EF"
+        results_url = (
+            f"https://api.anthropic.com/v1/messages/batches/{batch_id}/results"
+        )
+        batch_num = 1
+        poll_interval = 3.0
+
+        # Mock batch status responses for in_progress -> ended
+        mock_batch_in_progress = SimpleNamespace(
+            id=batch_id,
+            type="message_batch",
+            processing_status="in_progress",
+            created_at="2026-01-01T00:00:00Z",
+            expires_at="2026-01-02T00:00:00Z",
+            ended_at=None,
+            cancel_initiated_at=None,
+            results_url=None,
+            request_counts=SimpleNamespace(
+                processing=5,
+                succeeded=0,
+                errored=0,
+                canceled=0,
+                expired=0,
+            ),
+        )
+
+        mock_batch_ended = SimpleNamespace(
+            id=batch_id,
+            type="message_batch",
+            processing_status="ended",
+            created_at="2024-01-01T00:00:00Z",
+            expires_at="2024-01-02T00:00:00Z",
+            ended_at="2024-01-01T01:00:00Z",
+            cancel_initiated_at=None,
+            results_url=results_url,
+            request_counts=SimpleNamespace(
+                processing=0,
+                succeeded=5,
+                errored=0,
+                canceled=0,
+                expired=0,
+            ),
+        )
+
+        # Patch the batches retrieve method
+        # Note: Each iteration of monitor_batch_progress_async calls BOTH:
+        #   1. get_batch_status_async -> batches.retrieve
+        #   2. get_batch_info_async -> batches.retrieve
+        # So we need 2 mock values per iteration:
+        #   - Iteration 1: in_progress (status), in_progress (info)
+        #   - Iteration 2: ended (status), ended (info)
+        batches_retrieve_mock = mocker.AsyncMock(
+            side_effect=[
+                mock_batch_in_progress,  # get_batch_status_async (iter 1)
+                mock_batch_in_progress,  # get_batch_info_async (iter 1)
+                mock_batch_ended,  # get_batch_status_async (iter 2)
+                mock_batch_ended,  # get_batch_info_async (iter 2)
+            ]
+        )
+        claude_client.async_client.messages.batches.retrieve = batches_retrieve_mock  # type: ignore[method-assign]
+
+        # Call monitor_batch_progress_async
+        progress_list: list[BatchProgress] = []
+        async for progress in claude_client.monitor_batch_progress_async(
+            batch_num=batch_num,
+            batch_id=batch_id,
+            poll_interval=poll_interval,
+        ):
+            log.debug("Batch progress update: %s", progress)
+            progress_list.append(progress)
+            if progress.status == BatchStatus.ENDED:
+                break
+
+        log.debug("Final batch progress: %s", progress_list)
+        for idx, progress in enumerate(progress_list):
+            log.debug("Progress %d: %s", idx, progress)
+
+        assert len(progress_list) == 2
+        assert progress_list[0].status == BatchStatus.IN_PROGRESS
+        assert progress_list[0].request_counts["processing"] == 5
+        assert progress_list[0].request_counts["succeeded"] == 0
+        assert progress_list[1].status == BatchStatus.ENDED
+        assert progress_list[1].request_counts["processing"] == 0
+        assert progress_list[1].request_counts["succeeded"] == 5
