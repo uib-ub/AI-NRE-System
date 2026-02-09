@@ -1611,8 +1611,6 @@ class TestClaudeClientMonitorBatchProgressAsync:
         ):
             log.debug("Batch progress update: %s", progress)
             progress_list.append(progress)
-            if progress.status == BatchStatus.ENDED:
-                break
 
         log.debug("Final batch progress: %s", progress_list)
         for idx, progress in enumerate(progress_list):
@@ -1625,3 +1623,118 @@ class TestClaudeClientMonitorBatchProgressAsync:
         assert progress_list[1].status == BatchStatus.ENDED
         assert progress_list[1].request_counts["processing"] == 0
         assert progress_list[1].request_counts["succeeded"] == 5
+
+    @pytest.mark.asyncio
+    async def test_monitor_batch_progress_async_no_batch_id_raise(
+        self,
+        claude_client: ClaudeClient,
+    ) -> None:
+        """Test monitor_batch_progress_async raises ValueError for empty batch_id."""
+        with pytest.raises(
+            ValueError, match=r"(?i)batch_id cannot be empty"
+        ) as exc_info:
+            async for _ in claude_client.monitor_batch_progress_async(
+                batch_num=1,
+                batch_id="",
+                poll_interval=3.0,
+            ):
+                pass
+
+        log.debug("ValueError raised as expected: %s", exc_info.value)
+        assert "batch_id cannot be empty" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_monitor_batch_progress_async_none_poll_interval(
+        self,
+        claude_client: ClaudeClient,
+        mocker: MockerFixture,
+    ) -> None:
+        """Test monitor_batch_progress_async handles None poll_interval."""
+        batch_id = "msgbatch_013Zva2CMHLNnXjNJJKqJ2EF"
+
+        # Patch the batches retrieve method to return a valid batch status
+        mock_batch_status = SimpleNamespace(
+            id=batch_id,
+            type="message_batch",
+            processing_status="in_progress",
+            created_at="2026-01-01T00:00:00Z",
+            expires_at="2026-01-02T00:00:00Z",
+            ended_at=None,
+            cancel_initiated_at=None,
+            results_url=None,
+            request_counts=SimpleNamespace(
+                processing=5,
+                succeeded=0,
+                errored=0,
+                canceled=0,
+                expired=0,
+            ),
+        )
+        batches_retrieve_mock = mocker.AsyncMock(return_value=mock_batch_status)
+        claude_client.async_client.messages.batches.retrieve = batches_retrieve_mock  # type: ignore[method-assign]
+
+        # Call monitor_batch_progress_async with None poll_interval
+        progress_list: list[BatchProgress] = []
+        async for progress in claude_client.monitor_batch_progress_async(
+            batch_num=1,
+            batch_id=batch_id,
+            poll_interval=None,  # Should default to 5.0 seconds
+        ):
+            log.debug("Batch progress update with None poll_interval: %s", progress)
+            progress_list.append(progress)
+            if len(progress_list) >= 1:
+                break  # Only need one iteration to confirm it works
+
+        log.debug("Batch progress with None poll_interval: %s", progress_list)
+        assert len(progress_list) == 1
+        assert progress_list[0].status == BatchStatus.IN_PROGRESS
+
+    @pytest.mark.asyncio
+    async def test_monitor_batch_progress_async_negative_poll_interval_raise(
+        self,
+        claude_client: ClaudeClient,
+    ) -> None:
+        """Test monitor_batch_progress_async raises ValueError for negative poll_interval."""
+        batch_id = "msgbatch_013Zva2CMHLNnXjNJJKqJ2EF"
+        with pytest.raises(
+            ValueError, match=r"(?i)poll_interval must be positive"
+        ) as exc_info:
+            async for _ in claude_client.monitor_batch_progress_async(
+                batch_num=1,
+                batch_id=batch_id,
+                poll_interval=-1.0,
+            ):
+                pass
+
+        log.debug("ValueError raised as expected: %s", exc_info.value)
+        assert "poll_interval must be positive" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_monitor_batch_progress_async_error_yields_ended(
+        self,
+        claude_client: ClaudeClient,
+        mocker: MockerFixture,
+    ) -> None:
+        """Test monitor_batch_progress_async_exception handling yields ENDED status."""
+        batch_id = "msgbatch_013Zva2CMHLNnXjNJJKqJ2EF"
+        poll_interval = 3.0
+
+        # Patch the batches retrieve method to raise an API error
+        batches_retrieve_mock = mocker.AsyncMock(
+            side_effect=RuntimeError("Network failure")
+        )
+        claude_client.async_client.messages.batches.retrieve = batches_retrieve_mock  # type: ignore[method-assign]
+
+        # Call monitor_batch_progress_async and capture the yielded progress
+        progress_list: list[BatchProgress] = []
+        async for progress in claude_client.monitor_batch_progress_async(
+            batch_num=1,
+            batch_id=batch_id,
+            poll_interval=poll_interval,
+        ):
+            log.debug("Batch progress update during error: %s", progress)
+            progress_list.append(progress)
+
+        log.debug("Batch progress after error: %s", progress_list)
+        assert len(progress_list) == 1
+        assert progress_list[0].status == BatchStatus.ENDED

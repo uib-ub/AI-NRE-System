@@ -886,7 +886,7 @@ class ClaudeClient(LLMBaseClient):
             poll_interval = self.DEFAULT_POLL_INTERVAL  # base class constant
 
         if poll_interval <= 0:
-            raise ValueError("poll_interval must be > 0.")
+            raise ValueError("poll_interval must be positive")
 
         start_time = time.monotonic()
 
