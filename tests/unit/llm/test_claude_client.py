@@ -1231,6 +1231,21 @@ class TestClaudeClientGetBatchResultsAsync:
 
         result_empty = SimpleNamespace()
 
+        result_error_no_message = SimpleNamespace(
+            custom_id="custom_req_5",
+            result=SimpleNamespace(
+                type="errored",
+                error=SimpleNamespace(type="error"),
+            ),
+        )
+
+        result_unknown_type = SimpleNamespace(
+            custom_id="custom_req_6",
+            result=SimpleNamespace(
+                type="unknown_type",
+            ),
+        )
+
         mock_results = SimpleNamespace(
             results=[
                 result_ok,
@@ -1238,6 +1253,8 @@ class TestClaudeClientGetBatchResultsAsync:
                 result_canceled,
                 result_expired,
                 result_empty,
+                result_error_no_message,
+                result_unknown_type,
             ]
         )
 
@@ -1257,7 +1274,7 @@ class TestClaudeClientGetBatchResultsAsync:
         for i, res in enumerate(results):
             log.debug("Batch result %d: %s", i, res)
 
-        assert len(results) == 5
+        assert len(results) == 7
         assert results[0].custom_id == "custom_req_1"
         assert results[0].success is True
         assert results[0].response_text == "Response for request 1"
@@ -1285,6 +1302,46 @@ class TestClaudeClientGetBatchResultsAsync:
         assert results[4].success is False
         assert results[4].response_text == ""
         assert results[4].error_message == "Missing result object"
+
+        assert results[5].custom_id == "custom_req_5"
+        assert results[5].success is False
+        assert results[5].response_text == ""
+        assert (
+            results[5].error_message == "Batch request failed: namespace(type='error')"
+        )
+
+        assert results[6].custom_id == "custom_req_6"
+        assert results[6].success is False
+        assert results[6].response_text == ""
+        assert (
+            results[6].error_message
+            == "Failed to parse result: Unhandled result type: unknown_type"
+        )
+
+    @pytest.mark.asyncio
+    async def test_get_batch_results_not_completed_raises(
+        self,
+        claude_client: ClaudeClient,
+        mocker: MockerFixture,
+    ) -> None:
+        """Test get_batch_results_async raises ValueError if batch not completed."""
+        batch_id = "msgbatch_013Zva2CMHLNnXjNJJKqJ2EF"
+
+        # Mock batch status to be in_progress
+        mock_batch_status = SimpleNamespace(
+            id=batch_id,
+            type="message_batch",
+            processing_status="in_progress",
+            results_url=None,
+        )
+        batches_retrieve_mock = mocker.AsyncMock(return_value=mock_batch_status)
+        claude_client.async_client.messages.batches.retrieve = batches_retrieve_mock  # type: ignore[method-assign]
+
+        with pytest.raises(LLMClientError, match=r"(?i)not completed") as exc_info:
+            await claude_client.get_batch_results_async(batch_id)
+
+        log.debug("LLMClientError raised as expected: %s", exc_info.value)
+        assert "not completed" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
     async def test_get_batch_results_no_batch_id_raise(
@@ -1386,8 +1443,6 @@ class TestClaudeClientGetBatchResultsAsync:
 # =============================================================================
 # TestClaudeClientCancelBatchAsync
 # =============================================================================
-
-
 class TestClaudeClientCancelBatchAsync:
     """Tests for ClaudeClient.cancel_batch_async() method."""
 
