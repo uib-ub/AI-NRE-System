@@ -1324,7 +1324,7 @@ class TestClaudeClientGetBatchResultsAsync:
         claude_client: ClaudeClient,
         mocker: MockerFixture,
     ) -> None:
-        """Test get_batch_results_async raises ValueError if batch not completed."""
+        """Test get_batch_results_async raises LLMClientError if batch not completed."""
         batch_id = "msgbatch_013Zva2CMHLNnXjNJJKqJ2EF"
 
         # Mock batch status to be in_progress
@@ -1342,6 +1342,44 @@ class TestClaudeClientGetBatchResultsAsync:
 
         log.debug("LLMClientError raised as expected: %s", exc_info.value)
         assert "not completed" in str(exc_info.value).lower()
+        assert exc_info.value.client_type == "claude"
+        assert exc_info.value.operation == "async_get_batch_results"
+
+    @pytest.mark.asyncio
+    async def test_get_batch_results_no_results_url_raises(
+        self,
+        claude_client: ClaudeClient,
+        mocker: MockerFixture,
+    ) -> None:
+        """Test get_batch_results_async raises LLMClientError if results_url is missing."""
+        batch_id = "msgbatch_013Zva2CMHLNnXjNJJKqJ2EF"
+
+        # Mock batch status to be ended but with no results_url
+        mock_batch_status = SimpleNamespace(
+            id=batch_id,
+            type="message_batch",
+            processing_status="ended",
+            request_counts=SimpleNamespace(
+                processing=0, succeeded=1, errored=0, canceled=0, expired=0
+            ),
+            created_at="2026-01-01T00:00:00Z",
+            expires_at="2026-01-02T00:00:00Z",
+            ended_at="2026-01-01T12:00:00Z",
+            cancel_initiated_at=None,
+            results_url=None,
+        )
+        batches_retrieve_mock = mocker.AsyncMock(return_value=mock_batch_status)
+        claude_client.async_client.messages.batches.retrieve = batches_retrieve_mock  # type: ignore[method-assign]
+
+        with pytest.raises(
+            LLMClientError, match=r"(?i)no results URL available"
+        ) as exc_info:
+            await claude_client.get_batch_results_async(batch_id)
+
+        log.debug("LLMClientError raised as expected: %s", exc_info.value)
+        assert "no results url available" in str(exc_info.value).lower()
+        assert exc_info.value.client_type == "claude"
+        assert exc_info.value.operation == "async_get_batch_results"
 
     @pytest.mark.asyncio
     async def test_get_batch_results_no_batch_id_raise(
@@ -1584,8 +1622,6 @@ class TestClaudeClientCancelBatchAsync:
 # =============================================================================
 # TestClaudeClientMonitorBatchProgressAsync
 # =============================================================================
-
-
 class TestClaudeClientMonitorBatchProgressAsync:
     """Tests for ClaudeClient.monitor_batch_progress_async() method."""
 
