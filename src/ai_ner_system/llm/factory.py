@@ -73,7 +73,7 @@ def create_llm_client(client_type: str) -> Client:
         # Raises ConfigError if any required params are missing/empty
         init_params = Settings.get_client_init_params(client_type)
 
-        # Get the client class and instantiate
+        # Defensive integrity check: get the client class and instantiate
         client_class = _CLIENT_CLASSES.get(client_type)
         if not client_class:
             _raise_unsupported_type_error(client_type)
