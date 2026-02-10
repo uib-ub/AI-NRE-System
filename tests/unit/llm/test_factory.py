@@ -6,11 +6,12 @@ import logging
 from typing import TYPE_CHECKING
 
 import pytest
-from pytest_mock import MockerFixture
 
 from ai_ner_system.llm.exceptions import LLMClientError
 
 if TYPE_CHECKING:
+    from pytest_mock import MockerFixture
+
     from ai_ner_system.llm.base_client import Client
 
 from ai_ner_system.config.settings import ConfigError, Settings
@@ -50,33 +51,27 @@ class TestLLMClientFactory:
         client = create_llm_client(client_type)
         assert isinstance(client, expected_class)
 
-    def test_create_llm_client_invalid_type(self) -> None:
+    @pytest.mark.parametrize(
+        ("client_type", "exception_type", "match_pattern"),
+        [
+            ("", ValueError, r"(?i)client_type must be provided"),
+            ("   ", LLMClientError, r"(?i)unsupported client type"),
+            ("invalid_type", LLMClientError, r"(?i)unsupported client type"),
+        ],
+    )
+    def test_create_llm_client_invalid_type(
+        self,
+        client_type: str,
+        exception_type: type[Exception],
+        match_pattern: str,
+    ) -> None:
         """Test that creating a client with an invalid type raises an error."""
         Settings.initialize(reload_env=False, create_dirs=False)
-        with pytest.raises(
-            ValueError, match=r"(?i)client_type must be provided"
-        ) as exc_info:
-            create_llm_client("")
+        with pytest.raises(exception_type, match=match_pattern) as exc_info:
+            create_llm_client(client_type)
 
-        log.debug("Caught expected ValueError: %s", exc_info.value)
-        assert "client_type must be provided" in str(exc_info.value).lower()
-
-        with pytest.raises(
-            LLMClientError, match=r"(?i)unsupported client type"
-        ) as exc_info_ws:
-            create_llm_client("   ")
-
-        log.debug("Caught expected LLMClientError: %s", exc_info_ws.value)
-        assert "unsupported client type" in str(exc_info_ws.value).lower()
-
-        with pytest.raises(
-            LLMClientError,
-            match=r"(?i)unsupported client type",
-        ) as exc_info_invalid:
-            create_llm_client("invalid_type")
-
-        log.debug("Caught expected LLMClientError: %s", exc_info_invalid.value)
-        assert "unsupported client type" in str(exc_info_invalid.value).lower()
+        log.debug("Caught expected %s: %s", exception_type.__name__, exc_info.value)
+        assert match_pattern.strip(r"(?i)") in str(exc_info.value).lower()
 
     @pytest.mark.parametrize(
         ("side_effect", "exception_type", "match_pattern", "expected_info"),
@@ -96,7 +91,7 @@ class TestLLMClientFactory:
         ],
     )
     @pytest.mark.usefixtures("mock_env_claude")
-    def test_create_llm_client_configuration_error(
+    def test_create_llm_client_error(
         self,
         mocker: MockerFixture,
         side_effect: Exception,
@@ -104,7 +99,7 @@ class TestLLMClientFactory:
         match_pattern: str,
         expected_info: str,
     ) -> None:
-        """Test that configuration errors during client creation are handled properly."""
+        """Test that errors during client creation are handled properly."""
         Settings.initialize(reload_env=False, create_dirs=False)
 
         mocker.patch.object(
@@ -117,7 +112,7 @@ class TestLLMClientFactory:
             create_llm_client("claude")
 
         err = exc_info.value
-        log.debug("Caught expected exception: %s", err)
+        log.debug("Caught expected %s: %s", exception_type.__name__, err)
         assert expected_info in str(err).lower()
         assert isinstance(err, LLMClientError)
         assert err.client_type == "claude"
