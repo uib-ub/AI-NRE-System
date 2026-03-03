@@ -17,12 +17,17 @@ import logging
 import pytest
 
 from ai_ner_system.processing.exceptions import (
+    BatchProcessingError,
     LLMResponseError,
+    ParseError,
     ProcessingError,
     ValidationError,
 )
 
 log = logging.getLogger(__name__)
+
+# Mirror the truncation threshold used by processing exceptions for assertions.
+MAX_CONTENT_LENGTH = 100
 
 
 class TestProcessingError:
@@ -160,6 +165,15 @@ class TestValidationError:
             else error.missing_fields == []
         )
 
+        # Verify missing_fields appears in __str__ only when context ')'  exists
+        has_context = bool(brevid) or bool(operation)
+        if missing_fields and has_context:
+            fields_str = ", ".join(missing_fields)
+            assert f"missing_fields: [{fields_str}]" in str(error)
+        elif missing_fields:
+            fields_str = ", ".join(missing_fields)
+            assert f"missing_fields: [{fields_str}]" not in str(error)
+
     def test_inheritance(self) -> None:
         """Test ValidationError inherits from ProcessingError."""
         error = ValidationError("Test")
@@ -236,8 +250,177 @@ class TestLLMResponseError:
         assert error.operation == operation
         assert error.response_text == response_text
 
+        # Verify response_text appears in __str__ (with truncation) only when
+        # context ')' exists
+        has_context = bool(brevid) or bool(operation)
+        if response_text and has_context:
+            if len(response_text) > MAX_CONTENT_LENGTH:
+                truncated = response_text[:MAX_CONTENT_LENGTH] + "..."
+            else:
+                truncated = response_text
+            assert f"response_text: '{truncated}'" in str(error)
+        elif response_text:
+            assert "response_text:" not in str(error)
+
     def test_inheritance(self) -> None:
         """Test LLMResponseError inherits from ProcessingError."""
         error = LLMResponseError("Test")
+        assert isinstance(error, ProcessingError)
+        assert isinstance(error, Exception)
+
+
+class TestParseError:
+    """Tests for ParseError exception."""
+
+    def test_basic_creation(self) -> None:
+        """Test creating ParseError with message only."""
+        error = ParseError("Parse error")
+
+        log.debug("Created ParseError: %s", error)
+
+        assert str(error) == "Parse error"
+        assert error.brevid is None
+        assert error.operation is None
+
+    @pytest.mark.parametrize(
+        ("err_msg", "brevid", "operation", "parse_type", "content"),
+        [
+            ("Invalid format", "DN1_001", None, None, None),
+            ("Invalid format", "DN1_001", None, "json", None),
+            ("Could not parse", "DN1_001", None, None, "{bad json}"),
+            ("Parsing error", "DN1_001", "parse_response", "json", '{"broken": true'),
+            ("Parsing error", "DN1_001", None, None, "x" * 120),
+            ("Parsing error", "", None, "json", "some content"),
+        ],
+    )
+    def test_basic_creation_with_params(
+        self,
+        err_msg: str,
+        brevid: str | None,
+        operation: str | None,
+        parse_type: str | None,
+        content: str | None,
+    ) -> None:
+        """Test creating ParseError with various parameters."""
+        error = ParseError(
+            err_msg,
+            brevid=brevid,
+            operation=operation,
+            parse_type=parse_type,
+            content=content,
+        )
+
+        log.debug(
+            "Created ParseError with params: err_msg=%s, brevid=%s, operation=%s, parse_type=%s, content=%s",
+            err_msg,
+            brevid,
+            operation,
+            parse_type,
+            content,
+        )
+
+        log.debug("ParseError string representation: %s", str(error))
+
+        assert err_msg in str(error)
+        assert (
+            f"brevid: {brevid}" not in str(error)
+            if not brevid
+            else f"brevid: {brevid}" in str(error)
+        )
+        assert (
+            f"operation: {operation}" not in str(error)
+            if not operation
+            else f"operation: {operation}" in str(error)
+        )
+        assert error.brevid == brevid
+        assert error.operation == operation
+        assert error.parse_type == parse_type
+        assert error.content == content
+
+        # Verify parse_type/content appear in __str__ (with truncation) only
+        # when context ')' exists
+        has_context = bool(brevid) or bool(operation)
+        if has_context:
+            if parse_type:
+                assert f"parse_type: {parse_type}" in str(error)
+            if content:
+                if len(content) > MAX_CONTENT_LENGTH:
+                    truncated = content[:MAX_CONTENT_LENGTH] + "..."
+                else:
+                    truncated = content
+                assert f"content: '{truncated}'" in str(error)
+        else:
+            if parse_type:
+                assert "parse_type:" not in str(error)
+            if content:
+                assert "content:" not in str(error)
+
+    def test_inheritance(self) -> None:
+        """Test ParseError inherits from ProcessingError."""
+        error = ParseError("Test")
+        assert isinstance(error, ProcessingError)
+        assert isinstance(error, Exception)
+
+
+class TestBatchProcessingError:
+    """Tests for BatchProcessingError exception."""
+
+    def test_basic_creation(self) -> None:
+        """Test creating BatchProcessingError with message only."""
+        error = BatchProcessingError("Batch processing failed")
+
+        log.debug("Created BatchProcessingError: %s", error)
+
+        assert str(error) == "Batch processing failed"
+        assert error.brevid is None
+        assert error.operation is None
+
+    @pytest.mark.parametrize(
+        ("err_msg", "operation", "batch_id"),
+        [
+            ("Batch processing failed", "process_batch", None),
+            ("Batch processing failed", None, "batch_123"),
+            ("Batch processing failed", "process_batch", "batch_123"),
+        ],
+    )
+    def test_basic_creation_with_params(
+        self,
+        err_msg: str,
+        operation: str | None,
+        batch_id: str | None,
+    ) -> None:
+        """Test creating BatchProcessingError with various parameters."""
+        error = BatchProcessingError(
+            err_msg,
+            operation=operation,
+            batch_id=batch_id,
+        )
+
+        log.debug(
+            "Created BatchProcessingError with params: err_msg=%s, operation=%s, batch_id=%s",
+            err_msg,
+            operation,
+            batch_id,
+        )
+
+        log.debug("BatchProcessingError string representation: %s", str(error))
+
+        assert err_msg in str(error)
+        assert (
+            f"operation: {operation}" not in str(error)
+            if not operation
+            else f"operation: {operation}" in str(error)
+        )
+        assert (
+            f"batch_id: {batch_id}" not in str(error)
+            if not batch_id or not str(error).endswith(")")
+            else f"batch_id: {batch_id}" in str(error)
+        )
+        assert error.operation == operation
+        assert error.batch_id == batch_id
+
+    def test_inheritance(self) -> None:
+        """Test BatchProcessingError inherits from ProcessingError."""
+        error = BatchProcessingError("Test")
         assert isinstance(error, ProcessingError)
         assert isinstance(error, Exception)
