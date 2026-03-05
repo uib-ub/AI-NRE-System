@@ -15,7 +15,9 @@ from typing import Any
 import pytest
 
 from ai_ner_system.processing.entities import (
+    BatchProcessingResult,
     EntityRecord,
+    ProcessingResult,
 )
 from ai_ner_system.processing.exceptions import ValidationError
 
@@ -328,5 +330,184 @@ class TestEntityRecord:
         """Test create_entity_record() raises ValidationError for invalid data."""
         with pytest.raises(ValidationError, match=error_match_pattern) as exc_info:
             EntityRecord.create_entity_record(entity_data, brevid="601")
+
+        log.debug("ValidationError raised as expected: %s", exc_info.value)
+
+
+class TestProcessingResult:
+    """Tests for ProcessingResult dataclass."""
+
+    def test_basic_creation(self) -> None:
+        """Test creating ProcessingResult with required fields."""
+        result = ProcessingResult(
+            record_id="rec_001",
+            brevid="601",
+        )
+
+        log.debug("Created ProcessingResult: %s", result)
+
+        assert result.record_id == "rec_001"
+        assert result.brevid == "601"
+        assert result.annotated_text == ""
+        assert result.entities == []
+        assert result.processing_time == 0.0
+        assert result.success is True
+        assert result.error_message is None
+
+    def test_creation_with_all_fields(self) -> None:
+        """Test creating ProcessingResult with all fields specified."""
+        entities = [
+            EntityRecord(
+                name="Æirike",
+                entity_type="Person Name",
+                preposition="N/A",
+                order=13,
+                brevid="601",
+                description="Priest",
+                gender="Male",
+                language="non",
+            )
+        ]
+
+        result = ProcessingResult(
+            record_id="rec_001",
+            brevid="601",
+            annotated_text="Æirike annotated text",
+            entities=entities,
+            processing_time=1.5,
+            success=True,
+            error_message=None,
+        )
+
+        assert result.annotated_text == "Æirike annotated text"
+        assert len(result.entities) == 1
+        assert result.processing_time == 1.5
+        assert result.success is True
+
+    def test_failure_result(self) -> None:
+        """Test creating a ProcessingResult representing a failure."""
+        result = ProcessingResult(
+            record_id="rec_002",
+            brevid="602",
+            success=False,
+            error_message="Processing failed due to timeout.",
+        )
+
+        log.debug("Created failure ProcessingResult: %s", result)
+
+        assert result.record_id == "rec_002"
+        assert result.brevid == "602"
+        assert result.annotated_text == ""
+        assert result.entities == []
+        assert result.processing_time == 0.0
+        assert result.success is False
+        assert result.error_message == "Processing failed due to timeout."
+
+    @pytest.mark.parametrize(
+        ("kwargs", "error_match_pattern"),
+        [
+            (
+                {"record_id": "", "brevid": "601"},
+                "ProcessingResult record_id cannot be empty",
+            ),
+            (
+                {"record_id": "rec_001", "brevid": ""},
+                "ProcessingResult brevid cannot be empty",
+            ),
+            (
+                {"record_id": "rec_001", "brevid": "DN1_001", "processing_time": -1.0},
+                "Processing time must be non-negative",
+            ),
+        ],
+    )
+    def test_post_init_validation_raises(
+        self,
+        kwargs: dict[str, Any],
+        error_match_pattern: str,
+    ) -> None:
+        """Test __post_init__ raises ValidationError for invalid data."""
+        with pytest.raises(ValidationError, match=error_match_pattern) as exc_info:
+            ProcessingResult(**kwargs)
+
+        log.debug("ValidationError raised as expected: %s", exc_info.value)
+
+
+class TestBatchProcessingResult:
+    """Tests for BatchProcessingResult dataclass."""
+
+    def test_basic_creation(self) -> None:
+        """Test creating BatchProcessingResult with required fields."""
+        batch_result = BatchProcessingResult(batch_id="batch_001")
+
+        log.debug("Created BatchProcessingResult: %s", batch_result)
+
+        assert batch_result.batch_id == "batch_001"
+        assert batch_result.results == []
+        assert batch_result.total_processing_time == 0.0
+        assert batch_result.successful_count == 0
+        assert batch_result.failed_count == 0
+        assert batch_result.batch_info is None
+
+    def test_creation_with_all_fields(self) -> None:
+        """Test creating BatchProcessingResult with all fields specified."""
+        processing_results = [
+            ProcessingResult(record_id="rec_001", brevid="601"),
+            ProcessingResult(record_id="rec_002", brevid="602"),
+        ]
+
+        batch_processing_result = BatchProcessingResult(
+            batch_id="batch_001",
+            results=processing_results,
+            total_processing_time=3.5,
+            successful_count=2,
+            failed_count=0,
+            batch_info={
+                "id": "test_123",
+                "type": "batch",
+            },
+        )
+
+        log.debug(
+            "Created BatchProcessingResult with all fields: %s", batch_processing_result
+        )
+        assert len(batch_processing_result.results) == 2
+        assert batch_processing_result.total_processing_time == 3.5
+        assert batch_processing_result.successful_count == 2
+        assert batch_processing_result.failed_count == 0
+        assert batch_processing_result.batch_info == {"id": "test_123", "type": "batch"}
+
+    @pytest.mark.parametrize(
+        ("kwargs", "error_match_pattern"),
+        [
+            (
+                {"batch_id": ""},
+                "BatchProcessingResult batch_id cannot be empty",
+            ),
+            (
+                {"batch_id": "batch_001", "total_processing_time": -1.0},
+                "Total processing time must be non-negative",
+            ),
+            (
+                {"batch_id": "batch_001", "successful_count": -1},
+                "Counts must be non-negative",
+            ),
+            (
+                {"batch_id": "batch_001", "failed_count": -1},
+                "Counts must be non-negative",
+            ),
+            (
+                {"batch_id": "batch_001", "successful_count": -1, "failed_count": -1},
+                "Counts must be non-negative",
+            ),
+        ],
+    )
+    def test_post_init_validation_raises(
+        self,
+        kwargs: dict[str, Any],
+        error_match_pattern: str,
+    ) -> None:
+        """Test __post_init__ raises ValidationError for invalid data."""
+        with pytest.raises(ValidationError, match=error_match_pattern) as exc_info:
+            BatchProcessingResult(**kwargs)
 
         log.debug("ValidationError raised as expected: %s", exc_info.value)
