@@ -403,6 +403,28 @@ class TestProcessingResult:
         assert result.success is False
         assert result.error_message == "Processing failed due to timeout."
 
+    def test_default_factory_creates_independent_lists(self) -> None:
+        """Test each instance gets its own list to avoid shared-state bugs."""
+        result1 = ProcessingResult(record_id="rec_001", brevid="601")
+        result2 = ProcessingResult(record_id="rec_002", brevid="602")
+
+        result1.entities.append(
+            EntityRecord(
+                name="Æirike",
+                entity_type="Person Name",
+                preposition="N/A",
+                order=13,
+                brevid="601",
+                description="Priest",
+                gender="Male",
+                language="non",
+            )
+        )
+
+        assert len(result1.entities) == 1
+        assert len(result2.entities) == 0
+        assert result2.entities == []
+
     @pytest.mark.parametrize(
         ("kwargs", "error_match_pattern"),
         [
@@ -475,6 +497,17 @@ class TestBatchProcessingResult:
         assert batch_processing_result.successful_count == 2
         assert batch_processing_result.failed_count == 0
         assert batch_processing_result.batch_info == {"id": "test_123", "type": "batch"}
+
+    def test_default_factory_creates_independent_lists(self) -> None:
+        """Test each instance gets its own list to avoid shared-state bugs."""
+        batch1 = BatchProcessingResult(batch_id="batch_001")
+        batch2 = BatchProcessingResult(batch_id="batch_002")
+
+        batch1.results.append(ProcessingResult(record_id="rec_001", brevid="601"))
+
+        assert len(batch1.results) == 1
+        assert len(batch2.results) == 0
+        assert batch2.results == []
 
     @pytest.mark.parametrize(
         ("kwargs", "error_match_pattern"),
