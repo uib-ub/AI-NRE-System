@@ -401,3 +401,35 @@ class TestParseEntitiesJson:
         log.debug("Captured logs: %s", caplog.text)
         assert "1/2 valid entities" in caplog.text
         assert "1 failed" in caplog.text
+
+
+# ===================================================================
+# format_csv_row
+# ===================================================================
+class TestFormatCSVRow:
+    """Tests for ResponseParser.format_csv_row()."""
+
+    @pytest.mark.parametrize(
+        ("bindnr", "brevid", "text", "expected"),
+        [
+            ("1", "601", "Some text", "1;601;Some text"),
+            ("2", "602", "Text with ; semicolon", '2;602;"Text with ; semicolon"'),
+            ("3", "603", 'Text with "quotes"', '3;603;"Text with ""quotes"""'),
+            ("4", "604", "Text with\nnew line", '4;604;"Text with\nnew line"'),
+            ("5", "605", "", "5;605;"),
+        ],
+    )
+    def test_format_csv_row(
+        self,
+        bindnr: str,
+        brevid: str,
+        text: str,
+        expected: str,
+    ) -> None:
+        """Test format_csv_row with various inputs."""
+        result = ResponseParser.format_csv_row(bindnr, brevid, text)
+
+        log.debug("Formatted CSV row: %s", result)
+        assert result == expected
+        assert not result.endswith("\n")
+        assert not result.endswith("\r\n")
