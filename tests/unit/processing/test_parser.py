@@ -31,9 +31,6 @@ BREVID = "601"
 # Mirrors ResponseParser._MAX_SNIPPET without importing the private constant
 MAX_SNIPPET = 200
 
-# Olauer;Person Name;N/A;1;601;Abbot;Male;non
-# Ollum monnum þæim sæm þetta bref sea æder høyra sændir < Olauer;Person Name;N/A;1;601 > med gudz
-
 VALID_ENTITY_DATA: dict[str, Any] = {
     "name": "Olauer",
     "type": "Person Name",
@@ -433,3 +430,265 @@ class TestFormatCSVRow:
         assert result == expected
         assert not result.endswith("\n")
         assert not result.endswith("\r\n")
+
+
+# ===================================================================
+# parse_batch_response
+# ===================================================================
+class TestParseBatchResponse:
+    """Tests for ResponseParser.parse_batch_response().
+
+    Also tests internal helper methods:
+    - _split_batch_response (section splitting, mismatch warnings)
+    - _process_record_sections / _process_single_record_section
+    - _extract_result_content (RESULT marker detection)
+    - _format_entity_metadata
+    - _create_fallback_records (fallback generation)
+    """
+
+    def test_empty_response_returns_fallback(self) -> None:
+        """Test empty batch response returns fallback records."""
+        records = [VALID_RECORD]
+        expected_fallback_values = list(VALID_RECORD.values())
+
+        annotated, metatdata = ResponseParser.parse_batch_response(records, "")
+        log.debug("Annotated: %s", annotated)
+        log.debug("Metadata: %s", metatdata)
+
+        assert len(annotated) == 1
+        for i, v in enumerate(annotated[0].split(";")):
+            assert v == expected_fallback_values[i]
+        assert metatdata == []
+
+    def test_single_record_with_result_marker(self) -> None:
+        """Test batch response with RESULT marker for a single record."""
+        expected_annotated_text = (
+            f'{VALID_RECORD["Bindnr"]};{VALID_RECORD["Brevid"]};"{ANNOTATED_TEXT}"'
+        )
+        section_content = f"1 {ResponseParser.RESULT_MARKER}\n{SAMPLE_LLM_RESPONSE}"
+        raw_response = f"{ResponseParser.RECORD_MARKER}{section_content}"
+
+        annotated, metadata = ResponseParser.parse_batch_response(
+            [VALID_RECORD], raw_response
+        )
+        log.debug("Annotated: %s", annotated)
+        log.debug("Metadata: %s", metadata)
+        assert len(annotated) == 1
+        assert annotated[0] == expected_annotated_text
+        assert len(metadata) == 1
+
+    def test_single_record_without_result_marker(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Test batch response without RESULT marker uses full content."""
+        raw_content = "Raw annotated text without RESULT marker."
+
+        raw_response = f"{ResponseParser.RECORD_MARKER}1\n{raw_content}"
+
+        log.debug("Testing with raw response: %s", raw_response)
+
+        with caplog.at_level(logging.WARNING):
+            annotated, metadata = ResponseParser.parse_batch_response(
+                [VALID_RECORD], raw_response
+            )
+        log.debug("Annotated: %s", annotated)
+        log.debug("Metadata: %s", metadata)
+        assert len(annotated) == 1
+        assert (
+            annotated[0]
+            == f"{VALID_RECORD['Bindnr']};{VALID_RECORD['Brevid']};{raw_content}"
+        )
+        assert metadata == []
+        assert "No RESULT marker found" in caplog.text
+
+    def test_single_record_without_result_marker_single_line(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Test section without RESULT marker and only one line (record number only)."""
+        raw_response = f"{ResponseParser.RECORD_MARKER}1"
+
+        with caplog.at_level(logging.WARNING):
+            annotated, metadata = ResponseParser.parse_batch_response(
+                [VALID_RECORD], raw_response
+            )
+        log.debug("Annotated: %s", annotated)
+        log.debug("Metadata: %s", metadata)
+        # Single-line section "1" has no content after the header line,
+        # so it falls back to section.strip() which is "1" → triggers
+        # "No JSON marker" warning → annotated_text="1", entities=[]
+        assert len(annotated) == 1
+        assert annotated[0] == f"{VALID_RECORD['Bindnr']};{VALID_RECORD['Brevid']};1"
+        assert metadata == []
+        assert "No RESULT marker found" in caplog.text
+
+    def test_mismatched_sections_warns(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Test warning when section count doesn't match record count."""
+        raw_response = (
+            f"{ResponseParser.RECORD_MARKER}1 {ResponseParser.RESULT_MARKER}\n"
+            f"{SAMPLE_LLM_RESPONSE}"
+        )
+
+        # two records but only one section in response
+        records = [
+            VALID_RECORD,
+            {
+                **VALID_RECORD,
+                "Brevid": "602",
+            },
+        ]
+
+        log.debug("Testing with raw response:\n%s\n", raw_response)
+        log.debug("Testing with records:\n%s\n", records)
+
+        with caplog.at_level(logging.WARNING):
+            annotated, metadata = ResponseParser.parse_batch_response(
+                records, raw_response
+            )
+
+        log.debug("Captured logs: %s", caplog.text)
+        log.debug("Annotated: %s", annotated)
+        log.debug("Metadata: %s", metadata)
+
+        assert "Expected 2 record sections, found 1" in caplog.text
+
+    def test_more_sections_than_records_stops(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Test processing stops when there are more sections than records."""
+        section = f"1 {ResponseParser.RESULT_MARKER}\n{SAMPLE_LLM_RESPONSE}"
+        raw_response = (
+            f"{ResponseParser.RECORD_MARKER}{section}"
+            f"{ResponseParser.RECORD_MARKER}{section}"
+        )
+
+        records = [VALID_RECORD]  # Only 1 record but 2 sections
+        with caplog.at_level(logging.WARNING):
+            annotated, metadata = ResponseParser.parse_batch_response(
+                records, raw_response
+            )
+
+        log.debug("Captured logs: %s", caplog.text)
+        log.debug("Annotated: %s", annotated)
+        log.debug("Metadata: %s", metadata)
+
+        assert "More sections" in caplog.text
+        assert len(annotated) == 1
+        assert len(metadata) == 1
+
+    def test_critical_error_returns_fallback(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Test critical exception during parsing returns fallback records."""
+
+        def _raise_exception(
+            _raw_response: str, _records: list[dict[str, str]]
+        ) -> None:
+            raise RuntimeError("Simulated critical error during parsing")
+
+        monkeypatch.setattr(ResponseParser, "_split_batch_response", _raise_exception)
+        records = [VALID_RECORD]
+
+        with caplog.at_level(logging.ERROR):
+            annotated, metadata = ResponseParser.parse_batch_response(
+                records, "some response"
+            )
+
+        log.debug("Annotated: %s", annotated)
+        log.debug("Metadata: %s", metadata)
+        log.debug("Captured logs: %s", caplog.text)
+        assert "Simulated critical error during parsing" in caplog.text
+        assert "Critical error parsing batch response" in caplog.text
+        assert len(annotated) == 1
+        assert (
+            annotated[0]
+            == f"{VALID_RECORD['Bindnr']};{VALID_RECORD['Brevid']};{VALID_RECORD['Tekst']}"
+        )
+        assert metadata == []
+
+    def test_multi_record_batch(self) -> None:
+        """Test batch response with multiple records."""
+        section = f"1 {ResponseParser.RESULT_MARKER}\n{SAMPLE_LLM_RESPONSE}"
+
+        raw_response = (
+            f"{ResponseParser.RECORD_MARKER}{section}"
+            f"{ResponseParser.RECORD_MARKER}{section}"
+        )
+
+        records = [
+            VALID_RECORD,
+            {
+                "Bindnr": "2",
+                "Brevid": "602",
+                "Tekst": "Another record text",
+            },
+        ]
+
+        annotated, metadata = ResponseParser.parse_batch_response(records, raw_response)
+
+        log.debug("Annotated: %s", annotated)
+        log.debug("Metadata: %s", metadata)
+        assert len(annotated) == 2
+        assert len(metadata) == 2
+        for i, record in enumerate(records):
+            expected_annotated_text = (
+                f'{record["Bindnr"]};{record["Brevid"]};"{ANNOTATED_TEXT}"'
+            )
+            assert annotated[i] == expected_annotated_text
+
+    def test_record_parse_failure_produces_fallback_row(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Test that a single record parse failure produces a fallback row."""
+        section = f"1 {ResponseParser.RESULT_MARKER}\n"
+        raw_response = f"{ResponseParser.RECORD_MARKER}{section}"  # Empty content → will raise LLMResponseError
+
+        with caplog.at_level(logging.ERROR):
+            annotated, metadata = ResponseParser.parse_batch_response(
+                [VALID_RECORD], raw_response
+            )
+
+        log.debug("Annotated: %s", annotated)
+        log.debug("Metadata: %s", metadata)
+        log.debug("Captured logs: %s", caplog.text)
+        assert "Error parsing record 1 in batch" in caplog.text
+        assert "Empty response from LLM" in caplog.text
+        assert len(annotated) == 1
+        assert (
+            annotated[0]
+            == f"{VALID_RECORD['Bindnr']};{VALID_RECORD['Brevid']};{VALID_RECORD['Tekst']}"
+        )
+        assert metadata == []
+
+    # --- _create_fallback_records coverage (via parse_batch_response) ---
+    def test_fallback_missing_keys_default_to_unknown(self) -> None:
+        """Test fallback uses 'unknown' for missing record keys."""
+        records: list[dict[str, str]] = [{}]
+        annotated, metadata = ResponseParser.parse_batch_response(records, "")
+
+        log.debug("Annotated: %s", annotated)
+        log.debug("Metadata: %s", metadata)
+        assert len(annotated) == 1
+        assert annotated[0] == "unknown;unknown;unknown"
+        assert metadata == []
+
+    def test_fallback_multiple_records(self) -> None:
+        """Test fallback with multiple records."""
+        records = [
+            VALID_RECORD,
+            {"Bindnr": "002", "Brevid": "602", "Tekst": "Second text."},
+        ]
+        annotated, metadata = ResponseParser.parse_batch_response(records, "")
+
+        log.debug("Annotated: %s", annotated)
+        log.debug("Metadata: %s", metadata)
+        assert len(annotated) == 2
+        assert metadata == []
