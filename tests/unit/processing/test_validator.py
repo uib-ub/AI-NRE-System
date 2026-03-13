@@ -17,17 +17,9 @@ import pytest
 from ai_ner_system.processing.exceptions import ValidationError
 from ai_ner_system.processing.validator import RecordValidator
 
+from .conftest import VALID_RECORD
+
 log = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Helpers / fixtures
-# ---------------------------------------------------------------------------
-
-VALID_RECORD: dict[str, str] = {
-    "Bindnr": "001",
-    "Brevid": "601",
-    "Tekst": "Ollum monnum þæim sæm þetta bref sea æder høyra sændir Olauer",
-}
 
 
 class TestValidateRecord:

@@ -20,46 +20,23 @@ from ai_ner_system.processing.entities import EntityRecord
 from ai_ner_system.processing.exceptions import LLMResponseError, ParseError
 from ai_ner_system.processing.parser import ResponseParser
 
+from .conftest import (
+    ANNOTATED_TEXT,
+    BREVID,
+    SAMPLE_LLM_RESPONSE,
+    VALID_ENTITIES_JSON,
+    VALID_ENTITY_DATA,
+    VALID_RECORD,
+)
+
 log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Constants / sample data
 # ---------------------------------------------------------------------------
 
-BREVID = "601"
-
 # Mirrors ResponseParser._MAX_SNIPPET without importing the private constant
 MAX_SNIPPET = 200
-
-VALID_ENTITY_DATA: dict[str, Any] = {
-    "name": "Olauer",
-    "type": "Person Name",
-    "preposition": "N/A",
-    "order": 1,
-    "description": "Abbot",
-    "gender": "Male",
-    "language": "non",
-}
-
-VALID_ENTITIES_JSON = json.dumps(
-    {
-        "entities": [
-            VALID_ENTITY_DATA,
-        ]
-    }
-)
-
-ANNOTATED_TEXT = "Ollum monnum þæim sæm þetta bref sea æder høyra sændir < Olauer;Person Name;N/A;1;601 > med gudz"
-
-SAMPLE_LLM_RESPONSE = (
-    f"{ANNOTATED_TEXT}\n{ResponseParser.JSON_MARKER}\n{VALID_ENTITIES_JSON}"
-)
-
-VALID_RECORD: dict[str, Any] = {
-    "Bindnr": "1",
-    "Brevid": BREVID,
-    "Tekst": "Ollum monnum þæim sæm þetta bref sea æder høyra sændir Olauer med gudz",
-}
 
 
 # ===================================================================
