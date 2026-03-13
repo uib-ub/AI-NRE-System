@@ -1,12 +1,12 @@
 """Pytest configuration and shared fixtures.
 
-This module provides test infrastructure including:
+This module provides core test infrastructure including:
 - Session-level logging configuration
-- Common fixtures for temporary files and directories
-- Settings reset automation
-- Helper utilities for test data generation
+- Environment isolation (autouse)
+- Settings singleton reset (autouse)
+- Custom marker registration
 
-Uses Python 3.11+ features for better async test support.
+Unit-test-specific fixtures live in ``tests/unit/conftest.py``.
 """
 
 from __future__ import annotations
@@ -17,12 +17,10 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-import ai_ner_system.config.settings as settings_mod
 from ai_ner_system.config.settings import Settings
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from pathlib import Path
 
     from ai_ner_system.config.settings import Settings as SettingsType
 
@@ -101,146 +99,6 @@ def reset_settings() -> Iterator[None]:
         yield
     finally:
         settings_class.reset()
-
-
-@pytest.fixture
-def no_dotenv(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Disable load_dotenv during test."""
-
-    def _no_dotenv(*_args: object, **_kwargs: object) -> bool:
-        return False
-
-    monkeypatch.setattr(settings_mod, "load_dotenv", _no_dotenv, raising=True)
-
-
-@pytest.fixture
-def tmp_input_file(tmp_path: Path) -> Path:
-    """Create a temporary CSV input file with sample medieval text data.
-
-    Args:
-        tmp_path: Pytest temporary directory fixture.
-
-    Returns:
-        Path to created input file with header and sample records.
-    """
-    input_file = tmp_path / "test_input.txt"
-    input_file.write_text(
-        "Bindnr;Brevid;Tekst\n"
-        "1;601;Ollum monnum þæim sæm þetta bref sea æder høyra sændir Olauer med gudz nadh abote j Olafsklaustre j Tunsbergi q. g. ok sina kunnikt gerande at ek hæfuir samþykt med þesso mino opno brefue a Olafsklausters vægna þet jardarkaup sæm sira Æirikar Kolbiornason prester a Sondum hafde kœypt af Haluarde Þorgæirssyni ij marka bool j sydra Strandh er ligger j Sanda sokn a Væstfoldh æfter þui sæm jngifta bref vattar at Haluarder ok hans kona gafuo sik jn j sancte Olafsklauster med allu þui sem þau atto bæde j lauso ok fasto. serdæilis kenniz ek ok at ek hafuer vpboret af fyrnæmdom sira Æirike ij half stykki klædes sæm æfter stodo af jardar verdino ok ofuan a þet gaf han mik ok afhende a klaustrens vægna .j. half stykki j ifuir giof firir fyrnæmda jordh. Ok til sanynda her vm sætto þesser goder men er sua æita ok ner waro fyrnemdo giærdh ok samþykt sira Halbiorn Biornsson profaster j Tunsbergi. sira Hakon Gudþormsson prester j Nioterøy sin insigli med mino firir þetta bref er giort war j Raudenom j Tunsbergi a Botolf vaku æftan anno domini mo cccco vo ok a xvj are rikis wars wyrduliks herra herra Eriks med gudz nadh Noreks Dana ok Guta konongs.\n"
-        "1;604;Veer Eskill meder gudes naad erchibiskuper j Nidaros kungerom allom mannom þæim sem þetta bref sea eda høyra at þet var skilordh j kaupmaala vaarom ok velborens manz Hac[onar Sigurdz] sonar vm æighner þær sem han hefuer os ok vaare kirkiu pansæt j Sennione ok j Trumpsar kirkiu sokn [firir] fiortaan læster skræidar til gilldz huoriar ver hafuum os ok vaara epterkomanda vnderbundit meder vaaro opno brefue at luca Titeke sæmm eda hans erfuingiom. jnnan þriu aar her epter a Haconar Sigurdzsonar væghna. at sidan ver ok vaar kirkia eda efterkomanda hafuum med fulnade. jam marghar læster fisk til gildz oc kostnadh varn mæder apter vpboret af hans Haconar æignom fyrnemdom. þa scula þær sama æighner allar. vera firir os oc vaare kirkiu. eda varom efterkomandom .quittar oc lydughar ok allungis aakiæralausar. en Hacone eder hans erfuingiom. frealsar oc heimhollar. til alz afrædes. sosom bref hans vaattar sæm ver hafuum vm fyrsagdan kaupmaala. Til meire vissu her vm. sættom ver vaart secretum firir þetta bref ær gort war j Berguin vigilia beati Bartholomei apostoli. anno domini millesimo. quadringentesimo quinto.\n"
-        "1;611;Ollom monnom þeim sæm þetta bref sea ædher høyra sænda Hakon Amundason ok Arne Drængsson quædiu gudz ok sina kunnikt gerande at mit hafuum sælt Ælifui ok Alfue Olafssonom mærka bool j Lundaby sæm ligger j Sanda sokn j Sææms bygd sæm Sanda kirkiæ atte till vpbygninga mædh ollom lutum ok lunnyndom sæm till liggia ædher leghet (hafua) fra forno ok nyghiu jnnan gardz ok vttan frialst ok hæimholt ok akiæralaust firir huariom manne. kænnomzst mit at mit hafuum vpboret af fyrnæmfdom brødrom fyrsta pening ok øfsta ok alla þer j mellom æfter þui sæm j kaup vart kom sua at okker væl atnøgde. Ok till sannynda settom mit okor incigli firir þetta bref er gort var a Berghom j Sanda sokn a Blasius messo dagh a xviii aare okkars vyrdaligs herræ herræ Eriks mædh guds naadh Noregs konongs.\n",
-        encoding="utf-8",
-    )
-    return input_file
-
-
-@pytest.fixture
-def mock_env_claude(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
-    """Set up Claude client environment variables.
-
-    Args:
-        monkeypatch: Pytest fixture for modifying environment.
-
-    Returns:
-        Dictionary of set environment variables.
-    """
-    env_vars = {
-        "ANTHROPIC_API_KEY": "sk-ant-test-key-123456789",
-        "CLAUDE_MODEL": "claude-sonnet-4",
-    }
-    for key, value in env_vars.items():
-        monkeypatch.setenv(key, value)
-    return env_vars
-
-
-@pytest.fixture
-def mock_env_ollama(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
-    """Set up Ollama client environment variables.
-
-    Args:
-        monkeypatch: Pytest fixture for modifying environment.
-
-    Returns:
-        Dictionary of set environment variables.
-    """
-    env_vars = {
-        "OPENWEBUI_ENDPOINT": "http://localhost:11434",
-        "OPENWEBUI_TOKEN": "test-token-123",
-        "OLLAMA_MODEL": "gemma3:12b",
-    }
-    for key, value in env_vars.items():
-        monkeypatch.setenv(key, value)
-    return env_vars
-
-
-@pytest.fixture
-def sample_header() -> str:
-    """Provide sample output header for testing output writers.
-
-    Returns:
-        Standard CSV header string.
-    """
-    return "Bindnr;Brevid;Tekst"
-
-
-@pytest.fixture
-def sample_annotated_lines() -> list[str]:
-    """Provide sample annotated text lines for testing output writers.
-
-    Returns:
-        List of annotated text records with medieval text.
-    """
-    return [
-        "1;601;Ollum monnum þæim sæm þetta bref sea æder høyra sændir < Olauer;Person Name;N/A;1;601 >",
-        "1;602;Ollom monnom þæim sæm þetta bref sea æder høyra sænda < Halbiorn Biornsson;Person Name;N/A;1;602 >",
-        "1;603;Ollom monnom thæim sæm thetta bref sæ ædr høyra sendr < Sandr;Person Name;N/A;1;603 >",
-    ]
-
-
-@pytest.fixture
-def sample_metadata_header() -> str:
-    """Provide sample metadata header for testing output writers.
-
-    Returns:
-        Metadata CSV header string.
-    """
-    return "Proper Noun;Type of Proper Noun;Preposition;Order of Occurrence in Doc;Brevid;Status/Occupation/Description;Gender;Language"
-
-
-@pytest.fixture
-def sample_metadata_lines() -> list[str]:
-    """Provide sample metadata lines for testing output writers.
-
-    Returns:
-        List of metadata records.
-    """
-    return [
-        "Olauer;Person Name;N/A;1;601;Abbot;Male;non",
-        "Olafsklaustre;Place Name;j;2;601;Monastery;N/A;non",
-        "Tunsbergi;Place Name;j;3;601;Town/City;N/A;non",
-    ]
-
-
-@pytest.fixture
-def single_template_file(tmp_path: Path) -> Path:
-    """Create a simple single-record template file."""
-    template = tmp_path / "single_template.txt"
-    template.write_text(
-        "Brevid: {brevid}\nText: {text}",
-        encoding="utf-8",
-    )
-    return template
-
-
-@pytest.fixture
-def batch_template_file(tmp_path: Path) -> Path:
-    """Create a simple batch template file."""
-    template = tmp_path / "batch_template.txt"
-    template.write_text(
-        "Processing {num_records} records:\n{batch_content}",
-        encoding="utf-8",
-    )
-    return template
 
 
 def pytest_configure(config: pytest.Config) -> None:
