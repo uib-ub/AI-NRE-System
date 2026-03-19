@@ -48,7 +48,11 @@ ANNOTATED_TEXT = (
     " < Olauer;Person Name;N/A;1;601 > med gudz"
 )
 
+METADATA_TEXT = "Olauer;Person Name;N/A;1;601;Abbot;Male;non"
+
 SAMPLE_LLM_RESPONSE = f"{ANNOTATED_TEXT}\n===JSON===\n{VALID_ENTITIES_JSON}"
+
+SAMPLE_BATCH_LLM_RESPONSE = f"RECORD 1 RESULT:\n{SAMPLE_LLM_RESPONSE}"
 
 GENERATED_PROMPT = "Generated prompt for testing"
 
