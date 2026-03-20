@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from ai_ner_system.llm.base_client import Client
+from ai_ner_system.processing.entities import EntityRecord
 from ai_ner_system.processing.processor import RecordProcessor
 from ai_ner_system.prompt.builder import PromptBuilder
 
@@ -55,6 +56,17 @@ SAMPLE_LLM_RESPONSE = f"{ANNOTATED_TEXT}\n===JSON===\n{VALID_ENTITIES_JSON}"
 SAMPLE_BATCH_LLM_RESPONSE = f"RECORD 1 RESULT:\n{SAMPLE_LLM_RESPONSE}"
 
 GENERATED_PROMPT = "Generated prompt for testing"
+
+EXPECTED_ENTITY = EntityRecord(
+    name=VALID_ENTITY_DATA["name"],
+    entity_type=VALID_ENTITY_DATA["type"],
+    preposition=VALID_ENTITY_DATA["preposition"],
+    order=VALID_ENTITY_DATA["order"],
+    brevid=BREVID,
+    description=VALID_ENTITY_DATA["description"],
+    gender=VALID_ENTITY_DATA["gender"],
+    language=VALID_ENTITY_DATA["language"],
+)
 
 
 # ---------------------------------------------------------------------------

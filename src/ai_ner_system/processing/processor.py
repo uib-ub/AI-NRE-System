@@ -26,7 +26,7 @@ from .exceptions import (
 from .parser import ResponseParser
 from .validator import RecordValidator
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from collections.abc import Callable
 
     from ai_ner_system.llm.base_client import Client
@@ -521,7 +521,7 @@ class RecordProcessor:
         failed_count = 0
 
         for i, result in enumerate(results_raw):
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 brevid = records[i].get("Brevid", "unknown")
                 bindnr = records[i].get("Bindnr", "unknown")
                 record_id = self.create_record_id(bindnr, brevid)
@@ -535,7 +535,7 @@ class RecordProcessor:
                     ),
                 )
                 failed_count += 1
-            elif isinstance(result, ProcessingResult):
+            else:
                 processed_results.append(result)
                 if result.success:
                     successful_count += 1
@@ -829,8 +829,6 @@ class RecordProcessor:
             raise ValueError(f"Invalid custom_id format: {custom_id}")
 
         parts = custom_id.split("_")
-        if len(parts) < RecordProcessor.MIN_CUSTOM_ID_PARTS:
-            raise ValueError(f"Invalid custom_id format: {custom_id}")
         try:
             return int(parts[1])
         except ValueError as e:

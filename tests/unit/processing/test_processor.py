@@ -24,6 +24,8 @@ import pytest
 if TYPE_CHECKING:
     from pytest_mock import MockerFixture
 
+    from ai_ner_system.processing.entities import ProcessingResult
+
 from ai_ner_system.llm.batch_models import (
     BatchProgress,
     BatchRequest,
@@ -34,7 +36,6 @@ from ai_ner_system.llm.exceptions import LLMClientError
 from ai_ner_system.processing.entities import (
     BatchProcessingResult,
     EntityRecord,
-    ProcessingResult,
 )
 from ai_ner_system.processing.exceptions import (
     BatchProcessingError,
@@ -45,6 +46,7 @@ from tests.unit.processing.conftest import (
     ANNOTATED_TEXT,
     BINDNR,
     BREVID,
+    EXPECTED_ENTITY,
     GENERATED_PROMPT,
     METADATA_TEXT,
     SAMPLE_BATCH_LLM_RESPONSE,
@@ -60,6 +62,8 @@ log = logging.getLogger(__name__)
 # Aliases for protected static helpers (avoid repeated type-ignore comments)
 # ---------------------------------------------------------------------------
 _create_batch_id = RecordProcessor._create_batch_id  # pyright: ignore[reportPrivateUsage]
+_create_custom_id = RecordProcessor._create_custom_id  # pyright: ignore[reportPrivateUsage]
+_extract_index_from_custom_id = RecordProcessor._extract_index_from_custom_id  # pyright: ignore[reportPrivateUsage]
 _create_processing_result = RecordProcessor._create_processing_result  # pyright: ignore[reportPrivateUsage]
 
 
@@ -271,17 +275,7 @@ class TestProcessRecordAsync:
         assert result.brevid == BREVID
         assert result.annotated_text == f'{BINDNR};{BREVID};"{ANNOTATED_TEXT}"'
         log.debug("Metadata: %s", result.entities[0])
-        expected = EntityRecord(
-            name=VALID_ENTITY_DATA["name"],
-            entity_type=VALID_ENTITY_DATA["type"],  # note mapping type -> entity_type
-            preposition=VALID_ENTITY_DATA["preposition"],
-            order=VALID_ENTITY_DATA["order"],
-            brevid="601",
-            description=VALID_ENTITY_DATA["description"],
-            gender=VALID_ENTITY_DATA["gender"],
-            language=VALID_ENTITY_DATA["language"],
-        )
-        assert result.entities[0] == expected
+        assert result.entities[0] == EXPECTED_ENTITY
 
     @pytest.mark.asyncio
     async def test_validation_error(
@@ -391,17 +385,7 @@ class TestProcessBatchAsync:
         assert (
             result.results[0].annotated_text == f'{BINDNR};{BREVID};"{ANNOTATED_TEXT}"'
         )
-        expected = EntityRecord(
-            name=VALID_ENTITY_DATA["name"],
-            entity_type=VALID_ENTITY_DATA["type"],  # note mapping type -> entity_type
-            preposition=VALID_ENTITY_DATA["preposition"],
-            order=VALID_ENTITY_DATA["order"],
-            brevid="601",
-            description=VALID_ENTITY_DATA["description"],
-            gender=VALID_ENTITY_DATA["gender"],
-            language=VALID_ENTITY_DATA["language"],
-        )
-        assert result.results[0].entities[0] == expected
+        assert result.results[0].entities[0] == EXPECTED_ENTITY
 
     @pytest.mark.asyncio
     async def test_with_batch_support(
@@ -431,17 +415,7 @@ class TestProcessBatchAsync:
         assert (
             result.results[0].annotated_text == f'{BINDNR};{BREVID};"{ANNOTATED_TEXT}"'
         )
-        expected = EntityRecord(
-            name=VALID_ENTITY_DATA["name"],
-            entity_type=VALID_ENTITY_DATA["type"],  # note mapping type -> entity_type
-            preposition=VALID_ENTITY_DATA["preposition"],
-            order=VALID_ENTITY_DATA["order"],
-            brevid="601",
-            description=VALID_ENTITY_DATA["description"],
-            gender=VALID_ENTITY_DATA["gender"],
-            language=VALID_ENTITY_DATA["language"],
-        )
-        assert result.results[0].entities[0] == expected
+        assert result.results[0].entities[0] == EXPECTED_ENTITY
         assert result.results[0].record_id == f"record_0_{BINDNR}_{BREVID}"
 
     @pytest.mark.asyncio
@@ -625,29 +599,19 @@ class TestCallLLM:
         log.debug("Caught exception: %s", exc_info.value)
         assert "Error during LLM call" in str(exc_info.value)
 
-    def test_empty_response_raises(
+    @pytest.mark.parametrize(
+        "return_value",
+        ["", "Claude API call failed"],
+        ids=["empty_response", "error_sentinel"],
+    )
+    def test_error_response_raises(
         self,
         processor: Any,
+        return_value: str,
     ) -> None:
-        """Test empty LLM response raises ProcessingError."""
-        processor.llm_client.call.return_value = ""
+        """Test empty or sentinel LLM response raises ProcessingError."""
+        processor.llm_client.call.return_value = return_value
 
-        with pytest.raises(
-            ProcessingError,
-            match="LLM returned error response",
-        ) as exc_info:
-            processor._call_llm(BREVID, GENERATED_PROMPT)
-
-        log.debug("Caught exception: %s", exc_info.value)
-        assert "LLM returned error response" in str(exc_info.value)
-        assert exc_info.value.operation == "call_llm"
-
-    def test_error_sentinel_raises(
-        self,
-        processor: Any,
-    ) -> None:
-        """Test error sentinel response raises ProcessingError."""
-        processor.llm_client.call.return_value = "Claude API call failed"
         with pytest.raises(
             ProcessingError,
             match="LLM returned error response",
@@ -738,17 +702,7 @@ class TestBuildBatchResults:
         assert results[0].record_id == f"record_0_{BINDNR}_{BREVID}"
         assert results[0].success is True
         assert results[0].annotated_text == f'{BINDNR};{BREVID};"{ANNOTATED_TEXT}"'
-        expected = EntityRecord(
-            name=VALID_ENTITY_DATA["name"],
-            entity_type=VALID_ENTITY_DATA["type"],  # note mapping type -> entity_type
-            preposition=VALID_ENTITY_DATA["preposition"],
-            order=VALID_ENTITY_DATA["order"],
-            brevid="601",
-            description=VALID_ENTITY_DATA["description"],
-            gender=VALID_ENTITY_DATA["gender"],
-            language=VALID_ENTITY_DATA["language"],
-        )
-        assert results[0].entities[0] == expected
+        assert results[0].entities[0] == EXPECTED_ENTITY
 
     def test_with_missing_response(
         self,
@@ -841,47 +795,39 @@ class TestProcessSingleBatchResponse:
         assert result.brevid == BREVID
         assert result.success is True
         assert result.annotated_text == f'{BINDNR};{BREVID};"{ANNOTATED_TEXT}"'
-        expected = EntityRecord(
-            name=VALID_ENTITY_DATA["name"],
-            entity_type=VALID_ENTITY_DATA["type"],  # note mapping type -> entity_type
-            preposition=VALID_ENTITY_DATA["preposition"],
-            order=VALID_ENTITY_DATA["order"],
-            brevid="601",
-            description=VALID_ENTITY_DATA["description"],
-            gender=VALID_ENTITY_DATA["gender"],
-            language=VALID_ENTITY_DATA["language"],
-        )
-        assert result.entities[0] == expected
+        assert result.entities[0] == EXPECTED_ENTITY
 
-    def test_no_response(
+    @pytest.mark.parametrize(
+        ("response", "expected_error"),
+        [
+            (None, "No response received for record"),
+            (
+                BatchResponse(
+                    custom_id=f"record_0_{BINDNR}_{BREVID}",
+                    response_text="",
+                    success=False,
+                    error_message="Server error",
+                ),
+                "Server error",
+            ),
+            (
+                BatchResponse(
+                    custom_id=f"record_0_{BINDNR}_{BREVID}",
+                    response_text="not parseable\n===JSON===\n{invalid json}",
+                    success=True,
+                ),
+                "Failed to parse LLM response",
+            ),
+        ],
+        ids=["no_response", "failed_response", "parse_exception"],
+    )
+    def test_failure_cases(
         self,
         processor: Any,
+        response: BatchResponse | None,
+        expected_error: str,
     ) -> None:
-        """Test None response produces failed result."""
-        result = processor._process_single_batch_response(
-            0,
-            VALID_RECORD,
-            None,  # No response
-        )
-        log.debug("Processed batch response result: %s", result)
-        assert result.record_id == f"record_0_{BINDNR}_{BREVID}"
-        assert result.brevid == BREVID
-        assert result.success is False
-        assert result.annotated_text == ""
-        assert result.entities == []
-        assert "No response received for record" in result.error_message
-
-    def test_failed_response(
-        self,
-        processor: Any,
-    ) -> None:
-        """Test failed batch response produces failed result."""
-        response = BatchResponse(
-            custom_id=f"record_0_{BINDNR}_{BREVID}",
-            response_text="",
-            success=False,
-            error_message="Server error",
-        )
+        """Test failure scenarios produce failed results with expected errors."""
         result = processor._process_single_batch_response(
             0,
             VALID_RECORD,
@@ -893,32 +839,7 @@ class TestProcessSingleBatchResponse:
         assert result.success is False
         assert result.annotated_text == ""
         assert result.entities == []
-        assert "Server error" in result.error_message
-
-    def test_parse_exception(
-        self,
-        processor: Any,
-    ) -> None:
-        """Test parse exception produces failed result with error message."""
-        # Use a successful response with invalid JSON to trigger parse error
-        response = BatchResponse(
-            custom_id=f"record_0_{BINDNR}_{BREVID}",
-            response_text="not parseable\n===JSON===\n{invalid json}",
-            success=True,
-        )
-        result = processor._process_single_batch_response(
-            0,
-            VALID_RECORD,
-            response,
-        )
-        log.debug("Processed batch response result: %s", result)
-        assert result.record_id == f"record_0_{BINDNR}_{BREVID}"
-        assert result.brevid == BREVID
-        assert result.success is False
-        assert result.annotated_text == ""
-        assert result.entities == []
-        assert "Failed to parse LLM response" in result.error_message
-        assert "Invalid JSON format" in result.error_message
+        assert expected_error in result.error_message
 
 
 # ===================================================================
@@ -979,6 +900,68 @@ class TestCreateResponseMap:
 # ===================================================================
 # Static helpers
 # ===================================================================
+class TestStaticHelpers:
+    """Tests for static helper methods on RecordProcessor."""
+
+    @pytest.mark.parametrize(
+        ("brevids", "max_display", "expected"),
+        [
+            (["601", "602"], 3, "BATCH-601-602"),
+            (["601", "602", "603"], 3, "BATCH-601-602-603"),
+            (["601", "602", "603", "604", "605"], 3, "BATCH-601-602-603..."),
+        ],
+        ids=["short_list", "exact_max", "long_list_truncates"],
+    )
+    def test_create_batch_id(
+        self,
+        brevids: list[str],
+        max_display: int,
+        expected: str,
+    ) -> None:
+        """Test batch ID generation with varying list lengths."""
+        result = _create_batch_id(brevids, max_display=max_display)
+        log.debug("Created batch ID: %s", result)
+        assert result == expected
+
+    def test_create_record_id(self) -> None:
+        """Test record ID creation."""
+        result = RecordProcessor.create_record_id("1", "601")
+        log.debug("Created record ID: %s", result)
+        assert result == "1_601"
+
+    def test_create_custom_id(self) -> None:
+        """Test custom ID creation."""
+        result = _create_custom_id(0, "1", "601")
+        log.debug("Created custom ID: %s", result)
+        assert result == "record_0_1_601"
+
+    def test_extract_index_from_custom_id_success(self) -> None:
+        """Test extracting index from valid custom ID."""
+        result = _extract_index_from_custom_id("record_0_1_601")
+        log.debug("Extracted index: %s", result)
+        assert result == 0
+
+    @pytest.mark.parametrize(
+        ("custom_id", "match_text"),
+        [
+            ("test_0_1_601", "Invalid custom_id format"),
+            ("record", "Invalid custom_id format"),
+            ("record_", "Could not extract index"),
+            ("record_abc_1_601", "Could not extract index"),
+        ],
+        ids=["invalid_prefix", "single_part", "empty_index", "non_numeric"],
+    )
+    def test_extract_index_from_custom_id_raises(
+        self,
+        custom_id: str,
+        match_text: str,
+    ) -> None:
+        """Test invalid custom_id inputs raise ValueError."""
+        with pytest.raises(ValueError, match=match_text) as exc_info:
+            _extract_index_from_custom_id(custom_id)
+
+        log.debug("Caught exception: %s", exc_info.value)
+        assert match_text in str(exc_info.value)
 
 
 # ===================================================================
@@ -1032,6 +1015,32 @@ class TestCreateProcessingResult:
         assert result.error_message == "LLM call failed"
         assert result.annotated_text == ""
         assert result.entities == []
+
+    def test_success_missing_annotated_text_raises(self) -> None:
+        """Test ValueError when success=True but annotated_text is None."""
+        with pytest.raises(ValueError, match="annotated_text is required") as exc_info:
+            _create_processing_result(
+                record_id="record_0_1_601",
+                brevid=BREVID,
+                success=True,
+                entities=[EXPECTED_ENTITY],
+            )
+
+        log.debug("Caught exception: %s", exc_info.value)
+        assert "annotated_text is required when success=True" in str(exc_info.value)
+
+    def test_success_missing_entities_raises(self) -> None:
+        """Test ValueError when success=True but entities is None."""
+        with pytest.raises(ValueError, match="entities is required") as exc_info:
+            _create_processing_result(
+                record_id="record_0_1_601",
+                brevid=BREVID,
+                success=True,
+                annotated_text=f'{BINDNR};{BREVID};"{ANNOTATED_TEXT}"',
+            )
+
+        log.debug("Caught exception: %s", exc_info.value)
+        assert "entities is required when success=True" in str(exc_info.value)
 
 
 # ===================================================================
