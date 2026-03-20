@@ -720,10 +720,8 @@ class RecordProcessor:
                 cause=e,
             )
 
-        if (
-            not raw_response
-            or raw_response.strip() in self.llm_client.ERROR_RESPONSE_SENTINELS
-        ):
+        stripped = raw_response.strip() if raw_response else ""
+        if not stripped or stripped in self.llm_client.ERROR_RESPONSE_SENTINELS:
             _fail(f"LLM returned error response for {identifier}", operation="call_llm")
 
         logging.debug(

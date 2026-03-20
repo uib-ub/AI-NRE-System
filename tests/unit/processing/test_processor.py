@@ -601,8 +601,8 @@ class TestCallLLM:
 
     @pytest.mark.parametrize(
         "return_value",
-        ["", "Claude API call failed"],
-        ids=["empty_response", "error_sentinel"],
+        ["", "   ", "Claude API call failed"],
+        ids=["empty_response", "whitespace_only", "error_sentinel"],
     )
     def test_error_response_raises(
         self,
@@ -768,6 +768,44 @@ class TestBuildBatchResults:
         assert "Failed to parse LLM response" in results[0].error_message
         assert "Invalid JSON format" in results[0].error_message
 
+    def test_order_preserved_with_shuffled_responses(
+        self,
+        processor: Any,
+    ) -> None:
+        """Test results follow original record order even when responses arrive out of order."""
+        records = [
+            {"Bindnr": "1", "Brevid": "601", "Tekst": "text A"},
+            {"Bindnr": "1", "Brevid": "602", "Tekst": "text B"},
+            {"Bindnr": "1", "Brevid": "603", "Tekst": "text C"},
+        ]
+        # Responses arrive out of order (index 2, 0, 1)
+        responses = [
+            BatchResponse(
+                custom_id="record_2_1_603",
+                response_text=SAMPLE_LLM_RESPONSE,
+                success=True,
+            ),
+            BatchResponse(
+                custom_id="record_0_1_601",
+                response_text=SAMPLE_LLM_RESPONSE,
+                success=True,
+            ),
+            BatchResponse(
+                custom_id="record_1_1_602",
+                response_text=SAMPLE_LLM_RESPONSE,
+                success=True,
+            ),
+        ]
+        results = processor._build_batch_results(records, responses)
+
+        log.debug("Results: %s", results)
+        assert len(results) == 3
+        # Results must follow original record order, not response order
+        assert results[0].brevid == "601"
+        assert results[1].brevid == "602"
+        assert results[2].brevid == "603"
+        assert all(r.success for r in results)
+
 
 # ===================================================================
 # Process single batch response
@@ -894,6 +932,60 @@ class TestCreateResponseMap:
         log.debug("Captured logs: %s", caplog.text)
 
         assert len(response_map) == 0
+        assert "Could not parse index from custom_id" in caplog.text
+
+    def test_duplicate_index_keeps_last(
+        self,
+        processor: Any,
+    ) -> None:
+        """Test duplicate indices are overwritten; last response wins."""
+        first = BatchResponse(
+            custom_id="record_0_1_601",
+            response_text="first",
+            success=True,
+        )
+        second = BatchResponse(
+            custom_id="record_0_1_601",
+            response_text="second",
+            success=True,
+        )
+        response_map = processor._create_response_map([first, second])
+
+        log.debug("Response map: %s", response_map)
+        assert len(response_map) == 1
+        assert response_map[0].response_text == "second"
+
+    def test_mixed_valid_and_invalid(
+        self,
+        processor: Any,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Test valid responses are kept while invalid ones are skipped."""
+        responses = [
+            BatchResponse(
+                custom_id="record_0_1_601",
+                response_text=SAMPLE_LLM_RESPONSE,
+                success=True,
+            ),
+            BatchResponse(
+                custom_id="bad_id",
+                response_text="",
+                success=False,
+                error_message="Bad ID",
+            ),
+            BatchResponse(
+                custom_id="record_2_1_603",
+                response_text=SAMPLE_LLM_RESPONSE,
+                success=True,
+            ),
+        ]
+        with caplog.at_level(logging.WARNING):
+            response_map = processor._create_response_map(responses)
+
+        log.debug("Response map: %s", response_map)
+        assert len(response_map) == 2
+        assert 0 in response_map
+        assert 2 in response_map
         assert "Could not parse index from custom_id" in caplog.text
 
 
