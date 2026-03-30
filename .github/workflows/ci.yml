@@ -18,12 +18,8 @@ concurrency:
 jobs:
   # Job 1: Code Quality Checks
   quality:
-    name: Code Quality (Python ${{ matrix.python-version }})
+    name: Code Quality (Python 3.11)
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.11"]
-      fail-fast: false  # Don't cancel other jobs if one fails
 
     steps:
       - name: Checkout code
@@ -35,10 +31,10 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
 
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python 3.11
         uses: actions/setup-python@v6
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.11"
 
       - name: Install dependencies
         run: |
@@ -47,13 +43,13 @@ jobs:
       - name: Run Ruff linter
         run: |
           echo "::group::Ruff Check"
-          uv run ruff check src/ --output-format=github
+          uv run ruff check src/ tests/ --output-format=github
           echo "::endgroup::"
 
       - name: Run Ruff formatter check
         run: |
           echo "::group::Ruff Format Check"
-          uv run ruff format --check src/
+          uv run ruff format --check src/ tests/
           echo "::endgroup::"
 
       - name: Run MyPy type checker

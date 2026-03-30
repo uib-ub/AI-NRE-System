@@ -37,7 +37,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           cache-dependency-glob: |
@@ -75,9 +75,10 @@ jobs:
           category: bandit
 
       - name: Run Safety (JSON report)
+        continue-on-error: true
         run: |
           echo "::group::Safety Vulnerability Check"
-          uv run safety scan --output json > reports/safety.json || true
+          uv run safety scan --output json > reports/safety.json
           echo "::endgroup::"
 
       - name: Upload raw reports as workflow artifacts
@@ -97,7 +98,8 @@ jobs:
             HIGH_COUNT=$(python3 -c 'import json; from pathlib import Path; data = json.loads(Path("reports/bandit.sarif").read_text(encoding="utf-8")); print(sum(1 for run in data.get("runs", []) for result in run.get("results", []) if str(result.get("level", "")).lower() == "error"))')
             echo "High severity Bandit findings found: $HIGH_COUNT"
             if [ "$HIGH_COUNT" -gt 0 ]; then
-              echo "::warning::Found $HIGH_COUNT high severity Bandit findings"
+              echo "::error::Found $HIGH_COUNT high severity Bandit findings"
+              exit 1
             fi
           fi
           echo "::endgroup::"
