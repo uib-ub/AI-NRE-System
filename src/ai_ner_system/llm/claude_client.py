@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 
 from .base_client import Client as LLMBaseClient
 from .batch_models import BatchProgress, BatchRequest, BatchResponse, BatchStatus
-from .exceptions import AuthenticationError, RateLimitError
+from .exceptions import APIError, AuthenticationError, LLMClientError, RateLimitError
 
 
 class ClaudeClient(LLMBaseClient):
@@ -267,16 +267,18 @@ class ClaudeClient(LLMBaseClient):
             raise self._handle_rate_limit_error(e, operation="single_call") from e
         except anthropic.APIError as e:
             status_code = getattr(e, "status_code", None)
-            msg = f"Claude API error: {e}"
-            self._raise_api_error(
-                msg,
+            raise APIError(
+                f"Claude API error: {e}",
+                client_type=self.client_type,
                 operation="single_call",
                 status_code=status_code,
-                cause=e,
-            )
-        except Exception as e:  # noqa: BLE001
-            msg = f"Claude API call failed: {e}"
-            self._raise_llm_client_error(msg, operation="single_call", cause=e)
+            ) from e
+        except Exception as e:
+            raise LLMClientError(
+                f"Claude API call failed: {e}",
+                client_type=self.client_type,
+                operation="single_call",
+            ) from e
         else:
             return text
 
@@ -324,16 +326,18 @@ class ClaudeClient(LLMBaseClient):
             raise self._handle_rate_limit_error(e, operation="async_single_call") from e
         except anthropic.APIError as e:
             status_code = getattr(e, "status_code", None)
-            msg = f"Claude API error: {e}"
-            self._raise_api_error(
-                msg,
+            raise APIError(
+                f"Claude API error: {e}",
+                client_type=self.client_type,
                 operation="async_single_call",
                 status_code=status_code,
-                cause=e,
-            )
-        except Exception as e:  # noqa: BLE001
-            msg = f"Claude API call failed: {e}"
-            self._raise_llm_client_error(msg, operation="async_single_call", cause=e)
+            ) from e
+        except Exception as e:
+            raise LLMClientError(
+                f"Claude API call failed: {e}",
+                client_type=self.client_type,
+                operation="async_single_call",
+            ) from e
         else:
             return text
 
@@ -388,15 +392,18 @@ class ClaudeClient(LLMBaseClient):
             ) from e
         except anthropic.APIError as e:
             status_code = getattr(e, "status_code", None)
-            self._raise_api_error(
+            raise APIError(
                 f"Claude API error: {e}",
+                client_type=self.client_type,
                 operation="async_create_batch",
                 status_code=status_code,
-                cause=e,
-            )
-        except Exception as e:  # noqa: BLE001
-            msg = f"Failed to create batch job: {e}"
-            self._raise_llm_client_error(msg, operation="async_create_batch", cause=e)
+            ) from e
+        except Exception as e:
+            raise LLMClientError(
+                f"Failed to create batch job: {e}",
+                client_type=self.client_type,
+                operation="async_create_batch",
+            ) from e
         else:
             return message_batch.id
 
@@ -430,19 +437,18 @@ class ClaudeClient(LLMBaseClient):
             ) from e
         except anthropic.APIError as e:
             status_code = getattr(e, "status_code", None)
-            self._raise_api_error(
+            raise APIError(
                 f"Claude API error: {e}",
+                client_type=self.client_type,
                 operation="async_get_batch_status",
                 status_code=status_code,
-                cause=e,
-            )
-        except Exception as e:  # noqa: BLE001
-            msg = f"Failed to get batch status: {e}"
-            self._raise_llm_client_error(
-                msg,
+            ) from e
+        except Exception as e:
+            raise LLMClientError(
+                f"Failed to get batch status: {e}",
+                client_type=self.client_type,
                 operation="async_get_batch_status",
-                cause=e,
-            )
+            ) from e
         else:
             # Map Claude batch processing_status to our enum
             ps = getattr(message_batch, "processing_status", None)
@@ -486,15 +492,18 @@ class ClaudeClient(LLMBaseClient):
             ) from e
         except anthropic.APIError as e:
             status_code = getattr(e, "status_code", None)
-            self._raise_api_error(
+            raise APIError(
                 f"Claude API error: {e}",
+                client_type=self.client_type,
                 operation="async_get_batch_info",
                 status_code=status_code,
-                cause=e,
-            )
-        except Exception as e:  # noqa: BLE001
-            msg = f"Failed to get batch info: {e}"
-            self._raise_llm_client_error(msg, operation="async_get_batch_info", cause=e)
+            ) from e
+        except Exception as e:
+            raise LLMClientError(
+                f"Failed to get batch info: {e}",
+                client_type=self.client_type,
+                operation="async_get_batch_info",
+            ) from e
         else:
             # Extract detailed information from the batch object
             batch_info: dict[str, Any] = {
@@ -563,19 +572,18 @@ class ClaudeClient(LLMBaseClient):
             ) from e
         except anthropic.APIError as e:
             status_code = getattr(e, "status_code", None)
-            self._raise_api_error(
+            raise APIError(
                 f"Claude API error: {e}",
+                client_type=self.client_type,
                 operation="async_get_batch_results",
                 status_code=status_code,
-                cause=e,
-            )
-        except Exception as e:  # noqa: BLE001
-            msg = f"Failed to get batch results: {e}"
-            self._raise_llm_client_error(
-                msg,
+            ) from e
+        except Exception as e:
+            raise LLMClientError(
+                f"Failed to get batch results: {e}",
+                client_type=self.client_type,
                 operation="async_get_batch_results",
-                cause=e,
-            )
+            ) from e
         else:
             return results
 
@@ -838,15 +846,18 @@ class ClaudeClient(LLMBaseClient):
             ) from e
         except anthropic.APIError as e:
             status_code = getattr(e, "status_code", None)
-            self._raise_api_error(
+            raise APIError(
                 f"Claude API error: {e}",
+                client_type=self.client_type,
                 operation="async_cancel_batch",
                 status_code=status_code,
-                cause=e,
-            )
-        except Exception as e:  # noqa: BLE001
-            msg = f"Failed to cancel batch: {e}"
-            self._raise_llm_client_error(msg, operation="async_cancel_batch", cause=e)
+            ) from e
+        except Exception as e:
+            raise LLMClientError(
+                f"Failed to cancel batch: {e}",
+                client_type=self.client_type,
+                operation="async_cancel_batch",
+            ) from e
         else:
             logging.info("Batch %s cancelled successfully", batch_id)
             return True

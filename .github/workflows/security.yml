@@ -2,100 +2,118 @@ name: Security Scan
 
 on:
   schedule:
-    # Run every Monday at 9 AM UTC
-    - cron: '0 9 * * 1'
+    - cron: "0 9 * * 1"
   push:
     branches: [main, master]
     paths:
-      - 'src/**'
-      - 'pyproject.toml'
-      - '.github/workflows/security.yml'
+      - "src/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/security.yml"
   pull_request:
     branches: [main, master]
+    paths:
+      - "src/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/security.yml"
   workflow_dispatch:
 
-# Prevent concurrent runs
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   security:
-    name: Security Analysis
+    name: Bandit and Safety
     runs-on: ubuntu-latest
+
     permissions:
       contents: read
-      security-events: write  # For GitHub Security tab
-    
+      security-events: write
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
-      
+        uses: actions/checkout@v6
+
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-          cache-dependency-glob: "pyproject.toml"
-      
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
-      
-      - name: Install dependencies
+
+      - name: Install project and security tools
         run: |
           uv pip install --system -e ".[security]"
-      
-      - name: Run Bandit security scanner
+
+      - name: Create report directory
+        run: |
+          mkdir -p reports
+
+      - name: Run Bandit (SARIF for GitHub code scanning)
         run: |
           echo "::group::Bandit Security Scan"
           uv run bandit -r src/ \
-            -f json \
-            -o bandit-report.json \
-            -ll \
-            --exit-zero
-          
-          # Also output to terminal for GitHub Actions
-          uv run bandit -r src/ \
+            -f sarif \
+            -o reports/bandit.sarif \
             -ll \
             || true
           echo "::endgroup::"
-      
-      - name: Run Safety vulnerability scanner
+
+      - name: Upload Bandit SARIF to GitHub code scanning
+        if: always() && hashFiles('reports/bandit.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: reports/bandit.sarif
+          category: bandit
+
+      - name: Run Safety (JSON report)
         run: |
           echo "::group::Safety Vulnerability Check"
-          # Use --save-json to save results to file
-          uv run safety check \
-            --save-json safety-report.json \
-            --output json \
-            || true
-          
-          # Display results in terminal
-          uv run safety check \
-            --output screen \
-            || true
+          uv run safety scan --output json > reports/safety.json || true
           echo "::endgroup::"
-      
-      - name: Upload security reports
+
+      - name: Upload raw reports as workflow artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: security-reports
-          path: |
-            bandit-report.json
-            safety-report.json
+          path: reports/
           retention-days: 30
-      
+
       - name: Check for high-severity Bandit issues
         if: always()
+        shell: bash
         run: |
           echo "::group::Checking Bandit High Severity Issues"
-          if [ -f bandit-report.json ]; then
-            HIGH_SEVERITY=$(cat bandit-report.json | python3 -c "import sys, json; data = json.load(sys.stdin); print(len([r for r in data.get('results', []) if r.get('issue_severity') == 'HIGH']))")
-            echo "High severity issues found: $HIGH_SEVERITY"
-            
-            if [ "$HIGH_SEVERITY" -gt 0 ]; then
-              echo "::warning::Found $HIGH_SEVERITY high severity security issues"
+          if [ -f reports/bandit.sarif ]; then
+            HIGH_COUNT=$(python3 - <<'PY'
+            import json
+            from pathlib import Path
+
+            path = Path("reports/bandit.sarif")
+            data = json.loads(path.read_text(encoding="utf-8"))
+            count = 0
+
+            for run in data.get("runs", []):
+                for result in run.get("results", []):
+                    level = str(result.get("level", "")).lower()
+                    if level == "error":
+                        count += 1
+
+            print(count)
+            PY
+            )
+            echo "High severity Bandit findings found: $HIGH_COUNT"
+            if [ "$HIGH_COUNT" -gt 0 ]; then
+              echo "::warning::Found $HIGH_COUNT high severity Bandit findings"
             fi
           fi
           echo "::endgroup::"
