@@ -19,6 +19,9 @@ on:
       - ".github/workflows/security.yml"
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -57,28 +60,21 @@ jobs:
         run: |
           mkdir -p reports
 
-      - name: Run Bandit (SARIF for GitHub code scanning)
+      - name: Run Bandit (JSON report)
         run: |
           echo "::group::Bandit Security Scan"
           uv run bandit -r src/ \
-            -f sarif \
-            -o reports/bandit.sarif \
+            -f json \
+            -o reports/bandit.json \
             -ll \
             || true
           echo "::endgroup::"
-
-      - name: Upload Bandit SARIF to GitHub code scanning
-        if: always() && hashFiles('reports/bandit.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v4
-        with:
-          sarif_file: reports/bandit.sarif
-          category: bandit
 
       - name: Run Safety (JSON report)
         continue-on-error: true
         run: |
           echo "::group::Safety Vulnerability Check"
-          uv run safety scan --output json > reports/safety.json
+          uv run safety scan --disable-optional-telemetry --output json > reports/safety.json
           echo "::endgroup::"
 
       - name: Upload raw reports as workflow artifacts
@@ -94,8 +90,8 @@ jobs:
         shell: bash
         run: |
           echo "::group::Checking Bandit High Severity Issues"
-          if [ -f reports/bandit.sarif ]; then
-            HIGH_COUNT=$(python3 -c 'import json; from pathlib import Path; data = json.loads(Path("reports/bandit.sarif").read_text(encoding="utf-8")); print(sum(1 for run in data.get("runs", []) for result in run.get("results", []) if str(result.get("level", "")).lower() == "error"))')
+          if [ -f reports/bandit.json ]; then
+            HIGH_COUNT=$(python3 -c 'import json; from pathlib import Path; data = json.loads(Path("reports/bandit.json").read_text(encoding="utf-8")); print(len([r for r in data.get("results", []) if r.get("issue_severity", "").upper() == "HIGH"]))')
             echo "High severity Bandit findings found: $HIGH_COUNT"
             if [ "$HIGH_COUNT" -gt 0 ]; then
               echo "::error::Found $HIGH_COUNT high severity Bandit findings"
