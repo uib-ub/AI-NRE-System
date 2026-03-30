@@ -40,10 +40,13 @@ class ProcessorContext(Protocol):
 
     # Output file path properties (resolved from CLI args or Settings)
     @property
-    def output_text_file(self) -> str: ...  # noqa: D102
+    def output_text_file(self) -> str:  # pyright: ignore[reportReturnType]
+        """Output text file path."""
 
     @property
-    def output_table_file(self) -> str: ...  # noqa: D102
+    def output_table_file(self) -> str:  # pyright: ignore[reportReturnType]
+        """Output table file path."""
 
     @property
-    def output_stats_file(self) -> str: ...  # noqa: D102
+    def output_stats_file(self) -> str:  # pyright: ignore[reportReturnType]
+        """Output stats file path."""
