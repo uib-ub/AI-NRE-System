@@ -40,16 +40,10 @@ class ProcessorContext(Protocol):
 
     # Output file path properties (resolved from CLI args or Settings)
     @property
-    def output_text_file(self) -> str:
-        """Get output text file path."""
-        ...
+    def output_text_file(self) -> str: ...  # noqa: D102
 
     @property
-    def output_table_file(self) -> str:
-        """Get output table file path."""
-        ...
+    def output_table_file(self) -> str: ...  # noqa: D102
 
     @property
-    def output_stats_file(self) -> str:
-        """Get output stats file path."""
-        ...
+    def output_stats_file(self) -> str: ...  # noqa: D102

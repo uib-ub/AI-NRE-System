@@ -71,19 +71,21 @@ class TestEntityRecord:
         assert record.language == "non"
 
     @pytest.mark.parametrize(
-        "gender",
+        "expected_val",
         ["Male", "Female", "N/A"],
     )
-    def test_valid_genders(self, gender: str) -> None:
+    def test_valid_genders(self, expected_val: str) -> None:
         """Test all allowed gender values are accepted.
 
         Args:
-            gender: A valid gender value from ALLOWED_GENDERS.
+            expected_val: A valid gender value from ALLOWED_GENDERS.
         """
-        record = EntityRecord(name="Æirike", entity_type="Person Name", gender=gender)
+        record = EntityRecord(
+            name="Æirike", entity_type="Person Name", gender=expected_val
+        )
 
-        log.debug("Created EntityRecord with gender '%s': %s", gender, record)
-        assert record.gender == gender
+        log.debug("Created EntityRecord with value '%s': %s", expected_val, record)
+        assert record.gender == expected_val
 
     @pytest.mark.parametrize(
         ("kwargs", "error_match_pattern"),
