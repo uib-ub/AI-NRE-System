@@ -435,8 +435,11 @@ class Client(ABC):
         except Exception as e:
             # Log full details for debugging
             logging.exception("Batch processing failed")
-            msg = f"Batch processing failed: {e}"
-            self._raise_llm_client_error(msg, operation="batch_processing", cause=e)
+            raise LLMClientError(
+                f"Batch processing failed: {e}",
+                client_type=self.client_type,
+                operation="batch_processing",
+            ) from e
         else:
             # Get and return results
             results = await self.get_batch_results_async(batch_id)
