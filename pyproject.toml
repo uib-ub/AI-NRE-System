@@ -433,4 +433,5 @@ ignore-words-list = "hist,aks,ans,nd"
 [dependency-groups]
 dev-local = [
     "ruff>=0.12.1",
+    "types-requests>=2.31.0",
 ]
