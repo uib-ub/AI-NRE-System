@@ -10,6 +10,9 @@ on:
     branches: [main, master]
   workflow_dispatch:  # Allow manual triggers
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 # Prevent concurrent runs on the same branch
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -18,29 +21,23 @@ concurrency:
 jobs:
   # Job 1: Code Quality Checks
   quality:
-    name: Code Quality (Python ${{ matrix.python-version }})
+    name: Code Quality (Python 3.11)
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.11", "3.12", "3.13"]
-      fail-fast: false  # Don't cancel other jobs if one fails
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # Full history for better analysis
+        uses: actions/checkout@v6
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.11"
 
       - name: Install dependencies
         run: |
@@ -49,13 +46,13 @@ jobs:
       - name: Run Ruff linter
         run: |
           echo "::group::Ruff Check"
-          uv run ruff check src/ --output-format=github
+          uv run ruff check src/ tests/ --output-format=github
           echo "::endgroup::"
 
       - name: Run Ruff formatter check
         run: |
           echo "::group::Ruff Format Check"
-          uv run ruff format --check src/
+          uv run ruff format --check src/ tests/
           echo "::endgroup::"
 
       - name: Run MyPy type checker
@@ -68,6 +65,7 @@ jobs:
   unit-test:
     name: Unit Tests (Python ${{ matrix.python-version }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    needs: quality
     strategy:
       matrix:
         os: [ubuntu-latest]
@@ -76,18 +74,16 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # Full history for better analysis
+        uses: actions/checkout@v6
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
 

@@ -1,0 +1,55 @@
+name: CodeQL
+
+on:
+  schedule:
+    # Run every Monday at 9 AM UTC
+    - cron: "0 9 * * 1"
+  push:
+    branches: [main, master]
+    paths:
+      - "src/**"
+      - "pyproject.toml"
+      - ".github/workflows/codeql.yml"
+  pull_request:
+    branches: [main, master]
+    paths:
+      - "src/**"
+      - "pyproject.toml"
+      - ".github/workflows/codeql.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: CodeQL Analysis (Python)
+    runs-on: ubuntu-latest
+    env:
+      CODEQL_ACTION_FILE_COVERAGE_ON_PRS: true
+
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [python]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-and-quality
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"
