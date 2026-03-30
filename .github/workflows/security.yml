@@ -94,23 +94,7 @@ jobs:
         run: |
           echo "::group::Checking Bandit High Severity Issues"
           if [ -f reports/bandit.sarif ]; then
-            HIGH_COUNT=$(python3 - <<'PY'
-            import json
-            from pathlib import Path
-
-            path = Path("reports/bandit.sarif")
-            data = json.loads(path.read_text(encoding="utf-8"))
-            count = 0
-
-            for run in data.get("runs", []):
-                for result in run.get("results", []):
-                    level = str(result.get("level", "")).lower()
-                    if level == "error":
-                        count += 1
-
-            print(count)
-            PY
-            )
+            HIGH_COUNT=$(python3 -c 'import json; from pathlib import Path; data = json.loads(Path("reports/bandit.sarif").read_text(encoding="utf-8")); print(sum(1 for run in data.get("runs", []) for result in run.get("results", []) if str(result.get("level", "")).lower() == "error"))')
             echo "High severity Bandit findings found: $HIGH_COUNT"
             if [ "$HIGH_COUNT" -gt 0 ]; then
               echo "::warning::Found $HIGH_COUNT high severity Bandit findings"
