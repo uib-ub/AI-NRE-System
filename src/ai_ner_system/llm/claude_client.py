@@ -8,7 +8,6 @@ import time
 from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 import anthropic
-import tiktoken
 from anthropic import Anthropic, AsyncAnthropic
 from anthropic.types.message_create_params import MessageCreateParamsNonStreaming
 from anthropic.types.messages.batch_create_params import Request
@@ -90,8 +89,6 @@ class ClaudeClient(LLMBaseClient):
             self.client = Anthropic(api_key=api_key)
             # Initialize Asynchronous client
             self.async_client = AsyncAnthropic(api_key=api_key)
-            # Initialize tokenizer for token counting
-            self.tokenizer = tiktoken.get_encoding("cl100k_base")
         except Exception as e:  # noqa: BLE001
             # Catch unexpected errors during client/tokenizer initialization
             self._raise_llm_client_error(
@@ -115,22 +112,6 @@ class ClaudeClient(LLMBaseClient):
             True, as Claude supports batch processing.
         """
         return True
-
-    def _count_tokens(self, text: str) -> int:
-        """Count tokens in text using tiktoken.
-
-        Args:
-            text: Text to count tokens for.
-
-        Returns:
-            Number of tokens in the text.
-        """
-        try:
-            return len(self.tokenizer.encode(text))
-        except Exception:  # noqa: BLE001
-            # Non-critical operation: gracefully degrade to 0 on any tokenizer error
-            logging.debug("Token counting failed", exc_info=True)
-            return 0
 
     @staticmethod
     def _system_message() -> str:
@@ -251,8 +232,10 @@ class ClaudeClient(LLMBaseClient):
         self._validate_prompt(prompt)
 
         try:
-            token_count = self._count_tokens(prompt)
-            logging.info("Prompt Token Count: %d ", token_count)
+            logging.info(
+                "Sending request to Claude (prompt length: %d)",
+                len(prompt),
+            )
 
             payload = self._message_payload(prompt)
             response: Message = cast("Message", self.client.messages.create(**payload))
@@ -303,8 +286,10 @@ class ClaudeClient(LLMBaseClient):
         """
         self._validate_prompt(prompt)
 
-        token_count = self._count_tokens(prompt)
-        logging.info("Async prompt Token Count: %d ", token_count)
+        logging.info(
+            "Sending async request to Claude (prompt length: %d)",
+            len(prompt),
+        )
 
         try:
             payload = self._message_payload(prompt)

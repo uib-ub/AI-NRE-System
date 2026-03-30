@@ -60,20 +60,10 @@ def mock_anthropic_clients(mocker: MockerFixture) -> dict[str, Any]:
     """Create mock for both Anthropic and AsyncAnthropic clients."""
     mock_sync = mocker.patch("ai_ner_system.llm.claude_client.Anthropic")
     mock_async = mocker.patch("ai_ner_system.llm.claude_client.AsyncAnthropic")
-    mock_tiktoken = mocker.patch(
-        "ai_ner_system.llm.claude_client.tiktoken.get_encoding"
-    )
-
-    # Configure tiktoken mock
-    mock_encoder = mocker.MagicMock()
-    mock_encoder.encode.return_value = [1, 2, 3, 4, 5]  # 5 tokens
-    mock_tiktoken.return_value = mock_encoder
 
     return {
         "sync_client": mock_sync,
         "async_client": mock_async,
-        "tiktoken": mock_tiktoken,
-        "encoder": mock_encoder,
     }
 
 
@@ -122,7 +112,6 @@ class TestClaudeClientInit:
         mock_anthropic_clients["async_client"].assert_called_once_with(
             api_key=TEST_API_KEY
         )
-        mock_anthropic_clients["tiktoken"].assert_called_once_with("cl100k_base")
 
     @pytest.mark.usefixtures("mock_anthropic_clients")
     def test_init_with_custom_max_tokens_and_temperature(
@@ -241,33 +230,6 @@ class TestClaudeClientProperties:
 # =============================================================================
 class TestClaudeClientHelpers:
     """Tests for ClaudeClient helper methods."""
-
-    def test_count_tokens(
-        self,
-        claude_client: ClaudeClient,
-    ) -> None:
-        """Test _count_tokens returns token count."""
-        prompt = "This is a test prompt."
-        expected_token_count = 5  # Based on mock tiktoken encoder in fixture
-
-        token_count = claude_client._count_tokens(prompt)  # pyright: ignore[reportPrivateUsage]
-        log.debug("Token count for prompt '%s': %d", prompt, token_count)
-        assert token_count == expected_token_count
-
-    def test_count_tokens_returns_zero_on_error(
-        self,
-        mock_anthropic_clients: dict[str, Any],
-    ) -> None:
-        """Test _count_tokens returns 0 when tokenizer fails."""
-        mock_anthropic_clients["encoder"].encode.side_effect = RuntimeError("Failed")
-        client = ClaudeClient(
-            api_key=TEST_API_KEY,
-            model=TEST_MODEL,
-        )
-
-        prompt = "This is a test prompt."
-        token_count = client._count_tokens(prompt)  # pyright: ignore[reportPrivateUsage]
-        assert token_count == 0
 
     def test_system_message(self, claude_client: ClaudeClient) -> None:
         """Test _system_message returns expected system prompt."""

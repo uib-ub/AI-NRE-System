@@ -552,7 +552,7 @@ class TestGenericPromptBuilder:
         ("brevid_test_val", "text_test_val"),
         [
             ("001", "Test text"),  # success case
-            ("  001  ", "  Test text  "),  # trips leading/trailing whitespace
+            ("  001  ", "  Test text  "),  # strips leading/trailing whitespace
         ],
     )
     def test_validate_and_clean_record(
