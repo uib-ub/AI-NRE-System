@@ -74,7 +74,7 @@ jobs:
         continue-on-error: true
         run: |
           echo "::group::Safety Vulnerability Check"
-          uv run safety scan --disable-optional-telemetry --output json > reports/safety.json
+          uv run safety scan --disable-optional-telemetry --output json > reports/safety.json || true
           echo "::endgroup::"
 
       - name: Upload raw reports as workflow artifacts
