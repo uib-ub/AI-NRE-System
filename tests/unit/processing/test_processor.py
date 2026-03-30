@@ -33,10 +33,7 @@ from ai_ner_system.llm.batch_models import (
     BatchStatus,
 )
 from ai_ner_system.llm.exceptions import LLMClientError
-from ai_ner_system.processing.entities import (
-    BatchProcessingResult,
-    EntityRecord,
-)
+from ai_ner_system.processing.entities import BatchProcessingResult
 from ai_ner_system.processing.exceptions import (
     BatchProcessingError,
     ProcessingError,
@@ -51,7 +48,6 @@ from tests.unit.processing.conftest import (
     METADATA_TEXT,
     SAMPLE_BATCH_LLM_RESPONSE,
     SAMPLE_LLM_RESPONSE,
-    VALID_ENTITY_DATA,
     VALID_RECORD,
 )
 
@@ -1064,23 +1060,13 @@ class TestCreateProcessingResult:
 
     def test_success(self) -> None:
         """Test creating a success ProcessingResult."""
-        entity = EntityRecord(
-            name=VALID_ENTITY_DATA["name"],
-            entity_type=VALID_ENTITY_DATA["type"],
-            preposition=VALID_ENTITY_DATA["preposition"],
-            order=VALID_ENTITY_DATA["order"],
-            brevid="601",
-            description=VALID_ENTITY_DATA["description"],
-            gender=VALID_ENTITY_DATA["gender"],
-            language=VALID_ENTITY_DATA["language"],
-        )
         result = _create_processing_result(
             record_id="record_0_1_601",
             brevid=BREVID,
             success=True,
             processing_time=1.23,
             annotated_text=f'{BINDNR};{BREVID};"{ANNOTATED_TEXT}"',
-            entities=[entity],
+            entities=[EXPECTED_ENTITY],
         )
 
         log.debug("Created ProcessingResult: %s", result)
@@ -1089,7 +1075,7 @@ class TestCreateProcessingResult:
         assert result.success is True
         assert result.processing_time == 1.23
         assert result.annotated_text == f'{BINDNR};{BREVID};"{ANNOTATED_TEXT}"'
-        assert result.entities == [entity]
+        assert result.entities == [EXPECTED_ENTITY]
 
     def test_failure(self) -> None:
         """Test creating a failure ProcessingResult."""

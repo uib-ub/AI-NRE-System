@@ -57,16 +57,7 @@ SAMPLE_BATCH_LLM_RESPONSE = f"RECORD 1 RESULT:\n{SAMPLE_LLM_RESPONSE}"
 
 GENERATED_PROMPT = "Generated prompt for testing"
 
-EXPECTED_ENTITY = EntityRecord(
-    name=VALID_ENTITY_DATA["name"],
-    entity_type=VALID_ENTITY_DATA["type"],
-    preposition=VALID_ENTITY_DATA["preposition"],
-    order=VALID_ENTITY_DATA["order"],
-    brevid=BREVID,
-    description=VALID_ENTITY_DATA["description"],
-    gender=VALID_ENTITY_DATA["gender"],
-    language=VALID_ENTITY_DATA["language"],
-)
+EXPECTED_ENTITY = EntityRecord.create_entity_record(VALID_ENTITY_DATA, brevid=BREVID)
 
 
 # ---------------------------------------------------------------------------
