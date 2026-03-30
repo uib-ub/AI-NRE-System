@@ -646,7 +646,7 @@ class ClaudeClient(LLMBaseClient):
                     custom_id=custom_id,
                     response_text="",
                     success=False,
-                    error_message="Missing result object.",
+                    error_message="Missing result object",
                 )
 
             return self._create_batch_response_for_result_type(
@@ -718,7 +718,7 @@ class ClaudeClient(LLMBaseClient):
                 custom_id=custom_id,
                 response_text="",
                 success=False,
-                error_message="Request was canceled before execution.",
+                error_message="Request was canceled before execution",
             )
 
         # Expired path: MessageBatchExpiredResult
@@ -728,7 +728,7 @@ class ClaudeClient(LLMBaseClient):
                 custom_id=custom_id,
                 response_text="",
                 success=False,
-                error_message="Request expired (not processed within the batch time window).",
+                error_message="Request expired (not processed within the batch time window)",
             )
 
         # All known types are exhaustively handled above
@@ -886,7 +886,7 @@ class ClaudeClient(LLMBaseClient):
             poll_interval = self.DEFAULT_POLL_INTERVAL  # base class constant
 
         if poll_interval <= 0:
-            raise ValueError("poll_interval must be > 0.")
+            raise ValueError("poll_interval must be positive")
 
         start_time = time.monotonic()
 
@@ -926,7 +926,7 @@ class ClaudeClient(LLMBaseClient):
                 # Wait before next poll (non-blocking)
                 await asyncio.sleep(poll_interval)
             except asyncio.CancelledError:
-                logging.info("Batch monitor cancelled for %s", batch_id)
+                logging.debug("Batch monitor cancelled for %s", batch_id)
                 raise
             except Exception:
                 logging.exception(

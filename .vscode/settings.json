@@ -16,5 +16,12 @@
   // Pylance for IDE smarts + type checking
   "python.languageServer": "Pylance",
   // typeCheckingMode is configured in pyproject.toml
-  "python.analysis.autoImportCompletions": true
+  "python.analysis.autoImportCompletions": true,
+  "cSpell.words": [
+    "BINDNR",
+    "BREVID",
+    "caplog",
+    "reraises",
+    "Tekst"
+  ]
 }

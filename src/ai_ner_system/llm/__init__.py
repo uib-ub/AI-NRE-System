@@ -17,7 +17,6 @@ from .exceptions import (
     BatchTimeoutError,
     LLMClientError,
     LLMConnectionError,
-    LLMValidationError,
     RateLimitError,
 )
 from .factory import create_llm_client
@@ -36,7 +35,6 @@ __all__ = [
     "Client",
     "LLMClientError",
     "LLMConnectionError",
-    "LLMValidationError",
     "OllamaClient",
     "RateLimitError",
     "create_llm_client",

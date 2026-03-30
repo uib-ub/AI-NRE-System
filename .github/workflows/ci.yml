@@ -24,13 +24,13 @@ jobs:
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
       fail-fast: false  # Don't cancel other jobs if one fails
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Full history for better analysis
-      
+
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
@@ -45,21 +45,76 @@ jobs:
       - name: Install dependencies
         run: |
           uv pip install --system -e ".[ci]"
-      
+
       - name: Run Ruff linter
         run: |
           echo "::group::Ruff Check"
           uv run ruff check src/ --output-format=github
           echo "::endgroup::"
-      
+
       - name: Run Ruff formatter check
         run: |
           echo "::group::Ruff Format Check"
           uv run ruff format --check src/
           echo "::endgroup::"
-      
+
       - name: Run MyPy type checker
         run: |
           echo "::group::MyPy Type Checking"
           uv run mypy src/ --show-error-codes --pretty
           echo "::endgroup::"
+
+  # Job 2: Unit Testing with Coverage
+  unit-test:
+    name: Unit Tests (Python ${{ matrix.python-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ["3.11", "3.12", "3.13"]
+      fail-fast: false  # Don't cancel other jobs if one fails
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for better analysis
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          uv pip install --system -e ".[ci,test]"
+
+      - name: Run tests with coverage
+        run: |
+          echo "::group::Running Unit Tests with Coverage"
+          uv run pytest tests/unit/ \
+            -rav \
+            --cov=src/ai_ner_system \
+            --cov-report=html:htmlcov \
+            --cov-report=xml:coverage.xml \
+            --cov-report=term-missing \
+            --cov-fail-under=10 \
+            --cov-branch \
+            --tb=short
+          echo "::endgroup::"
+
+      - name: Upload coverage to Codecov
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          flags: unittests
+          name: unittest-coverage-report
+          fail_ci_if_error: false  # Don't fail if Codecov is down

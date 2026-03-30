@@ -23,13 +23,16 @@ class CSVReader:
         file_path: Path to the CSV file.
         delimiter: Delimiter used in the CSV file.
         encoding: Encoding of the CSV file.
+        required_headers: Optional set of headers that must be present in the CSV.
     """
 
     def __init__(
         self,
         file_path: str,
+        *,
         delimiter: str = ";",
         encoding: str = "utf-8",
+        required_headers: frozenset[str] | None = None,
     ) -> None:
         """Initialize the CSVReader with file path, delimiter, and encoding.
 
@@ -37,13 +40,17 @@ class CSVReader:
             file_path: Path to the CSV file.
             delimiter: Delimiter used in the CSV file.
             encoding: Encoding of the CSV file.
+            required_headers: Optional frozenset of headers that must be present in the CSV.
+                If provided, will validate that all these headers exist.
+                If None (default), no header validation is performed.
 
         Raises:
-            CSVError: If file validation fails.
+            FileValidationError: If file validation fails.
         """
         self.file_path = Path(file_path)
         self.delimiter = delimiter
         self.encoding = encoding
+        self.required_headers = required_headers
         self._headers: list[str] | None = None
 
         self._validate_file()
@@ -98,19 +105,17 @@ class CSVReader:
 
         try:
             with self.file_path.open(encoding=self.encoding, newline="") as file:
-                reader = csv.DictReader(file, delimiter=self.delimiter)
+                reader = csv.DictReader(
+                    file, delimiter=self.delimiter, restval=""
+                )  # make sure missing values are empty strings
 
-                # Validate that the CSV has headers
-                if not reader.fieldnames:
-                    msg = f"CSV file does not have headers: {self.file_path}"
-                    raise CSVError(
-                        msg,
-                        file_path=str(self.file_path),
-                        line_number=1,
-                    )
-
-                self._headers = list(reader.fieldnames)
+                # Store headers (csv.DictReader always uses first row as headers)
+                self._headers = list(reader.fieldnames) if reader.fieldnames else []
                 logging.debug("CSV headers detected: %s", self._headers)
+
+                # Validate required headers if specified
+                if self.required_headers:
+                    self._validate_required_headers(self._headers)
 
                 # Stream records with proper error handling
                 # Start at 2 (header is row 1)
@@ -125,7 +130,8 @@ class CSVReader:
                             continue
 
                         # Validate row data
-                        validated_row = self._validate_row(row, row_number)
+                        validated_row = self._validate_row(row)
+                        logging.debug("Validated row %d: %s", row_number, validated_row)
                         record_count += 1
                         yield validated_row
 
@@ -166,30 +172,44 @@ class CSVReader:
                 file_path=str(self.file_path),
             ) from e
 
-    def _validate_row(self, row: dict[str, str], row_number: int) -> dict[str, str]:
+    def _validate_row(self, row: dict[str, str]) -> dict[str, str]:
         """Validate and clean a CSV row.
 
         Args:
             row: Dictionary representing a CSV row.
-            row_number: Line number of the row.
 
         Returns:
             Validated and cleaned row dictionary.
+        """
+        # Strip whitespace from all values and return cleaned row
+        return {key: str(value).strip() if value else "" for key, value in row.items()}
+
+    def _validate_required_headers(self, headers: list[str]) -> None:
+        """Validate that CSV has all required headers.
+
+        Args:
+            headers: List of header names from the CSV file.
 
         Raises:
-            CSVError: If row validation fails.
+            CSVError: If required headers are missing.
         """
-        # Check for completely empty row (handled separately)
-        if self._is_empty_row(row):
-            msg = f"Empty row encountered at line {row_number}"
+        if not self.required_headers:
+            return
+
+        headers_set = set(headers)
+        missing_headers = self.required_headers - headers_set
+
+        if missing_headers:
+            msg = (
+                f"CSV file is missing required headers: {sorted(missing_headers)}. "
+                f"Required: {sorted(self.required_headers)}. "
+                f"Found: {sorted(headers_set)}"
+            )
             raise CSVError(
                 msg,
                 file_path=str(self.file_path),
-                line_number=row_number,
+                line_number=1,
             )
-
-        # Strip whitespace from all values and return cleaned row
-        return {key: str(value or "").strip() for key, value in row.items()}
 
     @staticmethod
     def _is_empty_row(row: dict[str, str]) -> bool:

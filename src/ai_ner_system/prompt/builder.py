@@ -198,11 +198,7 @@ class GenericPromptBuilder(PromptBuilder):
         Raises:
             PromptBuildError: If template formatting fails.
         """
-        if not self.template:
-            raise PromptBuildError(
-                "Template is not loaded or is invalid.",
-                template_file=self.template_file,
-            )
+        assert self.template is not None  # noqa: S101 # Invariant: loaded in __init__
 
         # Validate template has required fields for single-record mode.
         present = self._extract_placeholders(self.template)
@@ -217,11 +213,6 @@ class GenericPromptBuilder(PromptBuilder):
 
         try:
             prompt = self.template.format(**cleaned_record).strip()
-            if not prompt:
-                raise PromptBuildError(
-                    "Formatted prompt is empty after processing.",
-                    template_file=self.template_file,
-                )
         except (KeyError, ValueError, TypeError) as e:
             raise PromptBuildError(
                 f"Template formatting failed: {e}",
@@ -247,11 +238,7 @@ class GenericPromptBuilder(PromptBuilder):
         Raises:
             PromptBuildError: If template or data are invalid.
         """
-        if not self.template:
-            raise PromptBuildError(
-                "Batch prompt template is not loaded",
-                template_file=self.template_file,
-            )
+        assert self.template is not None  # noqa: S101 # Invariant: loaded in __init__
 
         if not records:
             raise PromptBuildError(
@@ -293,11 +280,6 @@ class GenericPromptBuilder(PromptBuilder):
         try:
             # Format the template with actual data
             batch_prompt = self.template.format(**template_data).strip()
-            if not batch_prompt:
-                raise PromptBuildError(
-                    "Formatted prompt is empty after processing.",
-                    template_file=self.template_file,
-                )
         except (KeyError, ValueError, TypeError) as e:
             raise PromptBuildError(
                 f"Batch template formatting failed: {e}",
@@ -353,4 +335,6 @@ class GenericPromptBuilder(PromptBuilder):
                 f'RECORD {i}:\nBrevid: {record["brevid"]}\nText: """{record["text"]}"""'
             )
             record_sections.append(section)
-        return "\n\n".join(record_sections)
+        return "\n\n".join(
+            record_sections
+        )  # create an empty line between records by '\n'

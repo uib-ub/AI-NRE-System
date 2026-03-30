@@ -183,7 +183,7 @@ class AsyncProcessor:
 
             success = True
         except asyncio.CancelledError:
-            logging.info("Async processing cancelled")
+            logging.debug("Async processing cancelled")
             raise
         except Exception as e:
             error_msg = "Async streaming processing failed"
@@ -311,9 +311,9 @@ class AsyncProcessor:
         except asyncio.CancelledError:
             # Cancel & drain all children, then propagate
             for task in batch_tasks.values():
-                task.cancel()
+                task.cancel("streaming cancelled by user")
             await asyncio.gather(*batch_tasks.values(), return_exceptions=True)
-            logging.info("Async streaming processing cancelled")
+            logging.debug("Async streaming processing cancelled")
             raise
         except Exception as e:
             # Cancel remaining tasks
@@ -390,7 +390,7 @@ class AsyncProcessor:
             )
 
         except asyncio.CancelledError:
-            logging.info("Batch %d cancelled", batch_num)
+            logging.debug("Batch %d cancelled", batch_num)
             raise
         except Exception:
             logging.exception("Batch %d failed.", batch_num)
@@ -558,7 +558,7 @@ class AsyncProcessor:
             )
         # Re-raise cancellation; log-and-continue for other failures.
         except asyncio.CancelledError:
-            logging.info("Incremental write for batch %d cancelled", batch_num)
+            logging.debug("Incremental write for batch %d cancelled", batch_num)
             raise
         except Exception:
             logging.exception(
@@ -617,7 +617,7 @@ class AsyncProcessor:
                 await self._process_task_chunk(tasks, current_chunk_records, stats)
 
         except asyncio.CancelledError:
-            logging.info("Individual async streaming cancelled")
+            logging.debug("Individual async streaming cancelled")
             raise
         except Exception as e:
             logging.exception("Individual async streaming processing failed")
@@ -683,7 +683,7 @@ class AsyncProcessor:
 
             logging.info("Processed chunk: %d tasks completed", len(results))
         except asyncio.CancelledError:
-            logging.info("Processing of task chunk cancelled")
+            logging.debug("Processing of task chunk cancelled")
             raise
         except Exception:
             logging.exception("Error processing task chunk")

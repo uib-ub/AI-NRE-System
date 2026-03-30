@@ -169,7 +169,6 @@ class OutputWriter:
         header: str,
         lines: list[str],
         log_label: str,
-        output_type: str,
     ) -> None:
         """Writes 'lines' to 'file_path' atomically (replacing the file).
 
@@ -178,7 +177,6 @@ class OutputWriter:
           header: Header line.
           lines: Lines to write (one record per element).
           log_label: Human-readable label for logs ('annotations'/'metadata').
-          output_type: Error tag.
 
         Raises:
           ValueError: If 'lines' is empty.
@@ -189,22 +187,14 @@ class OutputWriter:
             raise ValueError(msg)
         # Ensure output directory exists
         output_path = self._ensure_output_directory(file_path)
-        try:
-            logging.info("Writing %s output to %s", log_label, output_path)
-            content = self._build_content(header, lines)
-            self._atomic_write(output_path, content, self.encoding)
-            logging.info(
-                "%s output written to %s successfully",
-                log_label.capitalize(),
-                output_path,
-            )
-        except (OSError, UnicodeEncodeError) as e:
-            msg = f"Error writing {log_label} output to {output_path}: {e}"
-            raise OutputError(
-                msg,
-                file_path=str(output_path),
-                output_type=output_type,
-            ) from e
+        logging.info("Writing %s output to %s", log_label, output_path)
+        content = self._build_content(header, lines)
+        self._atomic_write(output_path, content, self.encoding)
+        logging.info(
+            "%s output written to %s successfully",
+            log_label.capitalize(),
+            output_path,
+        )
 
     def write_text_output(
         self,
@@ -226,7 +216,6 @@ class OutputWriter:
             header=header,
             lines=annotation_lines,
             log_label="annotations",
-            output_type="write_annotation",
         )
 
     def write_metadata_output(
@@ -249,7 +238,6 @@ class OutputWriter:
             header=header,
             lines=metadata,
             log_label="metadata",
-            output_type="write_metadata",
         )
 
     @staticmethod
@@ -459,9 +447,9 @@ class OutputWriter:
                 OutputWriter.DEFAULT_ENCODING,
             )
             logging.info("Processing statistics written to: %s", output_path)
-        except (OSError, UnicodeEncodeError, TypeError) as e:
-            logging.exception("Error writing stats output to %s", file_path)
-            msg = f"Error writing stats output to {file_path}: {e}"
+        except TypeError as e:
+            logging.exception("Error serializing stats data to JSON for %s", file_path)
+            msg = f"Error serializing stats data to JSON for {file_path}: {e}"
             raise OutputError(
                 msg,
                 file_path=str(file_path),

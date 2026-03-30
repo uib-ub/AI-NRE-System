@@ -110,6 +110,8 @@ class APIError(LLMClientError):
             parts.append(f"Status: {self.status_code}")
         if self.request_id:
             parts.append(f"Request ID: {self.request_id}")
+        if self.response_text:
+            parts.append(f"Response: {self.response_text}")
         return " | ".join(parts)
 
 
@@ -226,7 +228,7 @@ class BatchTimeoutError(LLMClientError):
         client_type: str | None = None,
         operation: str | None = None,
         batch_id: str | None = None,
-        timeout_seconds: int | None = None,
+        timeout_seconds: float | None = None,
     ) -> None:
         """Initialize BatchTimeoutError with timeout context.
 
@@ -287,40 +289,4 @@ class BatchProcessingError(LLMClientError):
             parts.append(f"Batch ID: {self.batch_id}")
         if self.failed_requests:
             parts.append(f"Failed Requests: {len(self.failed_requests)}")
-        return " | ".join(parts)
-
-
-class LLMValidationError(LLMClientError):
-    """Exception for request validation failures.
-
-    Raised when client requests fail validation before being sent to the API.
-    """
-
-    def __init__(
-        self,
-        message: str,
-        *,
-        client_type: str | None = None,
-        operation: str | None = None,
-        field: str | None = None,
-        value: object = None,
-    ) -> None:
-        """Initialize LLMValidationError with validation context.
-
-        Args:
-            message: Descriptive error message.
-            client_type: Type of LLM client ('claude', 'ollama', etc.).
-            operation: Operation being performed when error occurred.
-            field: Name of the field that failed validation.
-            value: Value that failed validation.
-        """
-        super().__init__(message, client_type=client_type, operation=operation)
-        self.field = field
-        self.value = value
-
-    def __str__(self) -> str:
-        """Return formatted error message with validation context."""
-        parts = [super().__str__()]
-        if self.field:
-            parts.append(f"Field: {self.field}")
         return " | ".join(parts)

@@ -435,6 +435,10 @@ class ResponseParser:
             brevid,
             index,
         )
+        # Skip the record-number header line (e.g. "1\n...content...")
+        lines = section.strip().splitlines()
+        if len(lines) > 1:
+            return "\n".join(lines[1:]).strip()
         return section.strip()
 
     @staticmethod

@@ -357,7 +357,7 @@ class Client(ABC):
                     client_type=self.client_type,
                     operation="batch_waiting",
                     batch_id=batch_id,
-                    timeout_seconds=int(max_wait_time),
+                    timeout_seconds=max_wait_time,
                 )
         # Fallback status check; if monitor exits without ENDED, query once more.
         return await self.get_batch_status_async(batch_id)
@@ -423,19 +423,9 @@ class Client(ABC):
                 progress_callback=progress_callback,
             )
 
-            if final_status == BatchStatus.ENDED:
-                # Get and return results
-                results = await self.get_batch_results_async(batch_id)
-                logging.info(
-                    "Batch %d (ID: %s) completed successfully with %d results",
-                    batch_num,
-                    batch_id,
-                    len(results),
-                )
-                return results
-
-            msg = f"Batch {batch_num} (ID: {batch_id}) failed with status {final_status.value}"
-            self._raise_llm_client_error(msg, operation="batch_processing")
+            if final_status != BatchStatus.ENDED:
+                msg = f"Batch {batch_num} (ID: {batch_id}) failed with status {final_status.value}"
+                self._raise_llm_client_error(msg, operation="batch_processing")
         except asyncio.CancelledError:
             logging.info("Batch processing requests were cancelled")
             raise
@@ -447,3 +437,13 @@ class Client(ABC):
             logging.exception("Batch processing failed")
             msg = f"Batch processing failed: {e}"
             self._raise_llm_client_error(msg, operation="batch_processing", cause=e)
+        else:
+            # Get and return results
+            results = await self.get_batch_results_async(batch_id)
+            logging.info(
+                "Batch %d (ID: %s) completed successfully with %d results",
+                batch_num,
+                batch_id,
+                len(results),
+            )
+            return results
