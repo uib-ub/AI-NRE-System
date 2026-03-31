@@ -1,6 +1,6 @@
 # AI-NER Historical Text System
 
-A Named Entity Recognition (NER) system designed for medieval historical texts in languages with unstandardized orthography — including Old Norse, Latin, Middle Norse, and Middle Dutch. The system leverages Large Language Models (LLMs) to extract named entities (persons, places, institutions) and generate structured metadata from digitized historical records.
+A Named Entity Recognition (NER) system designed for medieval historical texts in languages with unstandardized orthography — including Old Norse, Latin, etc. The system leverages Large Language Models (LLMs) to extract named entities (persons, places, institutions) and generate structured metadata from digitized historical records.
 
 The system supports two LLM backends — the Anthropic Claude API and Ollama (via OpenWebUI) — and offers both synchronous and asynchronous batch processing modes to balance throughput, cost, and latency for large-scale corpora.
 
@@ -14,7 +14,7 @@ The system supports two LLM backends — the Anthropic Claude API and Ollama (vi
 
 - **`input/`** — Contains semicolon-delimited CSV files of medieval historical texts to be processed. Each file has the required headers `Bindnr`, `Brevid`, and `Tekst`. Files range from small test sets (e.g., `Brevid-601-610.txt` with 10 records) to the full corpus (`Brevid-DN-AI.txt` with 18,559 records).
 - **`output/`** — Stores processing results. Each run produces up to three output files: annotated text (`annotated_output_*.txt`), metadata tables (`metadata_table_*.txt`) with extracted entities, and processing statistics (`processing_stats.json` for async runs).
-- **`prompt/`** — Prompt template files used by the prompt builder. Includes single-record templates (e.g., `prompt-v0.1.txt`) and batch templates (e.g., `prompt-batch.txt`).
+- **`prompt/`** — Prompt template files used by the prompt builder. Includes single-record templates (e.g., `prompt.txt`) which can by used for both async and sync processing, and a batch template (e.g., `prompt-batch.txt`), which can be used for batch sync processing with Ollama.
 
 ## Module Overview
 
@@ -26,7 +26,7 @@ Entry point and orchestration layer.
 
 - **`main.py`** — CLI entry point. Defines all command-line arguments via `argparse` (client type, input/output paths, batch size, async mode, concurrency limits, log level, `--dry-run`, etc.), sets up logging, validates configuration, and launches the processing pipeline. Returns exit code 0 on success, 1 on failure.
 - **`pipeline/main_processor.py`** — `MedievalTextProcessor` orchestrator class. Initializes all components (LLM client via factory, prompt builder, CSV reader, output writer) and coordinates sync or async processing. Defines output file headers (`ANNOTATED_HEADER`, `METADATA_HEADER`) and manages output file cleanup before each run.
-- **`pipeline/sync_processor.py`** — `SyncProcessor` processes records sequentially with `tqdm` progress bars. Supports both individual and batch modes. Includes automatic fallback from batch to individual processing on failure, with configurable rate-limiting delays (`BATCH_PROCESSING_DELAY = 0.2s`) between batches.
+- **`pipeline/sync_processor.py`** — `SyncProcessor` processes records sequentially. Supports both individual and batch modes. Includes automatic fallback from batch to individual processing on failure, with configurable rate-limiting delays (`BATCH_PROCESSING_DELAY = 0.2s`) between batches.
 - **`pipeline/async_processor.py`** — `AsyncProcessor` uses `asyncio.TaskGroup` for concurrent batch processing. Features configurable concurrency limits (`max_concurrent_batches`, `max_concurrent_individual`, `fallback_concurrency`), order-preserving result queuing via `_batch_result_queue`, and incremental output (streaming results to files as batches complete). Falls back to individual processing with reduced concurrency on batch failure.
 - **`pipeline/processor_protocol.py`** — `ProcessorContext` protocol that defines the interface `SyncProcessor` and `AsyncProcessor` depend on, breaking circular imports between pipeline modules. Specifies required attributes, class constants, and output file path properties.
 - **`pipeline/stats.py`** — `AsyncProcessingStats` dataclass for tracking async run metrics: total/processed/failed records, timing, `success_rate`, `throughput` (records/sec), and `summary()` for JSON output.
@@ -51,7 +51,7 @@ File reading and writing.
 
 Core NER processing logic.
 
-- **`processing/processor.py`** — `RecordProcessor` orchestrates LLM calls for individual records and batches. Constructor takes an `llm_client` and `prompt_builder`. Provides sync (`process_record()`) and async (`aprocess_record()`) methods that validate records, build prompts, call the LLM, parse responses, and format output into `ProcessingResult` objects.
+- **`processing/processor.py`** — `RecordProcessor` orchestrates LLM calls for individual records and batches. Constructor takes an `llm_client` and `prompt_builder`. Provides four processing methods: `process_record()` (sync single record, returns annotated and metadata lists), `process_batch()` (sync batch via a single LLM call), `process_record_async()` (async single record, returns `ProcessingResult`), and `process_batch_async()` (async batch via the client's batch API with progress callbacks, automatic fallback to individual async processing when the client does not support batching).
 - **`processing/parser.py`** — `ResponseParser` with static methods to extract structured data from LLM responses. `parse_llm_response()` extracts annotated text and JSON entities (delimited by `===JSON===` markers). `parse_entities_json()` converts JSON into `EntityRecord` lists. `parse_batch_response()` handles multi-record batch results (split by `RECORD` markers). `format_csv_row()` produces canonical semicolon-delimited output.
 - **`processing/validator.py`** — `RecordValidator` ensures data integrity. Checks that all `REQUIRED_FIELDS` (`Bindnr`, `Brevid`, `Tekst`) are present and non-empty. Supports single-record (`validate_record()`) and list (`validate_records()`) validation with record index tracking.
 - **`processing/entities.py`** — Data models. `EntityRecord` dataclass with fields: `name`, `entity_type`, `preposition`, `order`, `brevid`, `description`, `gender` (constrained to `Male`/`Female`/`N/A`), `language`. Factory method `create_entity_record()` constructs from dicts with validation. `ProcessingResult` tracks individual record outcomes (`record_id`, `brevid`, `annotated_text`, `entities`, `processing_time`, `success`, `error_message`). `BatchProcessingResult` aggregates batch outcomes with success/failure counts.
