@@ -321,3 +321,5 @@ Compared to individual processing (batch size 10): ~14% faster (5:23 vs 6:15) an
 | 100 | 100 | 2:04 | $1.75 | ~8.0 hours (0.3 days) |
 | 103 | 10 | 4:40 | — | ~11 hours |
 | 551 | 100 | 13:47 | ~$12 | ~7.7 hours (0.3 days), ~$404 |
+
+Compared to individual processing (10 records, batch size 10): ~75% faster (1:34 vs 6:15) and ~45% cheaper ($0.17 vs $0.31). Compared to sync batch (10 records, batch size 10): ~71% faster (1:34 vs 5:23) and ~41% cheaper ($0.17 vs $0.29). At scale (551 records, batch size 100), projected full corpus processing drops from ~194 hours (individual) to ~7.7 hours — a **96% reduction** in processing time.
