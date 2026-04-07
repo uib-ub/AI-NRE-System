@@ -417,9 +417,7 @@ class MedievalTextProcessor:
             self._cleanup_output_files()
 
             # Process all records using synchronous processor
-            sync_processor = SyncProcessor(self)
-
-            annotations, metadata = sync_processor.process_all_records()
+            annotations, metadata = SyncProcessor(self).process_all_records()
 
             # Write output files
             self.write_output(annotations, metadata)
@@ -480,8 +478,7 @@ class MedievalTextProcessor:
             # Use async context manager for better resource cleanup with timeout
             async with asyncio.timeout(timeout):
                 # Process all records asynchronously using async processor
-                async_processor = AsyncProcessor(self)
-                stats = await async_processor.process_all_records_async(
+                stats = await AsyncProcessor(self).process_all_records_async(
                     progress_callback,
                     max_batch_wait_time=max_batch_wait_time,
                     poll_interval=poll_interval,
