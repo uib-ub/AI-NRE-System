@@ -224,11 +224,14 @@ class AsyncProcessor:
             self.args.batch_size,
         )
 
-        # a batch of records to process together
+        # a current batch of records being filled and processed
         batch_records: list[dict[str, str]] = []
+        # total rows seen so far
         record_count = 0
+        # sequential batch number for tracking order
         batch_num = 0
-        # Track batch tasks with their order information using a map (batch_num -> task)
+        # Track batch tasks with their order information using a map (batch_num -> task):
+        # mapping batch number to its running task
         batch_tasks: dict[int, asyncio.Task[BatchProcessingResult]] = {}
 
         # Limit to default 5 (configured in settings) concurrent batch processing tasks,
@@ -251,11 +254,13 @@ class AsyncProcessor:
 
                 # Process batch when it reaches the specified size, eg: 10, 100
                 if len(batch_records) >= self.args.batch_size:
-                    batch_num += 1  # batch_num starts from 1
-                    # Create and start coroutine task (now running in background) with batch number tracking,
+                    # batch_num starts from 1 for better readability in logs
+                    batch_num += 1
+                    # Create and start background coroutine task (now running in background) for
+                    # this current batch with batch number tracking,
                     batch_tasks[batch_num] = asyncio.create_task(
                         self._process_batch_with_order_async(
-                            batch_records.copy(),
+                            batch_records.copy(),  # copy(), otherwise clearing batch_records deletes the task's input.
                             batch_num,  # Use batch_num for tracking the order
                             progress_callback,
                             max_wait_time,
@@ -446,8 +451,9 @@ class AsyncProcessor:
         stats.failed_records += batch_result.failed_count
 
         if self._incremental_mode:
-            # Incremental mode: queue results until we can write them in order
+            # Incremental mode: queue the whole batch results until we can write them in order
             self._batch_result_queue[batch_num] = batch_result
+            # Tries to flush only the next expected batch
             await self._flush_queued_batch_results_async()
         else:
             # Standard mode: accumulate all results in memory
@@ -478,12 +484,11 @@ class AsyncProcessor:
                 batch_result,
                 self._next_expected_batch_num,
             )
-            self._next_expected_batch_num += 1
-
             logging.info(
                 "Flushed batch %d results to output files",
-                self._next_expected_batch_num - 1,
+                self._next_expected_batch_num,
             )
+            self._next_expected_batch_num += 1
 
     async def _write_batch_results_incremental_async(
         self,
@@ -530,6 +535,7 @@ class AsyncProcessor:
             # automatically waits for all tasks to complete when exiting the context manager
             async with asyncio.TaskGroup() as tg:
                 # write output files asynchronously using OutputWriter methods
+                # uses asyncio.to_thread(...) because the OutputWriter methods are synchronous
                 # Write annotated text output
                 tg.create_task(
                     asyncio.to_thread(
@@ -580,7 +586,10 @@ class AsyncProcessor:
 
         try:
             # Process records with limited concurrency to avoid overwhelming the API
-            # Use configured concurrency limit (5 as default)
+            # rate limits and to manage memory usage.
+            # Use configured concurrency limit (5 as default), so only 5 records are
+            # processed concurrently and start new ones as old ones finish, even if
+            # we have eg. 50 tasks exist in a chunk (50 as default).
             max_concurrent = self._max_concurrent_individual
             semaphore = asyncio.Semaphore(max_concurrent)
             logging.info(
@@ -588,7 +597,11 @@ class AsyncProcessor:
                 max_concurrent,
             )
 
+            # Wraps the real per-record work in a semaphore.
             async def process_single_record(record: dict[str, str]) -> ProcessingResult:
+                # acquire one concurrency slot before starting the record
+                # if no slot is available, pause this coroutine without blocking the event loop
+                # release the slot automatically when the block exits, even on error/cancellation
                 async with semaphore:
                     return await self.processor.process_record_async(record)
 
@@ -598,21 +611,27 @@ class AsyncProcessor:
             current_chunk_records: list[dict[str, str]] = []
             record_count = 0
 
+            # Loop through streamed records
             async for record in self._async_stream_csv_records():
                 record_count += 1
                 stats.total_records = record_count
+                # Schedules work: create and start a background task for each record,
+                # but limit concurrency with semaphore (5 as default)
                 tasks.append(asyncio.create_task(process_single_record(record)))
+                # Store the original record in current_chunk_records
                 current_chunk_records.append(record)
 
-                # Process in chunks to avoid memory issues with large files
-                # Use configured chunk size (50 as default)
+                # Not wait after every single task, but accumulates tasks until it
+                # reaches the chunk size (50 as default) before awaiting them together,
+                # to improve efficiency while still managing memory and API limits.
                 chunk_size = self._chunk_size
                 if len(tasks) >= chunk_size:
+                    # Flushes the whole chunk of tasks together, and clear the lists for the next chunk
                     await self._process_task_chunk(tasks, current_chunk_records, stats)
                     tasks.clear()
                     current_chunk_records.clear()
 
-            # Process remaining tasks
+            # Process any leftover tasks smaller than a full chunk
             if tasks:
                 await self._process_task_chunk(tasks, current_chunk_records, stats)
 
@@ -631,18 +650,18 @@ class AsyncProcessor:
         chunk_records: list[dict[str, str]],
         stats: AsyncProcessingStats,
     ) -> None:
-        """Process a chunk of async tasks.
+        """Process a chunk of async tasks to normalized results into stats.
 
         Args:
             tasks: List of asyncio tasks to process.
             chunk_records: Original records corresponding to the tasks.
             stats: Statistics object to update.
         """
-        # Gather results in the same order tasks were created
+        # Gather results in the same order tasks were created, not completion order.
         # return_exceptions=True ensures all tasks complete even if some fail
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # If any child was cancelled, propagate cancellation before entering try
+        # If any child was cancelled, propagate cancellation before entering try block
         if any(isinstance(r, asyncio.CancelledError) for r in results):
             raise asyncio.CancelledError
 
@@ -657,7 +676,7 @@ class AsyncProcessor:
                 if isinstance(result, Exception):
                     # Handle failed task
                     stats.failed_records += 1
-                    # Create a failed ProcessingResult for consistency
+                    # Create a synthetic failed ProcessingResult for consistency
                     failed_result = self._create_failed_result(brevid, result, bindnr)
                     stats.results.append(failed_result)
                     logging.error(
