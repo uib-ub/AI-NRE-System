@@ -16,7 +16,7 @@ The system supports two LLM backends — the Anthropic Claude API and Ollama (vi
 - **`output/`** — Stores processing results. Each run produces up to three output files: annotated text (`annotated_output_*.txt`), metadata tables (`metadata_table_*.txt`) with extracted entities, and processing statistics (`processing_stats.json` for async runs).
 - **`prompt/`** — Prompt template files used by the prompt builder. Includes single-record templates (e.g., `prompt.txt`) which can be used for both async and sync processing, and a batch template (e.g., `prompt-batch.txt`), which can be used for batch sync processing with Ollama.
 
-## Module Overview
+## Package Overview
 
 All source code lives under `src/ai_ner_system/`. The entry point is `main.py`, and the codebase is organized into six packages — each corresponding to a component in the architecture diagram above. Every package includes its own `exceptions.py` with a module-specific exception hierarchy.
 
@@ -207,7 +207,7 @@ uv run python -m ai_ner_system.main \
 
 ## Testing
 
-Tests are organized under `tests/` mirroring the `src/ai_ner_system/` module structure.
+Tests are organized under `tests/` mirroring the `src/ai_ner_system/` package structure.
 
 ### Running Tests
 
