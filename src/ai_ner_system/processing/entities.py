@@ -1,6 +1,7 @@
 """Data models and entities for AI NER System processing.
 
-This module provides data classes representing entities, processing results,
+This module defines the core data models used by the processing package.
+It provides data classes representing entities, processing results,
 and batch processing outcomes for medieval text annotation tasks.
 """
 
@@ -117,6 +118,8 @@ class EntityRecord:
     ) -> EntityRecord:
         """Create an EntityRecord from dictionary data with validation.
 
+        its jobs is to convert raw dictionary data into a validated EntityRecord.
+
         Args:
             entity_data: Dictionary containing entity information with keys:
                 - name: Entity name
@@ -176,7 +179,7 @@ class EntityRecord:
 
 @dataclass
 class ProcessingResult:
-    """Represents the result of processing a single record (for async methods).
+    """Represents the result of processing a single record (for async code paths).
 
     Attributes:
         record_id: Unique identifier for the record.
@@ -191,7 +194,7 @@ class ProcessingResult:
     record_id: str
     brevid: str
     annotated_text: str = ""
-    # Creates NEW list for each instance
+    # Creates NEW EntityRecord list for each instance
     entities: list[EntityRecord] = field(default_factory=lambda: [])
     processing_time: float = 0.0
     success: bool = True
@@ -227,9 +230,10 @@ class ProcessingResult:
 
 @dataclass
 class BatchProcessingResult:
-    """Represents the result of processing a batch of records (for async methods).
+    """Represents the result of processing a batch of records (in async mode).
 
-    This class encapsulates the output of batch processing operations,
+    The async batch path needs one object that summarizes a whole batch.
+    So, this class encapsulates the output of batch processing operations,
     aggregating results from multiple records and providing batch-level
     statistics and metadata.
 
@@ -244,7 +248,7 @@ class BatchProcessingResult:
 
     batch_id: str
     results: list[ProcessingResult] = field(
-        default_factory=lambda: [],  # Creates NEW list for each instance
+        default_factory=lambda: [],  # Creates NEW ProcessingResult list for each instance
     )
     total_processing_time: float = 0.0
     successful_count: int = 0

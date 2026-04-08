@@ -2,7 +2,8 @@
 
 Defines a small hierarchy of exceptions used during data validation,
 LLM response handling, parsing, and batch orchestration in the
-processing pipeline.
+processing pipeline.  Its job is to make failures structured and
+informative instead of throwing generic ValueError or Exception everywhere.
 """
 
 from __future__ import annotations
@@ -78,7 +79,7 @@ class ValidationError(ProcessingError):
         self.missing_fields = missing_fields or []
 
     def __str__(self) -> str:
-        """Return detailed error description."""
+        """Return detailed error description by including missing fields if available."""
         base_msg = super().__str__()
         if self.missing_fields and base_msg.endswith(")"):
             fields_str = ", ".join(self.missing_fields)
@@ -113,7 +114,7 @@ class LLMResponseError(ProcessingError):
         self.response_text = response_text
 
     def __str__(self) -> str:
-        """Return detailed error description."""
+        """Return detailed error description with truncated response text to a readable length."""
         base_msg = super().__str__()
         if self.response_text and base_msg.endswith(")"):
             truncated = (
@@ -155,7 +156,7 @@ class ParseError(ProcessingError):
         self.content = content
 
     def __str__(self) -> str:
-        """Return detailed error description."""
+        """Return detailed error description with truncated content for readability."""
         base_msg = super().__str__()
         additional_parts: list[str] = []
         if self.parse_type:
@@ -177,7 +178,8 @@ class BatchProcessingError(ProcessingError):
     """Exception for batch processing failures.
 
     This exception is raised when batch processing operations fail,
-    potentially affecting multiple records.
+    potentially affecting multiple records. It is used for failures that
+    affect an entire batch rather than one record.
     """
 
     def __init__(

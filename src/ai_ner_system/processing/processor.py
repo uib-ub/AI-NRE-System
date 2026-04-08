@@ -140,6 +140,11 @@ class RecordProcessor:
     ) -> tuple[list[str], list[str]]:
         """Process multiple records in a single LLM call synchronously.
 
+        This is a batch processing in the sync path: one prompt (prompt-batch.txt),
+        one LLM call, one parser pass over a multi-record response.
+        So when the sync pipeline says batch processing, it means 'combine several
+        records into a single model request with the prompt-batch.txt prompt template.'
+
         Args:
             records: List of record dictionaries to process.
 
@@ -291,6 +296,8 @@ class RecordProcessor:
     ) -> BatchProcessingResult:
         """Process multiple records as a batch asynchronously.
 
+        This method processes one async batch, and produces one BatchProcessingResult.
+
         Args:
             records: List of record dictionaries to process.
             batch_num: A sequential batch number for display/IDs.
@@ -406,6 +413,9 @@ class RecordProcessor:
     ) -> list[BatchRequest]:
         """Prepare batch requests from records.
 
+        This method converts raw input records into BatchRequest objects
+        for the LLM batch API.
+
         Args:
             records: List of record dictionaries to process.
 
@@ -420,6 +430,7 @@ class RecordProcessor:
 
                 bindnr = record.get("Bindnr", "unknown")
                 brevid = record.get("Brevid", "unknown")
+                # create custom_id in the format: "record_{i}_{bindnr}_{brevid}"
                 custom_id = self._create_custom_id(i, bindnr, brevid)
 
                 batch_request = BatchRequest(
@@ -492,13 +503,17 @@ class RecordProcessor:
     ) -> BatchProcessingResult:
         """Fallback to individual async processing when batch is not supported.
 
+        This method creates one _process_individual_async(...) coroutine per record,
+        and runs them concurrently with asyncio.gather(..., return_exceptions=True).
+
         Args:
             records: List of record dictionaries to process.
             batch_num: A sequential batch number for display/IDs.
             _progress_callback: Optional callback (currently unused in fallback).
 
         Returns:
-            A BatchProcessingResult containing all processed records.
+            A BatchProcessingResult (a list of ProcessingResult objects) containing
+            all processed records.
         """
         start_time = time.monotonic()
         batch_id = f"batch_{batch_num}"
@@ -590,10 +605,10 @@ class RecordProcessor:
         record: dict[str, str],
         response: BatchResponse | None,
     ) -> ProcessingResult:
-        """Process a single batch response into a ProcessingResult.
+        """Process a single batch API response into a ProcessingResult.
 
         Args:
-            i: Record index.
+            i: Record index, used for logging and mapping to original record.
             record: Original record dictionary.
             response: BatchResponse object or None if no response.
 
@@ -612,6 +627,7 @@ class RecordProcessor:
                 bindnr,
                 brevid,
             )
+            # No response found for that record -> failed ProcessingResult
             return self._create_processing_result(
                 record_id=record_id,
                 brevid=brevid,
@@ -621,6 +637,7 @@ class RecordProcessor:
 
         # Handle failed response
         if not response.success:
+            # Response exists but is marked unsuccessful -> failed ProcessingResult
             return self._create_processing_result(
                 record_id=response.custom_id,
                 brevid=brevid,
@@ -628,7 +645,7 @@ class RecordProcessor:
                 error_msg=response.error_message,
             )
 
-        # Parse successful response
+        # Response successful -> parse response text and create and return success ProcessingResult
         try:
             annotated_text, entities = ResponseParser.parse_llm_response(
                 brevid,
@@ -668,7 +685,15 @@ class RecordProcessor:
         records: list[dict[str, str]],
         batch_responses: list[BatchResponse],
     ) -> list[ProcessingResult]:
-        """Build processing results from batch responses.
+        """Build processing results from batch responses while preserving order of original records.
+
+        This method:
+
+        1. builds response_map to map from record index to BatchResponse
+        2. iterates over original records with their index, looks up corresponding BatchResponse by response_map.get(i)
+        3. create one ProcessingResult per record, preserving the original order of records in the results list.
+
+        This guarantees the resulting list is in original input order, even if the batch API returned responses out of order.
 
         Args:
             records: Original list of records.
@@ -687,7 +712,7 @@ class RecordProcessor:
         ]
 
     def _call_llm(self, identifier: str, prompt: str) -> str:
-        """Call the LLM service with the prompt.
+        """This method is the sync LLM-call wrapper to call the LLM service with the prompt.
 
         Args:
             identifier: Identifier for logging (brevid or batch_id).
