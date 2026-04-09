@@ -102,6 +102,54 @@ Optional dependency groups:
 - **security** — bandit, safety
 - **docs** — sphinx, sphinx-rtd-theme, myst-parser
 
+### Updating Dependencies After Security Alerts
+
+When GitHub Dependabot reports a vulnerable package in `uv.lock`, update both the
+project constraints and the lockfile as needed.
+
+1. Identify whether the vulnerable package is a direct dependency or only appears
+   transitively in `uv.lock`.
+2. If it is a direct dependency, raise its minimum version in `pyproject.toml`
+   to the patched release or later.
+3. Refresh the lockfile with `uv lock --upgrade-package ...` so `uv.lock`
+   resolves to non-vulnerable versions.
+4. Run targeted tests for the affected area before committing.
+5. Push the updated `pyproject.toml` and `uv.lock` to GitHub. Dependabot alerts
+   should close after GitHub reprocesses the default branch.
+
+Typical workflow:
+
+```bash
+# 1. Inspect the affected package and current resolved versions
+rg -n "anthropic|cryptography" pyproject.toml uv.lock src tests
+
+# 2. If needed, update the direct dependency floor in pyproject.toml
+# Example:
+# anthropic>=0.87.0
+
+# 3. Refresh the lockfile for the affected packages
+uv lock --upgrade-package anthropic --upgrade-package cryptography
+
+# 4. Sync the environment if needed
+uv sync --all-extras
+
+# 5. Run targeted verification
+uv run pytest tests/unit/llm/test_claude_client.py \
+  tests/unit/llm/test_factory.py \
+  tests/unit/config/test_settings.py
+
+# 6. Review the resulting changes
+git diff -- pyproject.toml uv.lock
+```
+
+Notes:
+
+- If the vulnerable package is only transitive, start with `uv lock --upgrade-package <name>`.
+- If the resolver cannot move the transitive package to a safe version, inspect
+  which direct dependency is constraining it and bump that dependency instead.
+- GitHub security alerts for Python dependencies in this project are driven by
+  the resolved versions in `uv.lock`, not just by `pyproject.toml`.
+
 ### Environment Configuration
 
 ```bash
