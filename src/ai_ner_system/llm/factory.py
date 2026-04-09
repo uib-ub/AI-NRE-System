@@ -1,4 +1,8 @@
-"""LLM client factory for AI NER System."""
+"""LLM client factory for AI NER System.
+
+This module is the entry point for creating concrete LLM clients.
+
+"""
 
 from __future__ import annotations
 
