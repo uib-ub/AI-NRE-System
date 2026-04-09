@@ -1,8 +1,9 @@
 """Base LLM client abstract class.
 
-Defines the abstract interface for LLM clients, supporting both synchronous
-and asynchronous operations. Async batch methods are optional and raise
-NotImplementedError by default.
+Defines main abstraction layer for LLM clients, supporting both synchronous
+and asynchronous operations. Async batch methods are optional for clients that supp
+ort async batch processing and raise NotImplementedError by default.
+The module also centralizes shared async batch orchestration logic.
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ class Client(ABC):
 
     This class defines the interface for both synchronous and asynchronous
     operations with LLM APIs. Subclasses implement sync/async single-call
-    methods and, optionally, async batch methods.
+    methods and async batch methods.
     """
 
     # Sensible defaults for polling APIs (seconds)
@@ -166,8 +167,8 @@ class Client(ABC):
         """
 
     # ----------------------------------------------------------------------
-    # Optional async batch API primitives (override in clients that support it).
-    # Concrete subclasses that support async batch should override the methods below.
+    # Async batch API primitives (override in clients that support it). Concrete
+    # subclasses that support async batch should override the batch-related methods below.
     # ----------------------------------------------------------------------
     async def create_batch_async(self, requests: list[BatchRequest]) -> str:
         """Create a batch processing job (async).
@@ -326,6 +327,7 @@ class Client(ABC):
         if max_wait_time <= 0:
             raise ValueError("max_wait_time must be > 0.")
 
+        # Start a timer
         start_time = time.monotonic()
 
         async for progress in self.monitor_batch_progress_async(
@@ -346,7 +348,7 @@ class Client(ABC):
                         exc_info=True,
                     )
 
-            # Check for completion
+            # Check for completion and return process status if done
             if progress.status == BatchStatus.ENDED:
                 return progress.status
             # Check for timeout
@@ -373,8 +375,10 @@ class Client(ABC):
     ) -> list[BatchResponse]:
         """Process batch requests end-to-end (create → wait → fetch results) asynchronously.
 
-        This is the main entry point for async batch processing, handling
-        creation, monitoring, and result retrieval.
+        This is the main entry point for async batch processing, handling creation,
+        monitoring, and result retrieval. It is called by `process_batch_async()` in
+        processing/processor.py module and orchestrates the full lifecycle of one async
+        batch job.
 
         Args:
             requests: List of batch requests to process.

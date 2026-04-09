@@ -842,7 +842,7 @@ class TestClaudeClientGetBatchStatusAsync:
         ("processing_status", "expected_status"),
         [
             ("in_progress", BatchStatus.IN_PROGRESS),
-            ("canceling", BatchStatus.ENDED),
+            ("canceling", BatchStatus.CANCELING),
             ("ended", BatchStatus.ENDED),
         ],
     )
@@ -870,6 +870,35 @@ class TestClaudeClientGetBatchStatusAsync:
 
         log.debug("Batch status for %s: %s", batch_id, status)
         assert status == expected_status
+        batches_retrieve_mock.assert_awaited_once_with(batch_id)
+
+    @pytest.mark.asyncio
+    async def test_get_batch_status_unexpected_status_raises(
+        self,
+        claude_client: ClaudeClient,
+        mocker: MockerFixture,
+    ) -> None:
+        """Test unexpected provider status raises LLMClientError."""
+        batch_id = TEST_BATCH_ID
+        mock_batch_status = SimpleNamespace(
+            id=batch_id,
+            type="message_batch",
+            processing_status="unknown_status",
+            results_url=None,
+        )
+
+        batches_retrieve_mock = mocker.AsyncMock(return_value=mock_batch_status)
+        claude_client.async_client.messages.batches.retrieve = batches_retrieve_mock  # type: ignore[method-assign]
+
+        with pytest.raises(
+            LLMClientError, match=r"Unexpected Claude batch status: unknown_status"
+        ) as exc_info:
+            await claude_client.get_batch_status_async(batch_id)
+
+        log.debug("LLMClientError raised as expected: %s", exc_info.value)
+
+        assert exc_info.value.client_type == "claude"
+        assert exc_info.value.operation == "async_get_batch_status"
         batches_retrieve_mock.assert_awaited_once_with(batch_id)
 
     @pytest.mark.asyncio

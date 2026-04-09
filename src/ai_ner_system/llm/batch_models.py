@@ -1,11 +1,22 @@
-"""Batch processing data models for LLM clients."""
+"""Batch processing data models for LLM clients.
+
+This module defines the shared batch-processing data model that the rest of the LLM
+and async processing stack uses. It is the shared batch data contract for the LLM layer.
+A rough dependency:
+
+batch_models.py
+    -> base_client.py
+    -> claude_client.py
+    -> processing/processor.py
+    -> pipeline/async_processor.py
+"""
 
 from dataclasses import dataclass
 from enum import Enum
 
 
 class BatchStatus(Enum):
-    """Enumeration of batch processing statuses.
+    """Enumeration of batch job state.
 
     Based on Anthropic's Message Batches API documentation:
     - in_progress: The batch is currently being processed
@@ -20,7 +31,7 @@ class BatchStatus(Enum):
 
 @dataclass
 class BatchRequest:
-    """Represents a single request in a batch using Claude Batches API.
+    """Represents one single request in a batch using Claude/Anthropic Batches API.
 
     Attributes:
         custom_id: Unique identifier for this request within the batch.
@@ -44,7 +55,7 @@ class BatchRequest:
 
 @dataclass
 class BatchResponse:
-    """Represents a response from batch processing using Claude Batches API.
+    """Represents one response from batch processing using Claude/Anthropic Batches API.
 
     Attributes:
         custom_id: The unique identifier from the original request.
@@ -72,7 +83,9 @@ class BatchResponse:
 
 @dataclass
 class BatchProgress:
-    """Represents progress information for a batch job.
+    """Represents progress information snapshot.
+
+    It is used for a batch job progress to be monitored during async batch processing.
 
     Attributes:
         batch_num: The batch number for tracking multiple batches.
