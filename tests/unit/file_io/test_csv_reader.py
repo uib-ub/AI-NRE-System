@@ -292,7 +292,7 @@ class TestCSVReader:
         csv_file: Path = tmp_path / "validation_error.csv"
         csv_file.write_text(csv_content, encoding="utf-8")
 
-        def _fake_validate_row(row: dict[str, str]) -> dict[str, str]:
+        def _fake_clean_row(row: dict[str, str]) -> dict[str, str]:
             if row["Bindnr"] == "2":
                 raise ValueError("Simulated validation error")
             return {
@@ -301,11 +301,11 @@ class TestCSVReader:
 
         reader = CSVReader(file_path=str(csv_file))
 
-        # Mock _validate_row to raise an exception
+        # Mock _clean_row to raise an exception
         mocker.patch.object(
             reader,
-            "_validate_row",
-            side_effect=_fake_validate_row,
+            "_clean_row",
+            side_effect=_fake_clean_row,
         )
 
         with pytest.raises(CSVError) as exc_info:
