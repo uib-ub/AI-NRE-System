@@ -167,13 +167,13 @@ Examples:
         --output-text output/annotated_output_claude_batch_100R_B100_async.txt \\
         --output-table output/metadata_table_claude_batch_100R_B100_async.txt \\
         --output-stats output/stats_claude_batch_100R_B100_async.txt  \\
-        --batch-size 100 --async -l DEBUG
+        --batch-size 100 --async-mode -l DEBUG
 
     uv run -m ai_ner_system.main --client claude \\
         --output-text output/annotated_output_claude_batch_13R_B2_async.txt \\
         --output-table output/metadata_table_claude_batch_13R_B2_async.txt \\
         --output-stats output/stats_claude_batch_13R_B2_async.txt \\
-        --batch-size 2 --async --incremental-output -l DEBUG
+        --batch-size 2 --async-mode --incremental-output -l DEBUG
 """
 
 
