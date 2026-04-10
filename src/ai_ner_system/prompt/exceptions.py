@@ -33,15 +33,20 @@ class PromptError(Exception):
     def __str__(self) -> str:
         """Return detailed error description."""
         base_msg = super().__str__()
+        parts = self._context_parts()
+
+        if parts:
+            return f"{base_msg} ({', '.join(parts)})"
+        return base_msg
+
+    def _context_parts(self) -> list[str]:
+        """Build structured context parts for string rendering."""
         parts: list[str] = []
         if self.template_file:
             parts.append(f"template: {self.template_file}")
         if self.operation:
             parts.append(f"operation: {self.operation}")
-
-        if parts:
-            return f"{base_msg} ({', '.join(parts)})"
-        return base_msg
+        return parts
 
 
 class TemplateNotFoundError(PromptError):
@@ -85,8 +90,11 @@ class PromptBuildError(PromptError):
 
     def __str__(self) -> str:
         """Return detailed error description."""
-        base_msg = super().__str__()
-        if self.data_type and base_msg.endswith(")"):
-            # Insert data_type before the closing parenthesis
-            return f"{base_msg[:-1]}, data_type: {self.data_type})"
-        return base_msg
+        return super().__str__()
+
+    def _context_parts(self) -> list[str]:
+        """Build structured context parts for string rendering."""
+        parts = super()._context_parts()
+        if self.data_type:
+            parts.append(f"data_type: {self.data_type}")
+        return parts

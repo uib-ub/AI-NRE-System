@@ -41,7 +41,7 @@ dependencies = [
     "requests>=2.32.0",
     "python-dotenv>=1.0.0",
     "tqdm>=4.65.0",
-    "anthropic>=0.40.0",
+    "anthropic>=0.87.0",
     "aiohttp>=3.12.0"
 ]
 
@@ -69,6 +69,7 @@ lint = [
     "mypy>=1.8.0",
     # Type stubs for third-party libraries
     "types-requests>=2.31.0",
+    "types-tqdm>=4.67.0.20250809",
     # Spell checking
     "codespell>=2.2.0",
     # Dead code detection
@@ -353,6 +354,7 @@ lint = [
     "ruff>=0.8.0",
     "mypy>=1.8.0",
     "types-requests>=2.31.0",
+    "types-tqdm>=4.67.0.20250809",
     "codespell>=2.2.0",
     "vulture>=2.10",
     "validate-pyproject>=0.20.0",
@@ -371,7 +373,6 @@ security = [
 docs = [
     "sphinx>=7.0.0",
     "sphinx-rtd-theme>=2.0.0",
-    "sphinx-autodoc-typehints>=2.0.0",
     "myst-parser>=3.0.0",
 ]
 profiling = [

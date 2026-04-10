@@ -428,14 +428,14 @@ class TestParseBatchResponse:
         records = [VALID_RECORD]
         expected_fallback_values = list(VALID_RECORD.values())
 
-        annotated, metatdata = ResponseParser.parse_batch_response(records, "")
+        annotated, metadata = ResponseParser.parse_batch_response(records, "")
         log.debug("Annotated: %s", annotated)
-        log.debug("Metadata: %s", metatdata)
+        log.debug("Metadata: %s", metadata)
 
         assert len(annotated) == 1
         for i, v in enumerate(annotated[0].split(";")):
             assert v == expected_fallback_values[i]
-        assert metatdata == []
+        assert metadata == []
 
     def test_single_record_with_result_marker(self) -> None:
         """Test batch response with RESULT marker for a single record."""

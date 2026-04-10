@@ -5,11 +5,14 @@ prompts from templates, with robust validation and error handling for
 medieval text annotation tasks.
 
 Template expectations:
-  * Single-record prompts require "Brevid" and "Tekst" placeholders.
-  * Batch prompts require "num_records" and "batch_content" placeholders.
+  * Single-record prompt require "Brevid" and "Tekst" placeholders.
+  * Batch prompt require "num_records" and "batch_content" placeholders.
 
 Note: Input records are expected to carry "Brevid" and "Tekst" (case-sensitive);
 they are normalized to lower-case keys internally as {"brevid", "text"}.
+
+Also, the single-record prompt is used for aync and async single-record processing,
+and async batch processing, while the batch prompt is only used for sync batch processing.
 """
 
 from __future__ import annotations
@@ -87,7 +90,14 @@ class PromptBuilder(ABC):
 
     @staticmethod
     def _extract_placeholders(template: str) -> set[str]:
-        """Extracts top-level placeholder names from a format string.
+        r"""Extracts top-level placeholder names from a format string.
+
+        This method uses Formatter().parse(...) from Python's string module
+        to inspect the template and extract placeholder names.
+
+        Example:
+            template = "Brevid: {brevid}\nText: {text}"
+            returns {"brevid", "text"}
 
         Args:
           template: The template string using str.format placeholders.

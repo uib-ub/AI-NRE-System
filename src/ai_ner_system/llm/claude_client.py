@@ -1,4 +1,18 @@
-"""Claude client implementation using Anthropic Claude API."""
+"""Claude client implementation using Anthropic Claude API.
+
+This module extends the abstract client interface and implements:
+
+- sync single-call
+- async single-call
+- async batch creation
+- async batch status/info/results retrieval
+- async batch cancellation
+- async batch progress monitoring
+
+The module is the full-featured Claude provider adapter that implements both
+sync and async single-call operations and all provider-specific async batch
+operations using the Anthropic Message Batches API.
+"""
 
 from __future__ import annotations
 
@@ -238,6 +252,7 @@ class ClaudeClient(LLMBaseClient):
             )
 
             payload = self._message_payload(prompt)
+            # Cast the response to Anthropic Message type
             response: Message = cast("Message", self.client.messages.create(**payload))
             text = self._extract_response_text_from_message(response)
             if not text:
@@ -332,6 +347,13 @@ class ClaudeClient(LLMBaseClient):
     async def create_batch_async(self, requests: list[BatchRequest]) -> str:
         """Create a batch processing job using Claude Message Batches API, asynchronously.
 
+        For each internal BatchRequest, this method:
+        1. build a Claude message payload
+        2. wraps that payload in MessageCreateParamsNonStreaming
+        3. creates an Anthropic Request
+        4. sends the whole batch of Request list to Claude Batches API to create a batch job
+        5. returns the batch job ID.
+
         Args:
             requests: List of batch requests to process.
 
@@ -395,6 +417,9 @@ class ClaudeClient(LLMBaseClient):
     async def get_batch_status_async(self, batch_id: str) -> BatchStatus:
         """Get the current status of a batch job asynchronously.
 
+        The method retrieves the batch object from Anthropic (MessageBatch) by
+        using the batch ID and maps provider status into internal BatchStatus
+
         Args:
             batch_id: The batch job ID.
 
@@ -408,7 +433,9 @@ class ClaudeClient(LLMBaseClient):
             raise ValueError("batch_id cannot be empty")
 
         try:
-            message_batch = await self.async_client.messages.batches.retrieve(batch_id)
+            message_batch: MessageBatch = (
+                await self.async_client.messages.batches.retrieve(batch_id)
+            )
 
         except asyncio.CancelledError:
             logging.debug("async_get_batch_status cancelled")
@@ -439,14 +466,21 @@ class ClaudeClient(LLMBaseClient):
             ps = getattr(message_batch, "processing_status", None)
             if ps == "in_progress":
                 return BatchStatus.IN_PROGRESS
+            if ps == "canceling":
+                return BatchStatus.CANCELING
             if ps == "ended":
                 return BatchStatus.ENDED
-            # Handle any unexpected status
-            logging.warning("Unexpected batch status: %s", ps)
-            return BatchStatus.ENDED
+
+            raise LLMClientError(
+                f"Unexpected Claude batch status: {ps}",
+                client_type=self.client_type,
+                operation="async_get_batch_status",
+            )
 
     async def get_batch_info_async(self, batch_id: str) -> dict[str, Any]:
         """Return detailed async batch information.
+
+        This method is used mainly for progress reporting
 
         Args:
             batch_id: The batch job ID.
@@ -461,9 +495,7 @@ class ClaudeClient(LLMBaseClient):
             raise ValueError("batch_id cannot be empty")
         try:
             message_batch: MessageBatch = (
-                await self.async_client.messages.batches.retrieve(
-                    batch_id,
-                )
+                await self.async_client.messages.batches.retrieve(batch_id)
             )
         except asyncio.CancelledError:
             logging.debug("async_get_batch_info cancelled")
@@ -513,6 +545,9 @@ class ClaudeClient(LLMBaseClient):
     async def get_batch_results_async(self, batch_id: str) -> list[BatchResponse]:
         """Fetch results from a completed batch job asynchronously.
 
+        This method fetches all per-request results for a completed batch.
+
+
         Args:
             batch_id: Identifier of the completed batch job.
 
@@ -532,11 +567,11 @@ class ClaudeClient(LLMBaseClient):
             results: list[BatchResponse] = []
             counters = self._create_result_counters()
 
-            # Fetch and process each result
+            # Fetch and process each result by iterating through the provider's async batch-results stream
             results_iter = await self.async_client.messages.batches.results(batch_id)
             async for result in results_iter:
                 custom_id: str = getattr(result, "custom_id", "unknown_custom_id")
-                batch_response = self._process_single_batch_result(
+                batch_response: BatchResponse = self._process_single_batch_result(
                     result,
                     custom_id,
                     counters,
@@ -859,6 +894,9 @@ class ClaudeClient(LLMBaseClient):
     ) -> AsyncGenerator[BatchProgress]:
         """Yield progress updates for a batch job.
 
+        This method is the Claude's implementation of the abstract async generator in
+        client base class.
+
         This async generator polls the Anthropic batches API at a fixed interval and
         yields 'BatchProgress' objects until a terminal status is reached. The
         orchestration method in the base class is responsible for invoking any
@@ -883,15 +921,15 @@ class ClaudeClient(LLMBaseClient):
 
         if poll_interval <= 0:
             raise ValueError("poll_interval must be positive")
-
+        # Start a timer to track elapsed time for progress updates
         start_time = time.monotonic()
 
         while True:
             try:
-                # Get current status and detailed information
+                # Get current status and detailed information using batch ID
                 status = await self.get_batch_status_async(batch_id)
                 batch_info: dict[str, Any] = await self.get_batch_info_async(batch_id)
-
+                # Computes elapsed time
                 elapsed_time = time.monotonic() - start_time
                 # Defensive extraction/typing
                 req_counts: dict[str, int] = batch_info.get("request_counts") or {}
@@ -899,7 +937,7 @@ class ClaudeClient(LLMBaseClient):
                 created_at = str(batch_info.get("created_at", ""))
                 expires_at = str(batch_info.get("expires_at", ""))
 
-                # Create and yield progress to the caller
+                # Create and yield progress to the caller to produces a stream of progress updates
                 yield BatchProgress(
                     batch_num=batch_num,
                     batch_id=batch_id,

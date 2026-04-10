@@ -1,4 +1,15 @@
-"""Ollama client implementation for interacting with Ollama via OpenWebUI API."""
+"""Ollama client implementation for interacting with Ollama via OpenWebUI API.
+
+This module extends the abstract client interface by implementing:
+
+- Synchronous single-call operations to send prompts and receive responses from Ollama.
+- Asynchronous single-call operations using aiohttp for non-blocking API calls.
+
+It translate the package's generic client contract into actual HTTP requests
+against the OpenWebUI API.
+
+It does not support asynchronous batch operations.
+"""
 
 from __future__ import annotations
 
@@ -88,6 +99,8 @@ class OllamaClient(LLMBaseClient):
     def _build_payload(self, prompt: str) -> dict[str, Any]:
         """Build payload for API request.
 
+        This method makes the request deterministic and centralized.
+
         Args:
             prompt: Input prompt text.
 
@@ -171,7 +184,7 @@ class OllamaClient(LLMBaseClient):
         )
 
         try:
-            # Send request to OpenWebUI/Ollama
+            # Send a request to OpenWebUI/Ollama
             response = requests.post(
                 self.endpoint,
                 json=payload,
@@ -253,12 +266,12 @@ class OllamaClient(LLMBaseClient):
         )
 
         logging.info(
-            "Sending async request to Ollama (prompt length: %d)",
+            "Sending one async request to Ollama (prompt length: %d)",
             len(prompt),
         )
 
         try:
-            # Send request to OpenWebUI/Ollama
+            # Send a request to OpenWebUI/Ollama
             async with (
                 aiohttp.ClientSession(timeout=timeout_config) as session,
                 session.post(

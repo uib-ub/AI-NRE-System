@@ -1,7 +1,14 @@
 """Response parsing for AI NER System processing.
 
 This module provides functions for parsing LLM responses into structured data
-for medieval text annotation tasks.
+for medieval text annotation tasks. It handles both single-record response parsing
+and batch response parsing. It also centralizes CSV formatting for output rows.
+
+The parser is doing three major transformations:
+
+1. raw text -> parsed annotated text
+2. raw JSON -> EntityRecord objects
+3. parsed objects -> output CSV row strings
 """
 
 from __future__ import annotations
@@ -20,7 +27,14 @@ class ResponseParser:
     """Parses LLM responses into structured data.
 
     This parser handles both single-record and batch responses from LLM services,
-    extracting annotated text and entity information.
+    extracting annotated text and entity information. It is strongly coupled to
+    the prompt/output contract:
+
+    1. ===JSON===
+    2. RECORD
+    3. RESULT:
+
+    This means prompt changes and parser changes must stay aligned.
     """
 
     # Class constants for markers
@@ -122,6 +136,9 @@ class ResponseParser:
         raw_response: str,
     ) -> tuple[list[str], list[str]]:
         """Parse batch LLM response into individual record results.
+
+        Note: This function is designed for synchronous batch processing
+        with Ollama models and prompt-batch.txt prompt.
 
         Args:
             records: Original records list for reference.
@@ -230,6 +247,7 @@ class ResponseParser:
 
         for entity_data in entities_data:
             try:
+                # Converts each raw entity dict into a validated EntityRecord
                 entity = EntityRecord.create_entity_record(entity_data, brevid)
                 logging.info("Created entity record for Brevid=%s: %s", brevid, entity)
                 entities.append(entity)

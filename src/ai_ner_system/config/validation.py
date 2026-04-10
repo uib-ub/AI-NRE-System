@@ -1,4 +1,10 @@
-"""Configuration validation for AI NER System."""
+"""Configuration validation for AI NER System.
+
+This module is the pre-flight validation layer for configuration.
+If settings.py loads and stores config values, this module checks
+whether those values are actually usable before the application starts processing.
+
+"""
 
 from __future__ import annotations
 
@@ -53,6 +59,7 @@ class ConfigValidator:
             ConfigValidationError: If the client type is unsupported or required
             configuration keys are missing/empty.
         """
+        # Reject missing/empty client type early for clearer error messages
         if not client_type or not client_type.strip():
             msg = "Client type must be provided."
             raise ConfigValidationError(msg)
@@ -78,6 +85,8 @@ class ConfigValidator:
     @staticmethod
     def validate_file_paths() -> None:
         """Validate that all file paths are accessible and directories exist.
+
+        This method runs file-system-level checks.
 
         Raises:
             ConfigValidationError: If any file path is invalid or inaccessible.

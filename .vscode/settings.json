@@ -23,5 +23,8 @@
     "caplog",
     "reraises",
     "Tekst"
-  ]
+  ],
+  "files.watcherExclude": {
+    "**/target": true
+  }
 }

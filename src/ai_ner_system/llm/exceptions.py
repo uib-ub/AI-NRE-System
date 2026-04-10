@@ -1,4 +1,4 @@
-"""Exception classes for LLM client operations in AI NER System.
+"""Exception classes for LLM client operations at the provider/API layer in AI NER System.
 
 This module provides a comprehensive hierarchy of exception classes for handling
 various error conditions that can occur during LLM client operations, including
@@ -48,7 +48,12 @@ class LLMClientError(Exception):
         self.operation = operation
 
     def __str__(self) -> str:
-        """Return formatted error message with context."""
+        """Return formatted error message with context.
+
+        Appends client type and operation information to log which client failed
+        and during which operation, if available.
+
+        """
         parts = [super().__str__()]
         if self.client_type:
             parts.append(f"Client: {self.client_type}")
@@ -89,6 +94,11 @@ class APIError(LLMClientError):
         self.response_text = response_text
         self.request_id = request_id
 
+    # TODO: this method can be used by client code to determine
+    # if an API error is retryable (e.g. 429 Too Many Requests,
+    # 408 Request Timeout, 5xx Server Errors), but currently,
+    # it's not used in the client code. We can consider using it in the future
+    # to implement retry logic for retryable errors.
     def is_retryable(self) -> bool:
         """Check if the API error is potentially retryable.
 
@@ -202,6 +212,9 @@ class RateLimitError(APIError):
             operation=operation,
             status_code=_HTTP_TOO_MANY_REQUESTS,
         )
+        # TODO: consider using retry_after and limit_type in client code to
+        # implement smarter retry logic (e.g. wait for retry_after seconds before
+        # retrying if provided by API)
         self.retry_after = retry_after
         self.limit_type = limit_type
 
@@ -253,6 +266,10 @@ class BatchTimeoutError(LLMClientError):
         return " | ".join(parts)
 
 
+# TODO: This exception is currently not used in the client code,
+# but we can consider using it in the future to raise specific exceptions
+# for batch processing failures (e.g. invalid batch request, batch processing errors
+# returned by API, etc.) to provide more granular error handling for batch operations.
 class BatchProcessingError(LLMClientError):
     """Exception for batch processing failures.
 

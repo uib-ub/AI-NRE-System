@@ -26,6 +26,12 @@ log = logging.getLogger(__name__)
 class TestLLMClientFactory:
     """Tests for LLM client factory function."""
 
+    def test_factory_registry_matches_supported_clients(self) -> None:
+        """Test factory registry keys stay aligned with supported client types."""
+        assert set(factory._CLIENT_CLASSES) == set(  # pyright: ignore[reportPrivateUsage]
+            Settings.SUPPORTED_CLIENTS
+        )
+
     @pytest.mark.parametrize(
         ("client_type", "expected_class"),
         [

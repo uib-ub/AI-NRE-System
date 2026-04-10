@@ -10,6 +10,11 @@ pipeline:
 Concurrency:
 * Appends use an exclusive `flock()` on the target file to avoid interleaving.
 * When appending, a header is emitted only if the file is empty at lock time.
+
+This module is used by
+
+- main_processor.py for final output writing,
+- async_processor.py for incremental async output appends.
 """
 
 from __future__ import annotations
@@ -22,7 +27,7 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any, BinaryIO, ClassVar, cast
 
-# fcntl is POSIX-only; gracefully handle Windows
+# fcntl is POSIX-only (macOS/Linux); does not exist on Windows
 try:
     import fcntl
 
@@ -102,7 +107,12 @@ class OutputWriter:
 
     @staticmethod
     def _atomic_write(file_path: Path, content: str, encoding: str) -> None:
-        """Atomically write content to a file (POSIX).
+        """Atomically write content to a file.
+
+        This method writes to a temporary file in the same directory and then
+        atomically replaces the target file. This ensures that readers never see
+        a partially written file. If the program crashes while writing the temp file,
+        the old output file is still intact.
 
         Args:
             file_path: Path to the output file.
@@ -345,7 +355,13 @@ class OutputWriter:
                 fcntl.flock(file.fileno(), fcntl.LOCK_EX)  # pyright: ignore[reportOptionalMemberAccess]
                 try:
                     size, ends_with_newline = self._file_size_and_trailing_newline(file)
+                    # The file only gets the header if it is empty at lock time.
+                    # That avoids duplicate headers during repeated appends.
+                    # - writer A locks, sees file empty, writes header + data
+                    # - writer B locks later, sees file non-empty, writes only data
                     needs_header = size == 0
+                    # If the existing file does not end with a newline,
+                    # add a leading newline to separate the new content and avoid sticking.
                     needs_leading_newline = size > 0 and not ends_with_newline
 
                     chunk: str = self._compose_chunk(
@@ -440,6 +456,7 @@ class OutputWriter:
         output_path = OutputWriter._ensure_output_directory(file_path)
         try:
             logging.info("Writing processing statistics to %s", output_path)
+            # Serialize stats data to JSON with indentation for readability (ensure_ascii=False)
             content = json.dumps(stats_data, indent=2, ensure_ascii=False)
             OutputWriter._atomic_write(
                 output_path,
@@ -464,7 +481,7 @@ class OutputWriter:
             *file_paths: Variable number of file paths to clean up.
 
         Raises:
-            FileIOError: If file deletion fails for any critical reason.
+            OSError: If file deletion fails for any critical reason.
         """
         for file_path in file_paths:
             if not file_path:  # Skip empty/None file paths
