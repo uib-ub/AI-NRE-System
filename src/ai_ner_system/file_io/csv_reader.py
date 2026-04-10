@@ -1,4 +1,9 @@
-"""CSV reader with validation and streaming capabilities for AI NER System."""
+"""CSV reader with validation and streaming capabilities for AI NER System.
+
+This module is the streaming, validating input adapter that turns a CSV file into
+cleaned record dictionaries for the rest of the pipeline.
+
+"""
 
 from __future__ import annotations
 
@@ -107,7 +112,7 @@ class CSVReader:
             with self.file_path.open(encoding=self.encoding, newline="") as file:
                 reader = csv.DictReader(
                     file, delimiter=self.delimiter, restval=""
-                )  # make sure missing values are empty strings
+                )  # make sure missing values are empty strings with restval=""
 
                 # Store headers (csv.DictReader always uses first row as headers)
                 self._headers = list(reader.fieldnames) if reader.fieldnames else []
@@ -129,11 +134,11 @@ class CSVReader:
                             )
                             continue
 
-                        # Validate row data
-                        validated_row = self._validate_row(row)
-                        logging.debug("Validated row %d: %s", row_number, validated_row)
+                        # Clean row data
+                        cleaned_row = self._clean_row(row)
+                        logging.debug("Cleaned row %d: %s", row_number, cleaned_row)
                         record_count += 1
-                        yield validated_row
+                        yield cleaned_row
 
                     except CSVError:
                         # Re-raise CSV-specific exceptions
@@ -172,14 +177,14 @@ class CSVReader:
                 file_path=str(self.file_path),
             ) from e
 
-    def _validate_row(self, row: dict[str, str]) -> dict[str, str]:
-        """Validate and clean a CSV row.
+    def _clean_row(self, row: dict[str, str]) -> dict[str, str]:
+        """Clean a CSV row.
 
         Args:
             row: Dictionary representing a CSV row.
 
         Returns:
-            Validated and cleaned row dictionary.
+            Cleaned row dictionary.
         """
         # Strip whitespace from all values and return cleaned row
         return {key: str(value).strip() if value else "" for key, value in row.items()}
