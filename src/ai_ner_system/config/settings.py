@@ -34,9 +34,9 @@ class Settings:
         - DEFAULT_* attributes: ClassVar constants that never change (e.g., DEFAULT_INPUT_FILE)
         - Other attributes: Class-level but dynamically loaded from environment (NOT ClassVar)
 
-        The non-ClassVar attributes are shared across the application but can be updated
-        at runtime via initialize() or apply_cli_overrides(). This pattern allows both
-        compile-time defaults and runtime configuration while maintaining type safety.
+        The non-ClassVar attributes are runtime attributes shared across the application but
+        can be updated at runtime via initialize() or apply_cli_overrides(). This pattern allows
+        both compile-time defaults and runtime configuration while maintaining type safety.
 
     Attributes:
         ANTHROPIC_API_KEY: API key for Anthropic Claude service.
@@ -60,7 +60,7 @@ class Settings:
         DEFAULT_POLL_INTERVAL: Default polling interval for async progress checks.
     """
 
-    # Default values as class constants
+    # Default values as ClassVar constants
     DEFAULT_INPUT_FILE: ClassVar[str] = "input/Brevid-DN-AI.txt"
     DEFAULT_OUTPUT_TEXT_FILE: ClassVar[str] = "output/annotated_texts.txt"
     DEFAULT_OUTPUT_TABLE_FILE: ClassVar[str] = "output/metadata_table.txt"
@@ -125,6 +125,7 @@ class Settings:
     # Flag to track initialization
     _initialized: ClassVar[bool] = False
 
+    # Runtime attributes
     # API Configuration - These are loaded dynamically, so they are NOT ClassVar
     ANTHROPIC_API_KEY: str | None = None
     OPENWEBUI_TOKEN: str | None = None
