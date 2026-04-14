@@ -81,7 +81,7 @@ lint = [
 # Testing framework and tools
 test = [
     # Core testing framework
-    "pytest>=8.0.0",
+    "pytest>=9.0.3",
     # Coverage reporting
     "pytest-cov>=5.0.0",
     # Async testing support
