@@ -209,7 +209,88 @@ input
 # Package build artifacts
 src/ai_ner_system.egg-info/
 
-
 # Davia
 .davia/
 .github/prompts/davia-documentation.md
+
+# Latex
+## Core latex/pdflatex auxiliary files:
+*.aux
+*.lof
+*.log
+*.lot
+*.fls
+*.out
+*.toc
+*.fmt
+*.fot
+*.cb
+*.cb2
+*.lb
+
+## Intermediate documents:
+*.dvi
+*.xdv
+*-converted-to.*
+## these rules might exclude image files for figures etc.
+# *.ps
+# *.eps
+# *.pdf
+
+## Bibliography auxiliary files (bibtex/biblatex/biber):
+*.bbl
+*.bcf
+*.blg
+*-blx.aux
+*-blx.bib
+*.brf
+*.run.xml
+
+## Build tool auxiliary files:
+*.fdb_latexmk
+*.synctex
+*.synctex(busy)
+*.synctex.gz
+*.synctex.gz(busy)
+*.pdfsync
+
+## Auxiliary and intermediate files from other packages:
+### algorithms
+*.alg
+*.loa
+
+### achemso
+acs-*.bib
+
+### amsthm
+*.thm
+
+### comment
+*.cut
+
+### listings
+*.lol
+
+### makeidx
+*.idx
+*.ilg
+*.ind
+
+### pdfcomment
+*.upa
+*.upb
+
+### thmtools
+*.loe
+
+### TikZ & PGF
+*.dpth
+*.md5
+*.auxlock
+
+### xcolor
+*.xcp
+
+*.svn
+*.snm
+*.nav
