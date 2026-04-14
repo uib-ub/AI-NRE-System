@@ -1,0 +1,21 @@
+flowchart TD
+    A["run_async()"] --> CLEANUP["_cleanup_output_files()"]
+    CLEANUP --> B["AsyncProcessor<br/>.process_all_records_async()"]
+    B --> C{"batch_size > 1 and<br/>supports_async_batch()?"}
+
+    C -- no --> D["_process_records_<br/>individual_async()"]
+    C -- yes --> E["_process_records_<br/>streaming_async()"]
+
+    D --> F["stream records<br/>asynchronously"]
+    F --> G["create per-record<br/>tasks"]
+    G --> G2["Semaphore(max_<br/>concurrent_individual)"]
+    G2 --> H["flush chunks via<br/>_process_task_chunk()"]
+    H --> I["update stats /<br/>queue ordered results"]
+
+    E --> J["stream records<br/>asynchronously"]
+    J --> K["group rows<br/>into batches"]
+    K --> L["create async<br/>batch tasks"]
+    L --> M["limit concurrent batches +<br/>preserve order + fallback"]
+    M --> I
+
+    I --> N["main_processor<br/>.write_output_async(stats)"]

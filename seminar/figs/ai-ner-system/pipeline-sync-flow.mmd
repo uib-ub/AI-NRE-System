@@ -1,0 +1,29 @@
+flowchart TB
+    A["run()"] --> CLEANUP["_cleanup_output_files()"]
+    CLEANUP --> B["SyncProcessor<br/>.process_all_records()"]
+    B --> C["_process_records_streaming(...)"]
+    C --> D["stream CSV records"]
+    D --> E["append into<br/>batch_records"]
+    E --> F{"len(batch_records) >= batch_size?"}
+    F -- no --> D
+    F -- yes --> G["_process_batch(...)"]
+
+    G --> H{"batch_size == 1?"}
+    H -- yes --> I["RecordProcessor<br/>.process_record(record)"]
+    H -- no --> J["RecordProcessor<br/>.process_batch(records)"]
+
+    I --> K2{"ProcessingError?"}
+    K2 -- no --> L["extend annotations + metadata"]
+    K2 -- yes --> M2["log + skip record"]
+    M2 --> L
+
+    J --> K{"ProcessingError?"}
+    K -- no --> L
+    K -- yes --> M["fallback to<br/>per-record processing"]
+    M --> L
+
+    L --> N["continue<br/>streaming"]
+    N --> O{"leftover<br/>final batch?"}
+    O -- yes --> P["_process_<br/>final_batch(...)"]
+    O -- no --> Q["main_processor<br/>.write_output(...)"]
+    P --> Q

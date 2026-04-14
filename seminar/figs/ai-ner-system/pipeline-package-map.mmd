@@ -1,0 +1,22 @@
+flowchart TB
+    subgraph PIPE["**pipeline package**"]
+        direction LR
+        MP["**main_processor.py**<br/>MedievalText-<br/>Processor"]
+        SP["**sync_processor.py**<br/>SyncProcessor"]
+        AP["**async_processor.py**<br/>AsyncProcessor"]
+        ST["**stats.py**<br/>ApplicationError<br/>AsyncProcessing-<br/>Stats"]
+        PP["**processor_protocol.py**<br/>ProcessorContext"]
+    end
+
+    MAIN["**main.py**<br/>CLI entry point"]
+    MAIN --> MP
+    MP --> SP
+    MP --> AP
+    MP --> ST
+    AP -->|"updates stats"| ST
+    SP -. depends on interface .-> PP
+    AP -. depends on interface .-> PP
+
+    RP["**processing/<br/>processor.py**<br/>RecordProcessor"]
+    SP -->|"delegates to"| RP
+    AP -->|"delegates to"| RP

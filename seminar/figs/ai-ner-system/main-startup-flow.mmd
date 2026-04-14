@@ -1,0 +1,11 @@
+flowchart TD
+    A["main()"] --> B["create_argument_parser()"]
+    B --> C["parse_args()"]
+    C --> D["setup_logging(log_level)"]
+    D --> E["_validate_arguments()"]
+    E --> F["_validate_configuration()<br/>initialize settings<br/>apply CLI overrides<br/>validate all + log summary"]
+    F --> G{"--dry-run?"}
+    G -- yes --> H["print success<br/>return 0"]
+    G -- no --> I["construct MedievalTextProcessor(args)"]
+    I --> J["_run_processor()"]
+    J --> K["return exit code"]

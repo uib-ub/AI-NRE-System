@@ -1,0 +1,22 @@
+%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '30px'}, 'flowchart': {'nodeSpacing': 45, 'rankSpacing': 70, 'curve': 'basis'}}}%%
+flowchart LR
+    A["async stream<br/>records"] --> B["fill current<br/>batch"]
+    B --> C{"batch<br/>full?"}
+    C -- no --> A
+    C -- yes --> D["start batch task"]
+    D --> E["store task by<br/>batch_num"]
+    E --> F{"in-flight tasks >=<br/>max_concurrent_batches?"}
+    F -- no --> A
+    F -- yes --> G["await oldest<br/>batch task"]
+    G --> H["add batch results<br/>in order"]
+    H --> A
+
+    A -. stream exhausted .-> I["start final partial batch<br/>if records remain"]
+    I --> J["await remaining batch<br/>tasks in order"]
+    J --> K["add batch results<br/>in order"]
+    K --> L["ordered results ready for<br/>flush / final output"]
+
+    classDef taskhandoff fill:#DDF3E4,stroke:#4E9E63,color:#333,stroke-width:2px;
+    classDef resulthandoff fill:#DDEBFF,stroke:#4F81BD,color:#333,stroke-width:2px;
+    class D taskhandoff;
+    class H,K resulthandoff;

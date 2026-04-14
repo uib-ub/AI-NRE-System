@@ -1,0 +1,141 @@
+%%%%%%%%%%%%%%%%%%
+% Font settings
+%%%%%%%%%%%%%%%%%%
+%\usepackage{tgpagella}
+\usepackage[osf]{newpxtext}
+\linespread{1.05}
+\usepackage[T1,euler-digits]{eulervm}
+\usepackage[scaled=0.85]{beramono}
+\usepackage[T1]{fontenc}      % Activate Type 1 fonts
+\usepackage[utf8]{inputenc} % We want æøå
+\usepackage{textcomp}
+\usepackage{anyfontsize}
+\usepackage[protrusion=true,expansion=true]{microtype}
+\usepackage{textcase}
+\usefonttheme{serif}
+\usefonttheme{professionalfonts}
+\usepackage{fourier}
+%%%%%%%%%%%%%%%%%%
+% General packages
+%%%%%%%%%%%%%%%%%%
+\usepackage[english]{babel}    % language
+\usepackage{xspace}
+\usepackage{verbatim}   % at least use begin{comment} end{comment}
+\usepackage{booktabs}   % Publication quality tables
+\usepackage{graphicx}
+\usepackage{bmpsize}    % Handles figures
+\usepackage{subcaption}
+\usepackage{wrapfig}
+% Change the default alignment of a image from left or right an easy manner:
+\usepackage[export]{adjustbox}
+\usepackage[final]{pdfpages}
+\usepackage{multirow,multicol}
+\usepackage{array}
+% caption for figures
+\usepackage{caption}
+\captionsetup[figure]{labelfont={bf},labelformat={default},labelsep=colon,name={Fig.}}
+\captionsetup[table]{labelfont={bf},labelformat={default},labelsep=colon,name={Table}}
+\captionsetup{compatibility=false}
+\usepackage{alltt}
+\usepackage{forloop}               % For-loops!
+\usepackage[numbers,sort&compress]{natbib} % Sort numerical keys for multiple cites
+\usepackage{hypernat}       % Avoid breaking 'backref' option of hyperref package
+\usepackage{float}
+\usepackage{units}                % semantically represent numbers with units
+\usepackage{url}
+\usepackage{emptypage} % remove head and foot for empty pages
+\usepackage[object=vectorian]{pgfornament}
+\usepackage{fontawesome5}
+\usepackage{import}
+\usepackage{fnpct}
+\usepackage[absolute,overlay]{textpos}
+
+% Tikz/PGF
+%%%%%%%
+\usepackage{tikz}
+\usetikzlibrary{positioning,shapes.geometric}
+\usetikzlibrary{arrows,automata}
+\usetikzlibrary{fit}
+\usetikzlibrary{topaths}
+\usetikzlibrary{patterns}
+\usetikzlibrary{calc,decorations}
+\usetikzlibrary{decorations.text,decorations.pathmorphing,decorations.pathreplacing}
+\usetikzlibrary{matrix}
+\usetikzlibrary{shapes}
+
+\usepackage{pgf}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\pgfdeclarelayer{background}
+\pgfdeclarelayer{foreground}
+\pgfsetlayers{background, main, foreground}
+
+\tikzstyle{every picture}+=[remember picture]
+
+%%%%%%%%%%%%
+% Theorems & Math & Algorithms
+%%%%%%%%%%%%
+\usepackage{amsthm}
+\usepackage{thmtools}
+
+\usepackage{amsmath}
+\usepackage{mathtools}
+\usepackage{amssymb}
+\usepackage{amsfonts}
+\usepackage{latexsym}
+
+\usepackage{algorithm}
+\usepackage[noend]{algpseudocode}
+
+%%%%%%%%%%%%
+% Listings
+%%%%%%%%%%%%
+\usepackage[procnames]{listings} % beautiful listings
+\lstdefinelanguage{ansible}
+{
+    basicstyle=\ttfamily\footnotesize,
+    captionpos=b,
+    showtabs=false,
+    tabsize=4,
+    columns=fullflexible,
+    % framexleftmargin=10pt,
+    % xleftmargin=.03\textwidth,
+    % numberstyle=\scriptsize,
+    numbersep=4pt,
+    % frame=single,
+    xleftmargin=\parindent,
+    breaklines=true,
+    keepspaces=true,
+    showspaces=false,
+    showstringspaces=false,
+    breakatwhitespace=false,
+    backgroundcolor=\color{white},
+    identifierstyle=\color{black},
+    morestring=[s]{"}{"},
+    stringstyle=\color{OliveGreen},
+    comment=[l]{//},
+    morecomment=[s]{/*}{*/},
+    commentstyle=\color{OliveGreen},
+    keywordstyle={[1]\bfseries\color{Maroon}},
+    keywordstyle={[2]\color{RoyalBlue}},
+    keywordstyle={[3]\color{BlueGreen}},
+    keywords=[1]{include_tasks,import_role,name,when,become}
+}
+
+% For comments:
+% Use notes/todonotes for comments
+\usepackage{xargs}  % Use more than one optional parameter in a new commands
+\usepackage[colorinlistoftodos,prependcaption,textsize=small,textwidth=2cm]{todonotes}
+\setlength{\marginparwidth}{2cm}
+\newcommandx{\notes}[2][1=]{\todo[linecolor=blue,backgroundcolor=blue!25,bordercolor=blue,#1]{#2}}
+
+% Use com for comments
+\usepackage{comment}
+\newcommand{\com}[1]{
+        \mbox{}
+       \marginpar{\hrule\footnotesize\raggedright\hspace{0pt}#1\vspace{2mm}}
+}
+\newcommand{\rui}[1]{\textcolor{OliveGreen}{#1}}
+
+\definecolor{links}{HTML}{2A1B81}
+\hypersetup{colorlinks,linkcolor=,urlcolor=links}

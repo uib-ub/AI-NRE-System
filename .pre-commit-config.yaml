@@ -42,6 +42,7 @@ repos:
       # Content checks
       - id: check-added-large-files
         args: ['--maxkb=500']
+        exclude: ^seminar/
       - id: check-case-conflict
       - id: debug-statements
       - id: check-docstring-first

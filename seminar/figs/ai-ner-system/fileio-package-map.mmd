@@ -1,0 +1,9 @@
+flowchart LR
+    subgraph PKG["**file_io package**"]
+        EX["**exceptions.py**<br/>FileIOError<br/>hierarchy"]
+        CR["**csv_reader.py**<br/>CSVReader:<br/>validated streaming input"]
+        OW["**output_writers.py**<br/>OutputWriter:<br/>atomic + incremental writes"]
+    end
+
+    CR -->|"raises CSV / encoding / validation errors"| EX
+    OW -->|"raises output errors"| EX

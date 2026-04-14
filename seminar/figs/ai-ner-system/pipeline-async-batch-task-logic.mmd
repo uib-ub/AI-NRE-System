@@ -1,0 +1,15 @@
+%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '28px'}, 'flowchart': {'nodeSpacing': 50, 'rankSpacing': 75, 'curve': 'basis'}}}%%
+flowchart LR
+    A["from scheduler:<br/>start batch task"] --> B["await processor.process_<br/>batch_async(...)"]
+    B --> C{"batch<br/>exception?"}
+    C -- no --> D["return BatchProcessingResult<br/>to scheduler"]
+    C -- yes --> E["_fallback_to_individual_<br/>async_streaming(...)"]
+    E --> F["Semaphore(fallback_<br/>concurrency)"]
+    F --> G["asyncio.gather(...)<br/>preserves record order"]
+    G --> H["build BatchProcessingResult<br/>from fallback stats"]
+    H --> D
+
+    classDef taskhandoff fill:#DDF3E4,stroke:#4E9E63,color:#333,stroke-width:2px;
+    classDef resulthandoff fill:#DDEBFF,stroke:#4F81BD,color:#333,stroke-width:2px;
+    class A taskhandoff;
+    class D resulthandoff;

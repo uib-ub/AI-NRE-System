@@ -1,0 +1,8 @@
+flowchart TD
+    A["_run_processor(processor, args)"] --> B{"args.async_mode?"}
+    B -- no --> C["processor.run()<br/>pipeline chooses:<br/>individual or sync batch"]
+    B -- yes --> D["create_progress_logger(PROGRESS_LOG_INTERVAL)"]
+    D --> E["asyncio.run(<br/>processor.run_async(...))"]
+    E --> G["pipeline chooses:<br/>concurrent individual or<br/>async batch / fallback"]
+    C --> F["exit code"]
+    G --> F

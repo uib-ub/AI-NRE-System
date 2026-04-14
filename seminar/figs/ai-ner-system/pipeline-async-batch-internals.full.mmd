@@ -1,0 +1,37 @@
+flowchart LR
+    subgraph LOOP["Streaming + ordered batch handling"]
+        direction TB
+        A["async stream records"] --> B["fill batch_records"]
+        B --> C{"batch full?"}
+        C -- no --> A
+        C -- yes --> D["start task:<br/>_process_batch_with_order_async(...)"]
+        D --> E["store task by batch_num"]
+        E --> F{"in-flight tasks >=<br/>max_concurrent_batches?"}
+        F -- no --> A
+        F -- yes --> G["await oldest batch task"]
+        G --> H["_add_batch_results_in_order(...)"]
+        H --> I["update stats + queue/extend results"]
+        I --> J["flush ready next-expected<br/>batches if incremental"]
+        J --> A
+    end
+
+    A -. stream exhausted .-> M["start final partial batch<br/>if records remain"]
+    M --> N["await remaining batch tasks<br/>in order"]
+    N --> O["_add_batch_results_in_order(...)"]
+    O --> P["update stats + queue/extend results"]
+    P --> Q{"incremental mode?"}
+    Q -- yes --> R["final _flush_queued_<br/>batch_results_async()"]
+    Q -- no --> S["return stats"]
+    R --> S
+
+    subgraph TASK["Per-batch task logic"]
+        direction TB
+        T["await processor.process_<br/>batch_async(...)"]
+        T --> U{"batch exception?"}
+        U -- no --> V["return BatchProcessingResult"]
+        U -- yes --> W["fallback_to_individual_<br/>async_streaming()<br/>Semaphore(fallback_concurrency)"]
+        W --> X["asyncio.gather(...)<br/>preserves record order"]
+        X --> V
+    end
+
+    D -. task body .-> T
