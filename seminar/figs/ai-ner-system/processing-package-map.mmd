@@ -1,0 +1,22 @@
+flowchart LR
+    subgraph PROC["**processing package**"]
+        EX["**exceptions.py**<br/>ProcessingError<br/>hierarchy"]
+        EN["**entities.py**<br/>Entity / Result<br/>data models"]
+        VA["**validator.py**<br/>RecordValidator"]
+        PA["**parser.py**<br/>ResponseParser"]
+        RP["**processor.py**<br/>RecordProcessor"]
+    end
+
+    PB["**prompt/<br/>builder.py**<br/>PromptBuilder<br/>abstraction"]
+    LC["**llm/<br/>base_client.py**<br/>Client<br/>abstraction"]
+
+    RP --> VA
+    RP --> PA
+    RP --> EN
+    RP --> EX
+    RP -->|"builds prompts with"| PB
+    RP -->|"calls through"| LC
+    VA --> EX
+    PA --> EN
+    PA --> EX
+    EN --> EX

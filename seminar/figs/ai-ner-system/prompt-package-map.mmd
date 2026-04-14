@@ -1,0 +1,18 @@
+flowchart TB
+    subgraph FILES["**prompt/ folder**"]
+        direction LR
+        PT["**prompt.txt**<br/>single-record template"]
+        BT["**prompt-batch.txt**<br/>sync-batch template"]
+    end
+
+    subgraph PKG["**prompt package**"]
+        direction LR
+        BU["**builder.py**<br/>PromptBuilder abstraction<br/>GenericPromptBuilder<br/>field checks + formatting"]
+        EX["**exceptions.py**<br/>PromptError hierarchy"]
+    end
+
+    PT -->|"loaded by"| BU
+    BT -->|"loaded by"| BU
+    BU -->|"raises"| EX
+
+    FILES ~~~ PKG

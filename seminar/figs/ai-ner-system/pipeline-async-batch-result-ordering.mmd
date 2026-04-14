@@ -1,0 +1,18 @@
+%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '28px'}, 'flowchart': {'nodeSpacing': 48, 'rankSpacing': 75, 'curve': 'basis'}}}%%
+flowchart LR
+    A["from scheduler:<br/>oldest or remaining task finished"] --> B["_add_batch_results_<br/>in_order(...)"]
+    B --> C["update processed /<br/>failed counters"]
+    C --> D{"incremental<br/>mode?"}
+    D -- no --> E["extend stats.results<br/>in batch order"]
+    D -- yes --> F["queue batch result<br/>by batch_num"]
+    F --> G["_flush_queued_batch_<br/>results_async()"]
+    G --> H{"next_expected batch<br/>ready?"}
+    H -- no --> I["return to scheduler<br/>or final stats"]
+    H -- yes --> J["pop next queued batch"]
+    J --> K["_write_batch_results_<br/>incremental_async(...)"]
+    K --> L["write annotated text +<br/>metadata, advance pointer"]
+    L --> G
+    E --> I
+
+    classDef resulthandoff fill:#DDEBFF,stroke:#4F81BD,color:#333,stroke-width:2px;
+    class A,B resulthandoff;

@@ -1,0 +1,24 @@
+flowchart TD
+    CLI["CLI command"] --> MAIN["**main.py**<br/>parse args<br/>setup logging<br/>processor runner"]
+
+    MAIN --> CFG["**config**<br/>Settings<br/>ConfigValidator"]
+    CFG --> MAIN
+
+    MAIN --> PIPE["**pipeline**<br/>MedievalTextProcessor<br/>SyncProcessor / AsyncProcessor"]
+
+    INPUT["input CSV"] --> FIO_IN["**file_io**<br/>CSVReader"]
+    FIO_IN --> PIPE
+
+    PROMPT_TEMP["prompt templates"] --> PROMPT["**prompt**<br/>PromptBuilder abstraction<br/>GenericPromptBuilder"]
+    PIPE --> PROMPT
+    PIPE --> PROC["**processing**<br/>RecordProcessor"]
+    PIPE --> FIO_OUT["**file_io**<br/>OutputWriter"]
+
+    PROC --> VALID["**processing**<br/>RecordValidator"]
+    PROC --> PARSER["**processing**<br/>ResponseParser"]
+    PROC --> ENT["**processing**<br/>Entity / Result data models"]
+
+    PROC --> LLM["**llm**<br/>Client abstraction<br/>Claude / Ollama"]
+    LLM --> PROVIDERS["**external LLM APIs**<br/>Anthropic Claude<br/>Ollama / OpenWebUI"]
+
+    FIO_OUT --> OUTPUT["**file_io**<br/>output files<br/>annotated text<br/>metadata<br/>stats"]

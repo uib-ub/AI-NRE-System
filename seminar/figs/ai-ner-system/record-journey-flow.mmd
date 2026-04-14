@@ -1,0 +1,18 @@
+---
+config:
+  theme: neutral
+  flowchart:
+    curve: linear
+    nodeSpacing: 40
+    rankSpacing: 55
+  themeVariables:
+    fontSize: 24px
+---
+flowchart LR
+    A["**1. CSVReader**<br/>stream + clean one row"]
+    B["**2. RecordValidator**<br/>check required fields"]
+    C["**3. PromptBuilder**<br/>normalize Brevid/Tekst<br/>format final prompt"]
+    D["**4. LLM Client + ResponseParser**<br/>call model<br/>parse annotated text + entities"]
+    E["**5. OutputWriter**<br/>annotated text + metadata<br/>stats JSON when applicable"]
+
+    A --> B --> C --> D --> E

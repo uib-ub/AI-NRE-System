@@ -1,0 +1,71 @@
+%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '26px'}, 'flowchart': {'nodeSpacing': 45, 'rankSpacing': 60}} }%%
+flowchart TD
+    MAIN["**main.py**<br/>CLI entry point"]
+
+    subgraph CFG["**config package**"]
+        SETTINGS["Settings"]
+        CONFIG_VALIDATOR["ConfigValidator"]
+    end
+
+    subgraph PIPE["**pipeline package**"]
+        MTP["MedievalTextProcessor"]
+        SYNC["SyncProcessor"]
+        ASYNC["AsyncProcessor"]
+        PROTOCOL["ProcessorContext"]
+        STATS["AsyncProcessingStats"]
+    end
+
+    subgraph FIO["**file_io package**"]
+        READER["CSVReader"]
+        WRITER["OutputWriter"]
+    end
+
+    subgraph PROMPT["**prompt package**"]
+        BUILDER["PromptBuilder abstraction"]
+        GBUILDER["GenericPromptBuilder"]
+    end
+
+    subgraph PROC["**processing package**"]
+        RP["RecordProcessor"]
+        RV["RecordValidator"]
+        PARSER["ResponseParser"]
+        MODELS["Entity / Result data models"]
+    end
+
+    subgraph LLM["**llm package**"]
+        CLIENT["Client abstraction<br/>+ shared batch logic"]
+        FACTORY["create_llm_client()"]
+        BATCH["Shared batch<br/>contract"]
+        CLAUDE["ClaudeClient"]
+        OLLAMA["OllamaClient"]
+    end
+
+    classDef node font-size:28px,stroke-width:2px;
+    class MAIN,SETTINGS,CONFIG_VALIDATOR,MTP,SYNC,ASYNC,PROTOCOL,STATS,READER,WRITER,BUILDER,GBUILDER,RP,RV,PARSER,MODELS,CLIENT,FACTORY,BATCH,CLAUDE,OLLAMA node;
+
+    MAIN --> CFG
+    MAIN --> PIPE
+
+    PIPE --> FIO
+    PIPE --> PROMPT
+    PIPE --> PROC
+
+    MTP --> SYNC
+    MTP --> ASYNC
+    ASYNC -->|"updates stats"| STATS
+    SYNC -. depends on interface .-> PROTOCOL
+    ASYNC -. depends on interface .-> PROTOCOL
+
+    RP --> RV
+    RP --> PARSER
+    RP --> MODELS
+    PARSER --> MODELS
+
+    PROC --> LLM
+    GBUILDER -- Implements --> BUILDER
+
+    FACTORY --> OLLAMA
+    FACTORY --> CLAUDE
+    OLLAMA -- Implements --> CLIENT
+    CLAUDE -- Implements --> CLIENT
+    CLAUDE --> BATCH

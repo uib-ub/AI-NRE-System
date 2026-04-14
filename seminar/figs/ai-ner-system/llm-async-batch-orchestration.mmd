@@ -1,0 +1,7 @@
+flowchart TD
+    A["process_batch_requests_async()<br/>one end-to-end async batch"] --> B["create_batch_async()"]
+    B --> C["wait_for_batch_completion_async()<br/>owns timeout + progress callback<br/>internal async loop: monitor_batch_progress_async()"]
+    C --> D{"status == ENDED?"}
+    D -- no --> C
+    D -- yes --> F["get_batch_results_async()"]
+    F --> G["list[BatchResponse]"]

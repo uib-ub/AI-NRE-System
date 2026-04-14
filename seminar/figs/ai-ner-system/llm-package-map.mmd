@@ -1,0 +1,19 @@
+flowchart TD
+    subgraph PKG["**llm package**"]
+        EX["**exceptions.py**<br/>LLM error<br/>hierarchy"]
+        BM["**batch_models.py**<br/>shared batch<br/>contract"]
+        BC["**base_client.py**<br/>Client abstraction<br/>+ shared batch logic"]
+        OC["**ollama_client.py**<br/>OllamaClient"]
+        CC["**claude_client.py**<br/>ClaudeClient"]
+        FA["**factory.py**<br/>create_llm_client()"]
+    end
+
+    BC --> EX
+    BC --> BM
+    OC --> BC
+    OC --> EX
+    CC --> BC
+    CC --> BM
+    CC --> EX
+    FA --> OC
+    FA --> CC

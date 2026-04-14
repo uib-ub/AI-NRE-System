@@ -1,0 +1,46 @@
+%%{init: {'theme': 'base', 'themeVariables': {'fontSize': '24px'}, 'flowchart': {'nodeSpacing': 40, 'rankSpacing': 55}} }%%
+flowchart TB
+    subgraph SYNC["**Sync paths**"]
+        direction LR
+        SR1["**process_record()**"]
+        SR2["Validate one record"]
+        SR3["Build single-record prompt"]
+        SR4["llm_client.call()"]
+        SR5["parse_llm_response()"]
+        SR6["Annotated row + metadata rows"]
+
+        SB1["**process_batch()**"]
+        SB2["Validate record list"]
+        SB3["Build sync batch prompt"]
+        SB4["One llm_client.call()"]
+        SB5["parse_batch_response()"]
+        SB6["Annotated rows + metadata rows"]
+
+        SR1 --> SR2 --> SR3 --> SR4 --> SR5 --> SR6
+        SB1 --> SB2 --> SB3 --> SB4 --> SB5 --> SB6
+    end
+
+    subgraph ASYNC["**Async paths**"]
+        direction LR
+        AR1["**process_record_async()**"]
+        AR2["Validate one record"]
+        AR3["Build single-record prompt"]
+        AR4["llm_client.call_async()"]
+        AR5["parse_llm_response()"]
+        AR6["ProcessingResult"]
+
+        AB1["**process_batch_async()**"]
+        AB2{"supports_async_batch()?"}
+        AB3["Prepare batch requests"]
+        AB4["process_batch_requests_async()"]
+        AB5["Map responses to input order"]
+        AB6["BatchProcessingResult"]
+        AB7["Fallback: concurrent per-record<br/>async processing"]
+
+        AR1 --> AR2 --> AR3 --> AR4 --> AR5 --> AR6
+        AB1 --> AB2
+        AB2 -- yes --> AB3 --> AB4 --> AB5 --> AB6
+        AB2 -- no --> AB7 --> AB6
+    end
+
+    SYNC ~~~ ASYNC

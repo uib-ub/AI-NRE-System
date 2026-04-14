@@ -1,0 +1,6 @@
+flowchart TD
+    A["defaults + .env"] --> B["Settings.initialize()"]
+    B --> C["runtime Settings values<br/>paths normalized"]
+    C --> D["apply_cli_overrides()<br/>override input/output/template paths"]
+    D --> E["ConfigValidator.validate_all()<br/>files, writability, client config"]
+    E --> F["ConfigError hierarchy<br/>validation, file, directory errors"]
