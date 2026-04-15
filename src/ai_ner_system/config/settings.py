@@ -180,7 +180,7 @@ class Settings:
 
         try:
             # Load environment variables from .env file
-            load_dotenv(override=reload_env)
+            load_dotenv(override=True)
 
             # Load configuration from environment
             cls._load_from_environment()

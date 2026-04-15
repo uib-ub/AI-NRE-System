@@ -100,9 +100,17 @@ class ClaudeClient(LLMBaseClient):
 
         try:
             # Initialize Synchronous client
-            self.client = Anthropic(api_key=api_key)
+            # Explicitly set base_url to avoid inheriting ANTHROPIC_BASE_URL
+            # from the shell environment (which may point to a local proxy).
+            self.client = Anthropic(
+                api_key=api_key,
+                base_url="https://api.anthropic.com",
+            )
             # Initialize Asynchronous client
-            self.async_client = AsyncAnthropic(api_key=api_key)
+            self.async_client = AsyncAnthropic(
+                api_key=api_key,
+                base_url="https://api.anthropic.com",
+            )
         except Exception as e:  # noqa: BLE001
             # Catch unexpected errors during client/tokenizer initialization
             self._raise_llm_client_error(
