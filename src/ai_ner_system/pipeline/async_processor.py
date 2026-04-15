@@ -806,6 +806,7 @@ class AsyncProcessor:
             else:
                 batch_info = f"Batch {batch_num}"
 
+            # log information about the batch progress for each poll_interval
             logging.info(
                 "%s (ID: %s): %s - Processing: %d, Succeeded: %d, Errored: %d, Elapsed: %.1fs",
                 batch_info,

@@ -107,10 +107,12 @@ class TestClaudeClientInit:
 
         # Verify clients were initialized
         mock_anthropic_clients["sync_client"].assert_called_once_with(
-            api_key=TEST_API_KEY
+            api_key=TEST_API_KEY,
+            base_url="https://api.anthropic.com",
         )
         mock_anthropic_clients["async_client"].assert_called_once_with(
-            api_key=TEST_API_KEY
+            api_key=TEST_API_KEY,
+            base_url="https://api.anthropic.com",
         )
 
     @pytest.mark.usefixtures("mock_anthropic_clients")

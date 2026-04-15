@@ -383,7 +383,7 @@ def _run_processor(
 
     if async_mode:
         logging.info("Using asynchronous processing mode")
-        # Create progress callback
+        # Create progress callback for logging progress during async processing
         progress_callback = create_progress_logger(
             PROGRESS_LOG_INTERVAL,  # Log every 60 seconds
         )
