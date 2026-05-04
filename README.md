@@ -320,6 +320,11 @@ uv run pytest tests/unit/prompt/
 # A single test
 uv run pytest tests/unit/config/test_settings.py::TestSettings::test_init -v
 
+# Debug mode
+
+uv run pytest tests/unit/config/test_settings.py::TestSettings::test_init --log-cli-level=DEBUG -v
+
+
 # Async tests only
 uv run pytest -m asyncio
 
