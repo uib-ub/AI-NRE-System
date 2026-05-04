@@ -22,8 +22,7 @@ repos:
           - python-dotenv
           - pytest
           - pytest-mock
-        pass_filenames: false
-        args: [--config-file=pyproject.toml, .]
+        args: [--config-file=pyproject.toml]
 
   # General pre-commit hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks
