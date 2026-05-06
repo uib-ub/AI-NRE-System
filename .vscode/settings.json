@@ -26,5 +26,6 @@
   ],
   "files.watcherExclude": {
     "**/target": true
-  }
+  },
+  "chat.editing.autoAcceptDelay": 100
 }

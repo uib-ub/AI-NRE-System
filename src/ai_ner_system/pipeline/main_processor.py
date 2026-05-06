@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, NoReturn
 
@@ -400,9 +401,10 @@ class MedievalTextProcessor:
             "end_time": stats.end_time,
             "timestamp": time.time(),
             "processing_mode": "async" if self.args.async_mode else "sync",
+            "failed_batch_writes": [asdict(fbw) for fbw in stats.failed_batch_writes],
         }
 
-    def run(self) -> Literal[0, 1]:
+    def run(self) -> Literal[0, 1, 2]:
         """Run the complete processing pipeline synchronously.
 
         Returns:
@@ -445,7 +447,7 @@ class MedievalTextProcessor:
         timeout_seconds: float | None = None,
         max_batch_wait_time: float | None = None,
         poll_interval: float | None = None,
-    ) -> Literal[0, 1]:
+    ) -> Literal[0, 1, 2]:
         """Run the medieval text processor asynchronously.
 
         This method provides the async entry point for the application,
@@ -462,7 +464,9 @@ class MedievalTextProcessor:
                 Passed to AsyncProcessor. Uses AsyncProcessor defaults if not specified.
 
         Returns:
-            Exit code: 0 for success, 1 for failure.
+            Exit code: 0 for clean success, 1 for failure, 2 for partial success
+            (run completed but one or more incremental batch writes failed and
+            were skipped; affected record IDs are recorded in the stats output).
         """
         logging.info("Starting async medieval text processing...")
         # Use timeout if specified (default to 24 hours)
@@ -501,6 +505,19 @@ class MedievalTextProcessor:
             logging.exception("Unexpected error during async processing")
             return 1
         else:
+            if stats.failed_batch_writes:
+                total_dropped = sum(
+                    len(fbw.record_ids) for fbw in stats.failed_batch_writes
+                )
+                failed_batch_nums = [fbw.batch_num for fbw in stats.failed_batch_writes]
+                logging.warning(
+                    "Async processing completed with %d failed batch write(s): "
+                    "batches %s, %d record(s) missing",
+                    len(stats.failed_batch_writes),
+                    failed_batch_nums,
+                    total_dropped,
+                )
+                return 2
             logging.info(
                 "Async processing completed successfully: %d/%d records (%.1f%% success) in %.2fs",
                 stats.processed_records,

@@ -23,6 +23,27 @@ class ApplicationError(Exception):
 
 
 @dataclass
+class FailedBatchInfo:
+    """Identifies a batch whose incremental write failed.
+
+    Recorded when an incremental write fails so operators can re-run only
+    the affected records rather than the whole job.
+
+    Attributes:
+        batch_num: Sequential batch number (starts at 1).
+        record_ids: Record identifiers in this batch, formatted as
+            ``"{bindnr}_{brevid}"`` (matching ``ProcessingResult.record_id``).
+        error_type: Class name of the exception raised by the writer.
+        error_message: ``str(exception)`` — short, human-readable summary.
+    """
+
+    batch_num: int
+    record_ids: list[str]
+    error_type: str
+    error_message: str
+
+
+@dataclass
 class AsyncProcessingStats:
     """Statistics for async processing operations.
 
@@ -38,6 +59,9 @@ class AsyncProcessingStats:
         processing_time: Total processing time in seconds.
         batch_info: Information about batch processing (if used).
         results: List of ProcessingResult objects for detailed tracking.
+        failed_batch_writes: Per-batch metadata for incremental writes that
+            failed during the run. Empty for clean runs; non-empty signals
+            partial success and triggers exit code 2.
     """
 
     total_records: int = 0
@@ -48,6 +72,7 @@ class AsyncProcessingStats:
     processing_time: float = 0.0
     batch_info: dict[str, Any] | None = None
     results: list[ProcessingResult] = field(default_factory=lambda: [])
+    failed_batch_writes: list[FailedBatchInfo] = field(default_factory=lambda: [])
 
     def __post_init__(self) -> None:
         """Validate statistics after initialization.

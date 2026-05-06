@@ -14,7 +14,11 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ai_ner_system.pipeline.stats import ApplicationError, AsyncProcessingStats
+from ai_ner_system.pipeline.stats import (
+    ApplicationError,
+    AsyncProcessingStats,
+    FailedBatchInfo,
+)
 from ai_ner_system.processing.entities import ProcessingResult
 
 if TYPE_CHECKING:
@@ -56,6 +60,38 @@ class TestApplicationError:
 
 
 # ===================================================================
+# FailedBatchInfo
+# ===================================================================
+class TestFailedBatchInfo:
+    """Tests for the FailedBatchInfo dataclass used to record skipped batches."""
+
+    def test_creation_with_required_fields(self) -> None:
+        """Test instantiation with all required fields."""
+        info = FailedBatchInfo(
+            batch_num=47,
+            record_ids=["1_B100", "1_B101", "1_B102"],
+            error_type="RuntimeError",
+            error_message="disk full",
+        )
+        assert info.batch_num == 47
+        assert info.record_ids == ["1_B100", "1_B101", "1_B102"]
+        assert info.error_type == "RuntimeError"
+        assert info.error_message == "disk full"
+
+    def test_distinct_record_id_lists(self) -> None:
+        """Test separate instances do not share list references."""
+        ids_a = ["1_B1"]
+        ids_b = ["1_B2"]
+        info_a = FailedBatchInfo(
+            batch_num=1, record_ids=ids_a, error_type="E", error_message="m"
+        )
+        info_b = FailedBatchInfo(
+            batch_num=2, record_ids=ids_b, error_type="E", error_message="m"
+        )
+        assert info_a.record_ids is not info_b.record_ids
+
+
+# ===================================================================
 # AsyncProcessingStats — creation & defaults
 # ===================================================================
 class TestAsyncProcessingStatsCreation:
@@ -72,6 +108,7 @@ class TestAsyncProcessingStatsCreation:
         assert stats.processing_time == 0.0
         assert stats.batch_info is None
         assert stats.results == []
+        assert stats.failed_batch_writes == []
 
     def test_default_results_lists_are_distinct(self) -> None:
         """Test separate instances do not share the default results list."""

@@ -368,7 +368,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
 def _run_processor(
     processor: MedievalTextProcessor,
     args: argparse.Namespace,
-) -> Literal[0, 1]:
+) -> Literal[0, 1, 2]:
     """Run the processor in the appropriate mode (sync or async).
 
     Args:
@@ -376,7 +376,8 @@ def _run_processor(
         args: Parsed command line arguments.
 
     Returns:
-        Exit code: 0 for success, 1 for failure.
+        Exit code: 0 for clean success, 1 for failure, 2 for partial success
+        (async runs only — see ``MedievalTextProcessor.run_async``).
     """
     # Choose execution mode based on async_mode argument
     async_mode = args.async_mode
@@ -494,11 +495,12 @@ def _validate_arguments(args: argparse.Namespace) -> None:
 # ------------------------------------------------------------------------------
 # Main function
 # ------------------------------------------------------------------------------
-def main() -> Literal[0, 1]:
+def main() -> Literal[0, 1, 2]:
     """Main application entry point.
 
     Returns:
-        Exit code: 0 for success, 1 for failure.
+        Exit code: 0 for clean success, 1 for failure, 2 for partial success
+        (async runs only — one or more incremental batch writes were skipped).
     """
     try:
         # Parse command line arguments
