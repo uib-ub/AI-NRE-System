@@ -46,7 +46,7 @@ VALID_ENTITIES_JSON = json.dumps({"entities": [VALID_ENTITY_DATA]})
 
 ANNOTATED_TEXT = (
     "Ollum monnum þæim sæm þetta bref sea æder høyra sændir"
-    " < Olauer;Person Name;N/A;1;601 > med gudz"
+    " < Olauer|Person Name|N/A|1|601 > med gudz"
 )
 
 METADATA_TEXT = "Olauer;Person Name;N/A;1;601;Abbot;Male;non"

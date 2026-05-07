@@ -120,9 +120,9 @@ def sample_annotated_lines() -> list[str]:
         List of annotated text records with medieval text.
     """
     return [
-        "1;601;Ollum monnum þæim sæm þetta bref sea æder høyra sændir < Olauer;Person Name;N/A;1;601 >",
-        "1;602;Ollom monnom þæim sæm þetta bref sea æder høyra sænda < Halbiorn Biornsson;Person Name;N/A;1;602 >",
-        "1;603;Ollom monnom thæim sæm thetta bref sæ ædr høyra sendr < Sandr;Person Name;N/A;1;603 >",
+        "1;601;Ollum monnum þæim sæm þetta bref sea æder høyra sændir < Olauer|Person Name|N/A|1|601 >",
+        "1;602;Ollom monnom þæim sæm þetta bref sea æder høyra sænda < Halbiorn Biornsson|Person Name|N/A|1|602 >",
+        "1;603;Ollom monnom thæim sæm thetta bref sæ ædr høyra sendr < Sandr|Person Name|N/A|1|603 >",
     ]
 
 
