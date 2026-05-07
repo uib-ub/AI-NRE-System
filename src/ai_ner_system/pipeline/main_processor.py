@@ -352,8 +352,12 @@ class MedievalTextProcessor:
             stats: Processing statistics to write.
 
         Note:
-            Failures in stats writing are logged but not raised, as statistics
-            writing is not critical to the main processing pipeline.
+            For clean runs, stats writing is non-critical (logged as WARNING).
+            For partial-success runs (``stats.failed_batch_writes`` non-empty),
+            the stats file is the recovery artifact (it carries the dropped
+            batch numbers and record IDs), so stats-write failures are
+            surfaced as ``ApplicationError`` to give the operator a loud
+            failure rather than silent data loss.
         """
         stats_data: dict[str, Any] = self._build_stats_data(stats)
 
@@ -367,7 +371,18 @@ class MedievalTextProcessor:
             logging.info("Stats write cancelled")
             raise
         except (OutputError, OSError, UnicodeEncodeError, ValueError, TypeError) as e:
-            # Non-critical: log and continue
+            if stats.failed_batch_writes:
+                logging.exception(
+                    "Failed to write critical stats output to %s; "
+                    "%d failed batch write(s) cannot be recovered without this file",
+                    self.output_stats_file,
+                    len(stats.failed_batch_writes),
+                )
+                msg = (
+                    f"Failed to write critical stats output to {self.output_stats_file}"
+                )
+                raise ApplicationError(msg) from e
+            # Clean run: stats are non-critical; log only.
             logging.warning(
                 "Failed to write processing statistics to %s: %s",
                 self.output_stats_file,
