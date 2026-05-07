@@ -428,27 +428,57 @@ class TestProcessBatchAsync:
         log.debug("Caught exception: %s", exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_generic_error_returns_failed(
+    async def test_generic_error_reraises_for_caller_fallback(
         self,
         processor: Any,
         caplog: pytest.LogCaptureFixture,
         mocker: MockerFixture,
     ) -> None:
-        """Test generic exception returns failed BatchProcessingResult."""
+        """Test a generic LLM/batch failure re-raises so the caller's fallback runs."""
         processor.llm_client.supports_async_batch.return_value = True
         processor.llm_client.process_batch_requests_async = mocker.AsyncMock(
             side_effect=RuntimeError("Unexpected error")
         )
 
-        with caplog.at_level(logging.ERROR):
-            result = await processor.process_batch_async([VALID_RECORD], batch_num=1)
+        with (
+            caplog.at_level(logging.ERROR),
+            pytest.raises(RuntimeError, match="Unexpected error"),
+        ):
+            await processor.process_batch_async([VALID_RECORD], batch_num=1)
 
-        log.debug("Batch processing result: %s", result)
         log.debug("Captured logs: %s", caplog.text)
-        assert isinstance(result, BatchProcessingResult)
-        assert result.batch_id == "batch_1"
-        assert result.results == []  # No results should be returned on error
-        assert "Batch processing failed" in caplog.text
+        # The error log should still record the failure for diagnosis.
+        assert "Batch 1 processing failed" in caplog.text
+        assert "allowing caller to fall back" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_llm_client_error_reraises_for_caller_fallback(
+        self,
+        processor: Any,
+        caplog: pytest.LogCaptureFixture,
+        mocker: MockerFixture,
+    ) -> None:
+        """Test an ``LLMClientError`` from the batch API re-raises.
+
+        This is the realistic failure mode: the Anthropic SDK raises an
+        ``LLMClientError`` and the per-record fallback in the AsyncProcessor
+        layer is the recovery mechanism.
+        """
+        processor.llm_client.supports_async_batch.return_value = True
+        processor.llm_client.process_batch_requests_async = mocker.AsyncMock(
+            side_effect=LLMClientError(
+                "API timeout",
+                operation="batch_processing",
+            ),
+        )
+
+        with (
+            caplog.at_level(logging.ERROR),
+            pytest.raises(LLMClientError, match="API timeout"),
+        ):
+            await processor.process_batch_async([VALID_RECORD], batch_num=42)
+
+        assert "Batch 42 processing failed" in caplog.text
 
     @pytest.mark.asyncio
     async def test_no_valid_requests_raises(
