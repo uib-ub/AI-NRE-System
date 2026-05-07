@@ -109,7 +109,7 @@ class TestProcessRecord:
 
         assert len(annotated) == 1
         assert len(metadata) == 1
-        assert annotated[0] == f'{BINDNR};{BREVID};"{ANNOTATED_TEXT}"'
+        assert annotated[0] == f"{BINDNR};{BREVID};{ANNOTATED_TEXT}"
         assert metadata[0] == METADATA_TEXT
         processor.llm_client.call.assert_called_once()  # LLM should be called once
         processor.prompt_builder.build.assert_called_once_with(
@@ -181,7 +181,7 @@ class TestProcessBatch:
 
         assert len(annotated) == 1
         assert len(metadata) == 1
-        assert annotated[0] == f'{BINDNR};{BREVID};"{ANNOTATED_TEXT}"'
+        assert annotated[0] == f"{BINDNR};{BREVID};{ANNOTATED_TEXT}"
         assert metadata[0] == METADATA_TEXT
         processor.llm_client.call.assert_called_once()  # LLM should be called once for the batch
 
@@ -269,7 +269,7 @@ class TestProcessRecordAsync:
         log.debug("Async processing result: %s", result)
         assert result.success is True
         assert result.brevid == BREVID
-        assert result.annotated_text == f'{BINDNR};{BREVID};"{ANNOTATED_TEXT}"'
+        assert result.annotated_text == f"{BINDNR};{BREVID};{ANNOTATED_TEXT}"
         log.debug("Metadata: %s", result.entities[0])
         assert result.entities[0] == EXPECTED_ENTITY
 
@@ -378,9 +378,7 @@ class TestProcessBatchAsync:
         assert len(result.results) == 1
         assert result.results[0].brevid == BREVID
         assert result.results[0].success is True
-        assert (
-            result.results[0].annotated_text == f'{BINDNR};{BREVID};"{ANNOTATED_TEXT}"'
-        )
+        assert result.results[0].annotated_text == f"{BINDNR};{BREVID};{ANNOTATED_TEXT}"
         assert result.results[0].entities[0] == EXPECTED_ENTITY
 
     @pytest.mark.asyncio
@@ -408,9 +406,7 @@ class TestProcessBatchAsync:
         assert len(result.results) == 1
         assert result.results[0].brevid == BREVID
         assert result.results[0].success is True
-        assert (
-            result.results[0].annotated_text == f'{BINDNR};{BREVID};"{ANNOTATED_TEXT}"'
-        )
+        assert result.results[0].annotated_text == f"{BINDNR};{BREVID};{ANNOTATED_TEXT}"
         assert result.results[0].entities[0] == EXPECTED_ENTITY
         assert result.results[0].record_id == f"record_0_{BINDNR}_{BREVID}"
 
@@ -697,7 +693,7 @@ class TestBuildBatchResults:
         assert results[0].brevid == BREVID
         assert results[0].record_id == f"record_0_{BINDNR}_{BREVID}"
         assert results[0].success is True
-        assert results[0].annotated_text == f'{BINDNR};{BREVID};"{ANNOTATED_TEXT}"'
+        assert results[0].annotated_text == f"{BINDNR};{BREVID};{ANNOTATED_TEXT}"
         assert results[0].entities[0] == EXPECTED_ENTITY
 
     def test_with_missing_response(
@@ -828,7 +824,7 @@ class TestProcessSingleBatchResponse:
         assert result.record_id == f"record_0_{BINDNR}_{BREVID}"
         assert result.brevid == BREVID
         assert result.success is True
-        assert result.annotated_text == f'{BINDNR};{BREVID};"{ANNOTATED_TEXT}"'
+        assert result.annotated_text == f"{BINDNR};{BREVID};{ANNOTATED_TEXT}"
         assert result.entities[0] == EXPECTED_ENTITY
 
     @pytest.mark.parametrize(
@@ -1065,7 +1061,7 @@ class TestCreateProcessingResult:
             brevid=BREVID,
             success=True,
             processing_time=1.23,
-            annotated_text=f'{BINDNR};{BREVID};"{ANNOTATED_TEXT}"',
+            annotated_text=f"{BINDNR};{BREVID};{ANNOTATED_TEXT}",
             entities=[EXPECTED_ENTITY],
         )
 
@@ -1074,7 +1070,7 @@ class TestCreateProcessingResult:
         assert result.brevid == BREVID
         assert result.success is True
         assert result.processing_time == 1.23
-        assert result.annotated_text == f'{BINDNR};{BREVID};"{ANNOTATED_TEXT}"'
+        assert result.annotated_text == f"{BINDNR};{BREVID};{ANNOTATED_TEXT}"
         assert result.entities == [EXPECTED_ENTITY]
 
     def test_failure(self) -> None:
@@ -1114,7 +1110,7 @@ class TestCreateProcessingResult:
                 record_id="record_0_1_601",
                 brevid=BREVID,
                 success=True,
-                annotated_text=f'{BINDNR};{BREVID};"{ANNOTATED_TEXT}"',
+                annotated_text=f"{BINDNR};{BREVID};{ANNOTATED_TEXT}",
             )
 
         log.debug("Caught exception: %s", exc_info.value)
