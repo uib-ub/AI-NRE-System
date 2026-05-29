@@ -111,6 +111,27 @@ class FailingStreamingSyncProcessor(SyncProcessor):
         raise RuntimeError("boom")
 
 
+class ApplicationErrorStreamingSyncProcessor(SyncProcessor):
+    """Processor variant that raises an already-wrapped streaming error."""
+
+    def __init__(
+        self,
+        main_processor: ProcessorContext,
+        error: ApplicationError,
+    ) -> None:
+        super().__init__(main_processor)
+        self.error = error
+
+    def _process_records_streaming(
+        self,
+        batch_size: int,
+        processing_mode: Literal["batch", "individual"],
+    ) -> tuple[list[str], list[str]]:
+        assert batch_size == 3
+        assert processing_mode == "batch"
+        raise self.error
+
+
 class NoopTqdm:
     """Small tqdm stand-in for deterministic sync processor tests."""
 
@@ -478,6 +499,47 @@ def test_process_all_records_wraps_public_entry_point_failures(
     assert isinstance(exc_info.value.__cause__, RuntimeError)
 
 
+def test_process_all_records_reraises_streaming_application_errors(
+    make_sync_processor: SyncProcessorFactory,
+) -> None:
+    """Test existing streaming ApplicationError is re-raised without wrapping."""
+    expected_error = ApplicationError("streaming already wrapped")
+    sync_processor, _ = make_sync_processor(use_batch=True, batch_size=3)
+    failing_processor = ApplicationErrorStreamingSyncProcessor(
+        sync_processor.main_processor,
+        expected_error,
+    )
+
+    with pytest.raises(ApplicationError, match="streaming already wrapped") as exc_info:
+        failing_processor.process_all_records()
+
+    log.debug("Captured exception: %s", exc_info.value)
+
+    assert exc_info.value is expected_error
+
+
+def test_process_all_records_wraps_unexpected_streaming_errors(
+    make_sync_processor: SyncProcessorFactory,
+    sample_records: list[Record],
+) -> None:
+    """Test unexpected streaming failures are wrapped with batch-count context."""
+    sync_processor, _ = make_sync_processor(
+        records=sample_records[:1],
+        record_results={"B1": RuntimeError("boom")},
+    )
+
+    with pytest.raises(
+        ApplicationError,
+        match="Streaming processing failed after 1 batches",
+    ) as exc_info:
+        sync_processor.process_all_records()
+
+    log.debug("Captured exception: %s", exc_info.value)
+
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
+    assert str(exc_info.value.__cause__) == "boom"
+
+
 def test_process_final_batch_handles_individual_records(
     make_sync_processor: SyncProcessorFactory,
     sample_records: list[Record],
@@ -501,6 +563,38 @@ def test_process_final_batch_handles_individual_records(
     assert annotations == ["ann-B1", "ann-B2"]
     assert metadata == ["meta-B1", "meta-B2"]
     assert context.processor.record_calls == sample_records[:2]
+
+
+def test_process_final_batch_skips_failed_individual_records(
+    caplog: pytest.LogCaptureFixture,
+    make_sync_processor: SyncProcessorFactory,
+    sample_records: list[Record],
+) -> None:
+    """Test final individual-batch processing skips records with ProcessingError."""
+    sync_processor, context = make_sync_processor(
+        records=sample_records[:2],
+        record_results={"B1": ValidationError("final record failed")},
+    )
+    sync_processor_probe = SyncProcessorProbe(sync_processor.main_processor)
+
+    with caplog.at_level(logging.ERROR):
+        annotations, metadata = sync_processor_probe.process_final_batch(
+            sample_records[:2],
+            batch_count=1,
+            batch_size=1,
+            processing_mode="individual",
+        )
+
+    log.debug("Annotations: %s", annotations)
+    log.debug("Metadata: %s", metadata)
+    log.debug("Captured log records: %s", caplog.text)
+
+    assert annotations == ["ann-B2"]
+    assert metadata == ["meta-B2"]
+    assert context.processor.record_calls == sample_records[:2]
+    assert "Validation error for Brevid B1 (Bindnr: 1): final record failed" in (
+        caplog.text
+    )
 
 
 @pytest.mark.parametrize(
