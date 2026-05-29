@@ -361,14 +361,14 @@ class RecordProcessor:
             logging.info("Batch processing was cancelled")
             raise
         except Exception:
-            logging.exception("Batch processing failed")
-            total_processing_time = time.monotonic() - start_time
-            return self._create_batch_result(
+            # Re-raise so the caller's fallback path (per-record async processing)
+            # in AsyncProcessor._process_batch_with_order_async can run.
+            # Swallowing here would silently lose every record in the batch.
+            logging.exception(
+                "Batch %d processing failed; allowing caller to fall back",
                 batch_num,
-                results=[],
-                total_processing_time=total_processing_time,
-                failed=True,
             )
+            raise
         else:
             total_processing_time = time.monotonic() - start_time
             return self._create_batch_result(

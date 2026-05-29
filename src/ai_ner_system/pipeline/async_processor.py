@@ -17,7 +17,7 @@ from ai_ner_system.config import Settings
 from ai_ner_system.processing import BatchProcessingResult, ProcessingResult
 from ai_ner_system.processing.processor import RecordProcessor
 
-from .stats import ApplicationError, AsyncProcessingStats
+from .stats import ApplicationError, AsyncProcessingStats, FailedBatchInfo
 
 if TYPE_CHECKING:
     from argparse import Namespace
@@ -158,16 +158,21 @@ class AsyncProcessor:
             msg = "Components not properly initialized for async processing"
             raise ApplicationError(msg)
 
+        # Use defaults if not specified. ``is None`` rather than ``or`` so an
+        # explicit zero override is preserved.
+        wait_time = (
+            self._batch_wait_time
+            if max_batch_wait_time is None
+            else max_batch_wait_time
+        )
+        poll_time = self._poll_interval if poll_interval is None else poll_interval
+
         # Initialize statistics
         stats = AsyncProcessingStats(start_time=time.monotonic())
         success = False
 
         try:
             logging.info("Starting async streaming processing...")
-            # Use defaults if not specified
-            wait_time = max_batch_wait_time or self._batch_wait_time
-            poll_time = poll_interval or self._poll_interval
-
             # check if the LLM client supports async batch processing and if batch processing is enabled
             if self.args.batch_size > 1 and self.llm_client.supports_async_batch():
                 # Use async batch processing with streaming
@@ -195,6 +200,19 @@ class AsyncProcessor:
             stats.processing_time = stats.end_time - stats.start_time
 
         if success:
+            if stats.failed_batch_writes:
+                total_dropped = sum(
+                    len(fbw.record_ids) for fbw in stats.failed_batch_writes
+                )
+                failed_batch_nums = [fbw.batch_num for fbw in stats.failed_batch_writes]
+                logging.warning(
+                    "Run completed with %d failed batch write(s): batches %s. "
+                    "%d record(s) missing from output files. "
+                    "Re-run after investigating; see stats output for record IDs.",
+                    len(stats.failed_batch_writes),
+                    failed_batch_nums,
+                    total_dropped,
+                )
             logging.info(
                 "Async streaming processing completed: %d/%d records (%.1f%% success rate) in %.2fs",
                 stats.processed_records,
@@ -219,9 +237,10 @@ class AsyncProcessor:
             max_wait_time: Maximum time to wait for batch completion.
             poll_interval: Time between progress checks.
         """
+        batch_size = self.args.batch_size
         logging.info(
             "Starting async streaming with batch processing, batch size: %d",
-            self.args.batch_size,
+            batch_size,
         )
 
         # a current batch of records being filled and processed
@@ -230,9 +249,16 @@ class AsyncProcessor:
         record_count = 0
         # sequential batch number for tracking order
         batch_num = 0
-        # Track batch tasks with their order information using a map (batch_num -> task):
-        # mapping batch number to its running task
+        # Track currently running batch asyncio tasks with their order information
+        # using a map (batch_num -> task): mapping batch number to its running task.
+        # It is created when a batch fills, and removed when its task finishes.
         batch_tasks: dict[int, asyncio.Task[BatchProcessingResult]] = {}
+        # Store finished batches that cannot be flushed yet because their predecessors
+        # is not done. It is populated when tasks complete out of order; drained when
+        # the contiguous prefix catches up.
+        completed_batch_results: dict[int, BatchProcessingResult] = {}
+        # The batch number that must be added to stats next, starting from 1.
+        next_batch_num_to_add = 1
 
         # Limit to default 5 (configured in settings) concurrent batch processing tasks,
         # otherwise it can reach 50 batch request limitation of Anthropic API
@@ -253,7 +279,7 @@ class AsyncProcessor:
                 stats.total_records = record_count
 
                 # Process batch when it reaches the specified size, eg: 10, 100
-                if len(batch_records) >= self.args.batch_size:
+                if len(batch_records) >= batch_size:
                     # batch_num starts from 1 for better readability in logs
                     batch_num += 1
                     # Create and start background coroutine task (now running in background) for
@@ -270,19 +296,22 @@ class AsyncProcessor:
                     # Clear batch records after processing a batch
                     batch_records.clear()
 
-                    # Limit concurrent batch processing tasks by keeping up
-                    # max_concurrent_batches (5 as default) tasks running at any time
-                    if len(batch_tasks) >= max_concurrent_batches:
-                        # Wait for the OLDEST(smallest batch_num) batch to complete (maintain order)
-                        oldest_batch_num = min(batch_tasks.keys())
-                        oldest_task = batch_tasks.pop(oldest_batch_num)
-                        # Process results in order
-                        batch_result = await oldest_task
-                        # Add results to stats in order
-                        await self._add_batch_results_in_order(
-                            stats,
-                            batch_result,
-                            oldest_batch_num,
+                    # Slot-pressure check: only collect when slots are exhausted.
+                    # Keep total launched-but-not-yet-added work bounded. Later
+                    # completed batches that are buffered for ordered addition still
+                    # consume one outstanding slot until earlier batches are added.
+                    while (
+                        batch_tasks
+                        and len(batch_tasks) + len(completed_batch_results)
+                        >= max_concurrent_batches
+                    ):
+                        next_batch_num_to_add = (
+                            await self._collect_completed_batch_results_async(
+                                stats,
+                                batch_tasks,
+                                completed_batch_results,
+                                next_batch_num_to_add,
+                            )
                         )
 
             # Process final batch if there are any remaining records
@@ -298,16 +327,22 @@ class AsyncProcessor:
                     ),
                 )
 
-            # Process any remaining batch tasks in ORDER
-            # Since dict preserves insertion order (Python 3.7+), so no need to sort
-            for batch_num, task in batch_tasks.items():
-                batch_result = await task
-                # Add results to stats in order
-                await self._add_batch_results_in_order(stats, batch_result, batch_num)
+            # Process any remaining batch tasks as they complete while preserving order
+            # This fires after streaming finishes, to drain in-flight batches whose tasks
+            # are still running. It keeps calling _collect_* until batch_tasks is empty.
+            while batch_tasks:
+                next_batch_num_to_add = (
+                    await self._collect_completed_batch_results_async(
+                        stats,
+                        batch_tasks,
+                        completed_batch_results,
+                        next_batch_num_to_add,
+                    )
+                )
 
             # Final flush of any queued results (for incremental mode)
             if self._incremental_mode:
-                await self._flush_queued_batch_results_async()
+                await self._flush_queued_batch_results_async(stats)
 
             logging.info(
                 "Async streaming processing completed with preserved order: %d records",
@@ -329,6 +364,77 @@ class AsyncProcessor:
             error_msg = "Async streaming processing failed"
             logging.exception(error_msg)
             raise ApplicationError(error_msg) from e
+
+    async def _collect_completed_batch_results_async(
+        self,
+        stats: AsyncProcessingStats,
+        batch_tasks: dict[int, asyncio.Task[BatchProcessingResult]],
+        completed_batch_results: dict[int, BatchProcessingResult],
+        next_batch_num_to_add: int,
+    ) -> int:
+        """Collect completed batch tasks and add any now-contiguous results in order.
+
+        This lets later batches free concurrency slots as soon as they finish while
+        still buffering their results until all earlier batches have been added.
+
+        The method has four logical phases — wait, drain, flush, raise.
+
+        Args:
+            stats: Statistics object to update.
+            batch_tasks: Active batch tasks keyed by batch number.
+            completed_batch_results: Completed results waiting for ordered addition.
+            next_batch_num_to_add: Next batch number that must be added to stats.
+
+        Returns:
+            The next batch number expected for ordered result addition.
+        """
+        # Block and write until ANY running batch finishes
+        done_tasks, _ = await asyncio.wait(
+            set(batch_tasks.values()),
+            return_when=asyncio.FIRST_COMPLETED,  # unblock as soon as any task finishes
+        )
+
+        # Move every completed task from `batch_tasks` into the buffer
+        first_exception: BaseException | None = None
+        completed_outcomes: list[tuple[int, BatchProcessingResult]] = []
+
+        # Iterate over all running tasks, in ascending batch_num order.
+        for completed_batch_num, task in sorted(batch_tasks.items()):
+            # Skip tasks that are still running.
+            if task not in done_tasks:
+                continue
+
+            try:
+                completed_outcomes.append((completed_batch_num, task.result()))
+            except BaseException as exc:  # noqa: BLE001 - preserve cancellation.
+                if first_exception is None:
+                    # first_exception holds the first error (if any).
+                    first_exception = exc
+            # whether the task succeeded or raised, it leaves batch_tasks (unconditional)
+            del batch_tasks[completed_batch_num]
+
+        completed_batch_results.update(
+            dict(completed_outcomes),
+        )
+
+        # Flush any contiguous prefix into stats.
+        # Only loop if the next-expected batch is in the buffer
+        while next_batch_num_to_add in completed_batch_results:
+            batch_result = completed_batch_results.pop(next_batch_num_to_add)
+            await self._add_batch_results_in_order(
+                stats,
+                batch_result,
+                next_batch_num_to_add,
+            )
+            next_batch_num_to_add += 1
+
+        # Flush first, then raise. If we raised earlier, results from
+        # successfully-completed earlier batches would never reach stats.
+        # Re-raise the first captured exception, if any
+        if first_exception is not None:
+            raise first_exception
+
+        return next_batch_num_to_add
 
     async def _async_stream_csv_records(self) -> AsyncIterator[dict[str, str]]:
         """Asynchronously stream records from the CSV input file.
@@ -454,7 +560,7 @@ class AsyncProcessor:
             # Incremental mode: queue the whole batch results until we can write them in order
             self._batch_result_queue[batch_num] = batch_result
             # Tries to flush only the next expected batch
-            await self._flush_queued_batch_results_async()
+            await self._flush_queued_batch_results_async(stats)
         else:
             # Standard mode: accumulate all results in memory
             # Add results in batch order (they're already in record order within batch)
@@ -472,22 +578,51 @@ class AsyncProcessor:
             batch_result.failed_count,
         )
 
-    async def _flush_queued_batch_results_async(self) -> None:
-        """Write queued batch results in order and remove from queue."""
+    async def _flush_queued_batch_results_async(
+        self,
+        stats: AsyncProcessingStats,
+    ) -> None:
+        """Write queued batch results in order; record write failures and continue.
+
+        Incremental write failures are non-fatal at the run level: each failed
+        batch is captured as a ``FailedBatchInfo`` on ``stats.failed_batch_writes``
+        (so operators can re-run only the missing records) and the loop advances
+        to the next expected batch. The writer itself still raises — the catch
+        is here so subsequent batches are not abandoned.
+
+        Args:
+            stats: Run statistics; failed batches are appended to
+                ``stats.failed_batch_writes``.
+        """
         while self._next_expected_batch_num in self._batch_result_queue:
-            # pop the next expected batch result
-            batch_result = self._batch_result_queue.pop(
-                self._next_expected_batch_num,
-            )
-            # Write this batch's results immediately
-            await self._write_batch_results_incremental_async(
-                batch_result,
-                self._next_expected_batch_num,
-            )
-            logging.info(
-                "Flushed batch %d results to output files",
-                self._next_expected_batch_num,
-            )
+            batch_num = self._next_expected_batch_num
+            batch_result = self._batch_result_queue.pop(batch_num)
+            try:
+                await self._write_batch_results_incremental_async(
+                    batch_result,
+                    batch_num,
+                )
+            except Exception as e:
+                record_ids = [r.record_id for r in batch_result.results]
+                stats.failed_batch_writes.append(
+                    FailedBatchInfo(
+                        batch_num=batch_num,
+                        record_ids=record_ids,
+                        error_type=type(e).__name__,
+                        error_message=str(e),
+                    ),
+                )
+                logging.exception(
+                    "Batch %d incremental write failed; %d record(s) missing "
+                    "from output (see stats output for record IDs)",
+                    batch_num,
+                    len(record_ids),
+                )
+            else:
+                logging.info(
+                    "Flushed batch %d results to output files",
+                    batch_num,
+                )
             self._next_expected_batch_num += 1
 
     async def _write_batch_results_incremental_async(
@@ -562,7 +697,8 @@ class AsyncProcessor:
                 len(annotated_rows),
                 len(metadata_rows),
             )
-        # Re-raise cancellation; log-and-continue for other failures.
+        # Re-raise cancellation, and surface other failures so the run cannot
+        # incorrectly appear successful with missing output.
         except asyncio.CancelledError:
             logging.debug("Incremental write for batch %d cancelled", batch_num)
             raise
@@ -571,7 +707,7 @@ class AsyncProcessor:
                 "Failed to write batch %d results incrementally",
                 batch_num,
             )
-            # non-fatal, don't raise - this is not critical enough to stop processing
+            raise
 
     async def _process_records_individual_async(
         self,
@@ -584,13 +720,21 @@ class AsyncProcessor:
         """
         logging.info("Starting individual async streaming processing")
 
+        # Validate and cache chunk sizing before any per-record task can be
+        # created so direct helper callers fail fast on invalid used settings.
+        chunk_size = self._chunk_size
+        max_concurrent = self._max_concurrent_individual
+        # Create tasks for streaming records
+        tasks: list[asyncio.Task[ProcessingResult]] = []
+        # Keep track of current chunk records
+        current_chunk_records: list[dict[str, str]] = []
+
         try:
             # Process records with limited concurrency to avoid overwhelming the API
             # rate limits and to manage memory usage.
             # Use configured concurrency limit (5 as default), so only 5 records are
             # processed concurrently and start new ones as old ones finish, even if
             # we have eg. 50 tasks exist in a chunk (50 as default).
-            max_concurrent = self._max_concurrent_individual
             semaphore = asyncio.Semaphore(max_concurrent)
             logging.info(
                 "Using max concurrent individual tasks: %d",
@@ -605,10 +749,6 @@ class AsyncProcessor:
                 async with semaphore:
                     return await self.processor.process_record_async(record)
 
-            # Create tasks for streaming records
-            tasks: list[asyncio.Task[ProcessingResult]] = []
-            # Keep track of current chunk records
-            current_chunk_records: list[dict[str, str]] = []
             record_count = 0
 
             # Loop through streamed records
@@ -624,7 +764,6 @@ class AsyncProcessor:
                 # Not wait after every single task, but accumulates tasks until it
                 # reaches the chunk size (50 as default) before awaiting them together,
                 # to improve efficiency while still managing memory and API limits.
-                chunk_size = self._chunk_size
                 if len(tasks) >= chunk_size:
                     # Flushes the whole chunk of tasks together, and clear the lists for the next chunk
                     await self._process_task_chunk(tasks, current_chunk_records, stats)

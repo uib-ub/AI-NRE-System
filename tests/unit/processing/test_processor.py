@@ -109,7 +109,7 @@ class TestProcessRecord:
 
         assert len(annotated) == 1
         assert len(metadata) == 1
-        assert annotated[0] == f'{BINDNR};{BREVID};"{ANNOTATED_TEXT}"'
+        assert annotated[0] == f"{BINDNR};{BREVID};{ANNOTATED_TEXT}"
         assert metadata[0] == METADATA_TEXT
         processor.llm_client.call.assert_called_once()  # LLM should be called once
         processor.prompt_builder.build.assert_called_once_with(
@@ -181,7 +181,7 @@ class TestProcessBatch:
 
         assert len(annotated) == 1
         assert len(metadata) == 1
-        assert annotated[0] == f'{BINDNR};{BREVID};"{ANNOTATED_TEXT}"'
+        assert annotated[0] == f"{BINDNR};{BREVID};{ANNOTATED_TEXT}"
         assert metadata[0] == METADATA_TEXT
         processor.llm_client.call.assert_called_once()  # LLM should be called once for the batch
 
@@ -269,7 +269,7 @@ class TestProcessRecordAsync:
         log.debug("Async processing result: %s", result)
         assert result.success is True
         assert result.brevid == BREVID
-        assert result.annotated_text == f'{BINDNR};{BREVID};"{ANNOTATED_TEXT}"'
+        assert result.annotated_text == f"{BINDNR};{BREVID};{ANNOTATED_TEXT}"
         log.debug("Metadata: %s", result.entities[0])
         assert result.entities[0] == EXPECTED_ENTITY
 
@@ -378,9 +378,7 @@ class TestProcessBatchAsync:
         assert len(result.results) == 1
         assert result.results[0].brevid == BREVID
         assert result.results[0].success is True
-        assert (
-            result.results[0].annotated_text == f'{BINDNR};{BREVID};"{ANNOTATED_TEXT}"'
-        )
+        assert result.results[0].annotated_text == f"{BINDNR};{BREVID};{ANNOTATED_TEXT}"
         assert result.results[0].entities[0] == EXPECTED_ENTITY
 
     @pytest.mark.asyncio
@@ -408,9 +406,7 @@ class TestProcessBatchAsync:
         assert len(result.results) == 1
         assert result.results[0].brevid == BREVID
         assert result.results[0].success is True
-        assert (
-            result.results[0].annotated_text == f'{BINDNR};{BREVID};"{ANNOTATED_TEXT}"'
-        )
+        assert result.results[0].annotated_text == f"{BINDNR};{BREVID};{ANNOTATED_TEXT}"
         assert result.results[0].entities[0] == EXPECTED_ENTITY
         assert result.results[0].record_id == f"record_0_{BINDNR}_{BREVID}"
 
@@ -432,27 +428,57 @@ class TestProcessBatchAsync:
         log.debug("Caught exception: %s", exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_generic_error_returns_failed(
+    async def test_generic_error_reraises_for_caller_fallback(
         self,
         processor: Any,
         caplog: pytest.LogCaptureFixture,
         mocker: MockerFixture,
     ) -> None:
-        """Test generic exception returns failed BatchProcessingResult."""
+        """Test a generic LLM/batch failure re-raises so the caller's fallback runs."""
         processor.llm_client.supports_async_batch.return_value = True
         processor.llm_client.process_batch_requests_async = mocker.AsyncMock(
             side_effect=RuntimeError("Unexpected error")
         )
 
-        with caplog.at_level(logging.ERROR):
-            result = await processor.process_batch_async([VALID_RECORD], batch_num=1)
+        with (
+            caplog.at_level(logging.ERROR),
+            pytest.raises(RuntimeError, match="Unexpected error"),
+        ):
+            await processor.process_batch_async([VALID_RECORD], batch_num=1)
 
-        log.debug("Batch processing result: %s", result)
         log.debug("Captured logs: %s", caplog.text)
-        assert isinstance(result, BatchProcessingResult)
-        assert result.batch_id == "batch_1"
-        assert result.results == []  # No results should be returned on error
-        assert "Batch processing failed" in caplog.text
+        # The error log should still record the failure for diagnosis.
+        assert "Batch 1 processing failed" in caplog.text
+        assert "allowing caller to fall back" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_llm_client_error_reraises_for_caller_fallback(
+        self,
+        processor: Any,
+        caplog: pytest.LogCaptureFixture,
+        mocker: MockerFixture,
+    ) -> None:
+        """Test an ``LLMClientError`` from the batch API re-raises.
+
+        This is the realistic failure mode: the Anthropic SDK raises an
+        ``LLMClientError`` and the per-record fallback in the AsyncProcessor
+        layer is the recovery mechanism.
+        """
+        processor.llm_client.supports_async_batch.return_value = True
+        processor.llm_client.process_batch_requests_async = mocker.AsyncMock(
+            side_effect=LLMClientError(
+                "API timeout",
+                operation="batch_processing",
+            ),
+        )
+
+        with (
+            caplog.at_level(logging.ERROR),
+            pytest.raises(LLMClientError, match="API timeout"),
+        ):
+            await processor.process_batch_async([VALID_RECORD], batch_num=42)
+
+        assert "Batch 42 processing failed" in caplog.text
 
     @pytest.mark.asyncio
     async def test_no_valid_requests_raises(
@@ -697,7 +723,7 @@ class TestBuildBatchResults:
         assert results[0].brevid == BREVID
         assert results[0].record_id == f"record_0_{BINDNR}_{BREVID}"
         assert results[0].success is True
-        assert results[0].annotated_text == f'{BINDNR};{BREVID};"{ANNOTATED_TEXT}"'
+        assert results[0].annotated_text == f"{BINDNR};{BREVID};{ANNOTATED_TEXT}"
         assert results[0].entities[0] == EXPECTED_ENTITY
 
     def test_with_missing_response(
@@ -828,7 +854,7 @@ class TestProcessSingleBatchResponse:
         assert result.record_id == f"record_0_{BINDNR}_{BREVID}"
         assert result.brevid == BREVID
         assert result.success is True
-        assert result.annotated_text == f'{BINDNR};{BREVID};"{ANNOTATED_TEXT}"'
+        assert result.annotated_text == f"{BINDNR};{BREVID};{ANNOTATED_TEXT}"
         assert result.entities[0] == EXPECTED_ENTITY
 
     @pytest.mark.parametrize(
@@ -1065,7 +1091,7 @@ class TestCreateProcessingResult:
             brevid=BREVID,
             success=True,
             processing_time=1.23,
-            annotated_text=f'{BINDNR};{BREVID};"{ANNOTATED_TEXT}"',
+            annotated_text=f"{BINDNR};{BREVID};{ANNOTATED_TEXT}",
             entities=[EXPECTED_ENTITY],
         )
 
@@ -1074,7 +1100,7 @@ class TestCreateProcessingResult:
         assert result.brevid == BREVID
         assert result.success is True
         assert result.processing_time == 1.23
-        assert result.annotated_text == f'{BINDNR};{BREVID};"{ANNOTATED_TEXT}"'
+        assert result.annotated_text == f"{BINDNR};{BREVID};{ANNOTATED_TEXT}"
         assert result.entities == [EXPECTED_ENTITY]
 
     def test_failure(self) -> None:
@@ -1114,7 +1140,7 @@ class TestCreateProcessingResult:
                 record_id="record_0_1_601",
                 brevid=BREVID,
                 success=True,
-                annotated_text=f'{BINDNR};{BREVID};"{ANNOTATED_TEXT}"',
+                annotated_text=f"{BINDNR};{BREVID};{ANNOTATED_TEXT}",
             )
 
         log.debug("Caught exception: %s", exc_info.value)

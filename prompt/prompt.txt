@@ -7,7 +7,7 @@ Tasks:
 
 Task 1:
   First, markup all PROPER NOUNS inside this given medieval text above by wrapping each occurrence of PROPER NOUN in the text exactly as the format expression:
-  < name;type;preposition;order;brevid >
+  < name|type|preposition|order|brevid >
   (one space before '<' and one space after '>')
   Indicate inside the brackets '<' and '>' :
     1. 'name' is the proper noun itself, including patronymic suffix if applicable,
@@ -18,7 +18,8 @@ Task 1:
   Then, you must replace all PROPER NOUNS in this medieval text with their corresponding wrapped format expressions,
   and give the FULL MODIFIED text as the final output.
   IMPORTANT: 1. Do NOT make any program, but directly output the final FULL MODIFIED medieval text without any quotation marks!
-             2. Also, DO NOT mark any preposition only by itself in the format such as < j;Preposition;j;order;brevid >
+             2. Also, DO NOT mark any preposition only by itself in the format such as < j|Preposition|j|order|brevid >
+             3. The internal field separator inside < > is the pipe '|' character (NOT a semicolon). The five fields between '<' and '>' must always be pipe-separated.
 
 
 Task 2:

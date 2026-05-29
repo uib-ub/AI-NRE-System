@@ -275,6 +275,14 @@ uv run python -m ai_ner_system.main \
     --incremental-output
 ```
 
+**Exit codes for async incremental runs**:
+
+- `0` — clean success; output is complete.
+- `1` — fatal failure; inspect logs.
+- `2` — partial success: one or more batches' incremental writes failed and were skipped. The dropped record IDs are listed in `failed_batch_writes` inside the stats JSON.
+
+> **⚠️ On exit code 2, do not naïvely re-run with the same output paths.** Annotations and metadata are written concurrently per batch, so a "failed" batch may have one side already on disk; re-running would duplicate that side. Use the **fresh-output-paths + post-process merge** procedure in `docs/refactoring-docs/ASYNC_PROCESSOR_LARGE_RUN_RECOMMENDATIONS.md` ("Suggested Operational Workflow Now") before treating recovery as complete. This caveat goes away once the commit-state manifest and `--resume` mode land (Priorities 4–5 in `docs/refactoring-docs/LARGE_RUN_HARDENING_ANALYSIS_AND_PLAN.md`).
+
 ### Example 2: Ollama with sync batch processing
 
 ```bash
@@ -319,6 +327,11 @@ uv run pytest tests/unit/prompt/
 
 # A single test
 uv run pytest tests/unit/config/test_settings.py::TestSettings::test_init -v
+
+# Debug mode
+
+uv run pytest tests/unit/config/test_settings.py::TestSettings::test_init --log-cli-level=DEBUG -v
+
 
 # Async tests only
 uv run pytest -m asyncio

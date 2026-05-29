@@ -440,7 +440,7 @@ class TestParseBatchResponse:
     def test_single_record_with_result_marker(self) -> None:
         """Test batch response with RESULT marker for a single record."""
         expected_annotated_text = (
-            f'{VALID_RECORD["Bindnr"]};{VALID_RECORD["Brevid"]};"{ANNOTATED_TEXT}"'
+            f"{VALID_RECORD['Bindnr']};{VALID_RECORD['Brevid']};{ANNOTATED_TEXT}"
         )
         section_content = f"1 {ResponseParser.RESULT_MARKER}\n{SAMPLE_LLM_RESPONSE}"
         raw_response = f"{ResponseParser.RECORD_MARKER}{section_content}"
@@ -616,7 +616,7 @@ class TestParseBatchResponse:
         assert len(metadata) == 2
         for i, record in enumerate(records):
             expected_annotated_text = (
-                f'{record["Bindnr"]};{record["Brevid"]};"{ANNOTATED_TEXT}"'
+                f"{record['Bindnr']};{record['Brevid']};{ANNOTATED_TEXT}"
             )
             assert annotated[i] == expected_annotated_text
 

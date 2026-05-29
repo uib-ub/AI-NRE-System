@@ -132,6 +132,8 @@ class SyncProcessor:
                 batch_size,
                 processing_mode,
             )
+        except ApplicationError:
+            raise
         except Exception as e:
             raise ApplicationError("Critical error during file processing") from e
 
@@ -260,7 +262,6 @@ class SyncProcessor:
                 individual_record = batch_records[0]
                 brevid = individual_record.get("Brevid", "unknown")
                 logging.info("Processing Record (Brevid: %s)", brevid)
-                logging.debug("Individual record data: %s", individual_record)
                 return self.processor.process_record(individual_record)
 
             # Batch processing
@@ -379,13 +380,9 @@ class SyncProcessor:
                         annotated_records, metadata_records = (
                             self.processor.process_record(record)
                         )
-                    except ProcessingError:
-                        logging.exception("Final record %s failed", brevid)
-                        annotated_records, metadata_records = (
-                            self._fallback_to_individual_processing(
-                                record,
-                            )
-                        )
+                    except ProcessingError as error:
+                        self._handle_individual_error(record, error)
+                        annotated_records, metadata_records = [], []
                     annotations.extend(annotated_records)
                     metadata.extend(metadata_records)
                     final_pbar.set_description(f"Final record: {brevid}")
