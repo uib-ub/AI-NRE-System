@@ -25,7 +25,7 @@ from ai_ner_system.processing import (
 
 from .stats import ApplicationError
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from argparse import Namespace
 
     from ai_ner_system.file_io import CSVReader, OutputWriter
