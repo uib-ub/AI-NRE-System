@@ -19,7 +19,7 @@ from ai_ner_system.processing.processor import RecordProcessor
 
 from .stats import ApplicationError, AsyncProcessingStats, FailedBatchInfo
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from argparse import Namespace
     from collections.abc import AsyncIterator, Callable
 
