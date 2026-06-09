@@ -15,6 +15,7 @@ Date recorded: 2026-06-09
 Environment:
 
 - Local working copy: sandbox clone
+- Sandbox path: `/Users/ruiwang/Workspace/uib/hermes-sandboxes/AI-NRE-System-Harness-Sandbox`
 - Docker image: `ai-ner-hermes:python3.11-uv-git`
 - Python inside Docker: 3.11.14
 - uv inside Docker: 0.9.30
