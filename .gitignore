@@ -294,3 +294,6 @@ acs-*.bib
 *.svn
 *.snm
 *.nav
+
+# docs
+docs
