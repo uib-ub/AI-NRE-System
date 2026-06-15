@@ -8,10 +8,9 @@ processing pipeline.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    from ai_ner_system.processing import ProcessingResult
+from ai_ner_system.processing import ProcessingResult
 
 
 class ApplicationError(Exception):
@@ -71,8 +70,11 @@ class AsyncProcessingStats:
     end_time: float | None = None
     processing_time: float = 0.0
     batch_info: dict[str, Any] | None = None
-    results: list[ProcessingResult] = field(default_factory=lambda: [])
-    failed_batch_writes: list[FailedBatchInfo] = field(default_factory=lambda: [])
+    # default_factory creates a new empty list for every instance.
+    results: list[ProcessingResult] = field(default_factory=list[ProcessingResult])
+    failed_batch_writes: list[FailedBatchInfo] = field(
+        default_factory=list[FailedBatchInfo]
+    )
 
     def __post_init__(self) -> None:
         """Validate statistics after initialization.
