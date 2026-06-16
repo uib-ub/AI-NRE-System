@@ -104,6 +104,20 @@ Reason:
 
 ## Latest updates
 
+### 2026-06-16
+
+- Branch: `test/async-pipeline`
+- Command: `./scripts/test-docker-host-user.sh`
+- Test result:
+
+  ```text
+  ERROR: docker command not found.
+  ```
+
+- Coverage result: not produced; the command failed before pytest or coverage ran.
+- Overall status: failed before tests because the Hermes Docker backend environment does not have the `docker` command available.
+- Notes: No source code or tests were changed. The recorded baseline above remains unchanged because no test suite result was produced.
+
 ### 2026-06-09
 
 - Created Hermes `ai-ner` profile.
