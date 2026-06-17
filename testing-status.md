@@ -5,9 +5,9 @@ This file tracks the current reproducible testing baseline for the AI-NER / AI-N
 ## Current authoritative full-suite result
 
 - Date recorded: 2026-06-17
-- Timestamp: `2026-06-17T11:23:49Z`
+- Timestamp: `2026-06-17T21:35:49Z`
 - Branch: `test/async-pipeline`
-- Commit: `fac25db`
+- Commit: `04cfe00`
 - Command: `./scripts/test-docker-host-user.sh`
 - Result source: `.test-results/latest-full-test.json`
 - Authoritative: `true`
@@ -15,7 +15,7 @@ This file tracks the current reproducible testing baseline for the AI-NER / AI-N
 - Result scope: `full_suite`
 - Pytest args: `<none>`
 - Pytest exit code: `1`
-- Functional test result: 688 passed in 14.64s
+- Functional test result: 688 passed in 15.18s
 - Coverage: 78.00%
 - Coverage source: `coverage.json`
 - Coverage gate: `failed`
@@ -23,13 +23,13 @@ This file tracks the current reproducible testing baseline for the AI-NER / AI-N
 - Overall status: `failed_coverage_gate`
 - Docker image: `ai-ner-hermes:python3.11-uv-git`
 - Host UID:GID: `501:20`
-- Log file: `.test-results/logs/full-pytest-20260617-112349.log`
-- Clean log file: `.test-results/logs/full-pytest-20260617-112349.clean.log`
+- Log file: `.test-results/logs/full-pytest-20260617-213549.log`
+- Clean log file: `.test-results/logs/full-pytest-20260617-213549.clean.log`
 - Coverage JSON: `.test-results/coverage.json`
 
 Interpretation:
 
-Functional tests pass, but the full command exits non-zero because the configured coverage gate is still below the threshold.
+Functional tests pass, but the full command exits non-zero because coverage remains below the configured threshold.
 
 Important distinction:
 
