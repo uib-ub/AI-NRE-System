@@ -19,7 +19,7 @@ from ai_ner_system.processing.processor import RecordProcessor
 
 from .stats import ApplicationError, AsyncProcessingStats, FailedBatchInfo
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from argparse import Namespace
     from collections.abc import AsyncIterator, Callable
 
@@ -351,6 +351,7 @@ class AsyncProcessor:
         except asyncio.CancelledError:
             # Cancel & drain all children, then propagate
             for task in batch_tasks.values():
+                logging.debug("Cancelling batch task %s", task.get_name())
                 task.cancel("streaming cancelled by user")
             await asyncio.gather(*batch_tasks.values(), return_exceptions=True)
             logging.debug("Async streaming processing cancelled")
@@ -562,7 +563,7 @@ class AsyncProcessor:
             # Tries to flush only the next expected batch
             await self._flush_queued_batch_results_async(stats)
         else:
-            # Standard mode: accumulate all results in memory
+            # Standard mode: accumulate all completed results in memory
             # Add results in batch order (they're already in record order within batch)
             if batch_result.results:
                 stats.results.extend(batch_result.results)
