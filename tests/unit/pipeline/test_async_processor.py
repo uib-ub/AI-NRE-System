@@ -1388,6 +1388,75 @@ class TestIncrementalBatchWriting:
         assert "disk full" in str(runtime_errors[0])
         assert "Failed to write batch 3 results incrementally" in caplog.text
 
+    @pytest.mark.asyncio
+    async def test_write_batch_results_incremental_async_writes_annotations_without_entities(
+        self,
+        make_async_processor: AsyncProcessorProbeFactory,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Write nonempty annotations without attempting an empty metadata write."""
+        async_processor, context = make_async_processor(incremental_mode=True)
+        batch_result = make_batch_processing_result(
+            1, [make_processing_result("B1", "1", entities=[])]
+        )
+        log.debug("Batch_result: %s", batch_result)
+
+        thread_calls = patch_to_thread_inline(monkeypatch)
+
+        await async_processor.write_batch_results_incremental_async(
+            batch_result, batch_num=1
+        )
+
+        log.debug("context output text file: %s", context.output_text_file)
+        log.debug("context output table file: %s", context.output_table_file)
+        log.debug("context annotated header: %s", context.ANNOTATED_HEADER)
+        log.debug("context metadata header: %s", context.METADATA_HEADER)
+
+        assert len(context.writer.text_calls) == 1
+        text_call = context.writer.text_calls[0]
+        assert text_call.rows == ["ann-B1"]
+        assert text_call.file_path == context.output_text_file
+        assert text_call.header == context.ANNOTATED_HEADER
+        assert context.writer.metadata_calls == []
+        assert len(thread_calls) == 1
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "annotation",
+        [None, "", " \t\n"],
+        ids=["empty-batch", "empty-text", "whitespace"],
+    )
+    async def test_write_batch_results_incremental_async_skips_blank_successes(
+        self,
+        make_async_processor: AsyncProcessorProbeFactory,
+        monkeypatch: pytest.MonkeyPatch,
+        annotation: str | None,
+    ) -> None:
+        """Skip all output when a batch is empty or successful text is blank."""
+        async_processor, context = make_async_processor(incremental_mode=True)
+
+        results: list[ProcessingResult] = []
+        if annotation is not None:
+            results.append(
+                make_processing_result(
+                    "B1",
+                    "1",
+                    annotated_text=annotation,
+                    entities=[make_entity_record("B1")],
+                )
+            )
+
+        batch_result = make_batch_processing_result(4, results)
+        thread_calls = patch_to_thread_inline(monkeypatch)
+
+        await async_processor.write_batch_results_incremental_async(
+            batch_result, batch_num=1
+        )
+
+        assert context.writer.text_calls == []
+        assert context.writer.metadata_calls == []
+        assert thread_calls == []
+
 
 class TestIndividualAsyncProcessing:
     """Tests for individual-record async workflows."""
