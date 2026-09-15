@@ -1620,6 +1620,37 @@ class TestIndividualAsyncProcessing:
                 stats,
             )
 
+    @pytest.mark.asyncio
+    async def test_fallback_to_individual_async_streaming_counts_returned_failures(
+        self,
+        make_async_processor: AsyncProcessorProbeFactory,
+        sample_records: list[Record],
+    ) -> None:
+        """Test fallback individual processing counts returned failures as failed."""
+        records = sample_records[:3]
+        failed_result: ProcessingResult = make_processing_result(
+            "B2",
+            "1",
+            success=False,
+            annotated_text="",
+            error_message="validation failed",
+        )
+
+        async_processor, context = make_async_processor(
+            async_record_results={"B2": failed_result},
+        )
+        stats = AsyncProcessingStats()
+
+        await async_processor.fallback_to_individual_async_streaming(records, stats)
+
+        assert context.processor.async_record_calls == records
+        assert stats.processed_records == 2
+        assert stats.failed_records == 1
+        assert [result.brevid for result in stats.results] == ["B1", "B2", "B3"]
+        assert stats.results[1].success is False
+        assert stats.results[1] is failed_result
+        assert stats.results[1].error_message == "validation failed"
+
 
 class TestAsyncProcessorHelpers:
     """Tests for smaller AsyncProcessor helper methods."""
