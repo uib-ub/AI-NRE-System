@@ -1312,7 +1312,7 @@ class TestIncrementalBatchWriting:
         assert writer.metadata_calls[0].rows == [entity.to_csv_row()]
 
     @pytest.mark.asyncio
-    async def test_write_batch_results_incremental_async_skips_empty_successes(
+    async def test_write_batch_results_incremental_async_skips_failed_results(
         self,
         make_async_processor: AsyncProcessorProbeFactory,
     ) -> None:
@@ -1446,7 +1446,7 @@ class TestIncrementalBatchWriting:
                 )
             )
 
-        batch_result = make_batch_processing_result(4, results)
+        batch_result = make_batch_processing_result(1, results)
         thread_calls = patch_to_thread_inline(monkeypatch)
 
         await async_processor.write_batch_results_incremental_async(
