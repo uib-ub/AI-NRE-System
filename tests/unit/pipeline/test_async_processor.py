@@ -1111,6 +1111,76 @@ class TestStreamingBatchProcessing:
 
         fallback.assert_not_awaited()
 
+    @pytest.mark.asyncio
+    async def test_process_records_streaming_async_writes_incremental_batches_in_order(
+        self,
+        make_async_processor: AsyncProcessorProbeFactory,
+        sample_records: list[Record],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Write full and partial batches without retaining their results in stats."""
+        records = sample_records[:3]
+        results = [
+            make_processing_result(
+                record["Brevid"],
+                record["Bindnr"],
+                entities=[make_entity_record(record["Brevid"])],
+            )
+            for record in records
+        ]
+
+        log.debug("Sample records: %s", records)
+        log.debug("Results: %s", results)
+        async_processor, context = make_async_processor(
+            batch_size=2,
+            max_concurrent_batches=2,
+            incremental_mode=True,
+            async_batch_results={
+                ("B1", "B2"): make_batch_processing_result(1, results[:2]),
+                ("B3",): make_batch_processing_result(2, results[2:]),
+            },
+        )
+
+        stats = AsyncProcessingStats()
+        patch_async_records(monkeypatch, async_processor, records)
+        patch_to_thread_inline(monkeypatch)
+
+        await async_processor.process_records_streaming_async(
+            stats,
+            progress_callback=None,
+            max_wait_time=12.0,
+            poll_interval=1.0,
+        )
+
+        assert [call.records for call in context.processor.async_batch_calls] == [
+            records[:2],
+            records[2:],
+        ]
+
+        assert [call.rows for call in context.writer.text_calls] == [
+            ["ann-B1", "ann-B2"],
+            ["ann-B3"],
+        ]
+        assert [call.rows for call in context.writer.metadata_calls] == [
+            [
+                entity.to_csv_row()
+                for result in results[:2]
+                for entity in result.entities
+            ],
+            [
+                entity.to_csv_row()
+                for result in results[2:]
+                for entity in result.entities
+            ],
+        ]
+        assert stats.total_records == 3
+        assert stats.processed_records == 3
+        assert stats.failed_records == 0
+        assert stats.results == []
+        assert stats.failed_batch_writes == []
+        assert async_processor.batch_result_queue == {}
+        assert async_processor.next_expected_batch_num == 3
+
 
 class TestOrderedBatchAccumulation:
     """Tests for batch result accumulation and flushing."""
