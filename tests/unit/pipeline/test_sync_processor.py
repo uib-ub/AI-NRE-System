@@ -165,9 +165,9 @@ class NoopTqdm:
 def make_sync_processor() -> SyncProcessorFactory:
     """Create a SyncProcessor with a protocol-shaped fake context.
 
-    This fixture returns a factory function that constructs a SyncProcessor with a
-    FakeMainProcessor which matches the expected protocol shape.
-    The factory accepts parameters to customize the records, batch setting,
+    With The “factory as fixture” pattern, this fixture returns a factory function
+    that constructs a SyncProcessor with a FakeMainProcessor which matches the expected
+    protocol shape. The factory accepts parameters to customize the records, batch setting,
     and simulated processor outcomes for testing various scenarios.
     By using this factory, tests can easily set up a SyncProcessor with
     controlled behavior and dependencies.
