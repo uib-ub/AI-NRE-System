@@ -1181,6 +1181,35 @@ class TestStreamingBatchProcessing:
         assert async_processor.batch_result_queue == {}
         assert async_processor.next_expected_batch_num == 3
 
+    @pytest.mark.asyncio
+    async def test_process_records_streaming_async_flushes_after_empty_input(
+        self,
+        make_async_processor: AsyncProcessorProbeFactory,
+        monkeypatch: pytest.MonkeyPatch,
+        mocker: MockerFixture,
+    ) -> None:
+        """Perform the final incremental flush even when no batches were created."""
+        async_processor, context = make_async_processor(
+            batch_size=2, incremental_mode=True
+        )
+        stats = AsyncProcessingStats()
+        patch_async_records(monkeypatch, async_processor, [])
+        flush = mocker.spy(async_processor, "_flush_queued_batch_results_async")
+
+        await async_processor.process_records_streaming_async(
+            stats, progress_callback=None, max_wait_time=12.0, poll_interval=1.0
+        )
+
+        flush.assert_awaited_once_with(stats)
+        assert context.processor.async_batch_calls == []
+        assert context.writer.text_calls == []
+        assert context.writer.metadata_calls == []
+        assert stats.total_records == 0
+        assert stats.processed_records == 0
+        assert stats.failed_records == 0
+        assert async_processor.batch_result_queue == {}
+        assert async_processor.next_expected_batch_num == 1
+
 
 class TestOrderedBatchAccumulation:
     """Tests for batch result accumulation and flushing."""
