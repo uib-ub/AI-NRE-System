@@ -660,6 +660,37 @@ class TestProcessAllRecordsAsync:
         log.debug("Captured exception: %s", exc_info.value)
         assert isinstance(exc_info.value.__cause__, TimeoutError)
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("component", ["reader", "processor"])
+    async def test_process_all_records_async_rejects_missing_required_component(
+        self,
+        make_async_processor: AsyncProcessorProbeFactory,
+        monkeypatch: pytest.MonkeyPatch,
+        mocker: MockerFixture,
+        component: str,
+    ) -> None:
+        """Reject either missing component before selecting a processing workflow."""
+        async_processor, context = make_async_processor()
+        monkeypatch.setattr(context, component, None)
+        stream = mocker.patch.object(
+            async_processor,
+            "_process_records_streaming_async",
+            new_callable=mocker.AsyncMock,
+        )
+        individual = mocker.patch.object(
+            async_processor,
+            "_process_records_individual_async",
+            new_callable=mocker.AsyncMock,
+        )
+
+        with pytest.raises(
+            ApplicationError, match="Components not properly initialized"
+        ):
+            await async_processor.process_all_records_async()
+
+        stream.assert_not_called()
+        individual.assert_not_called()
+
 
 class TestStreamingBatchProcessing:
     """Tests for async streaming batch workflows."""
@@ -1304,6 +1335,30 @@ class TestOrderedBatchAccumulation:
         flush.assert_awaited_once()
 
     @pytest.mark.asyncio
+    async def test_add_batch_results_in_order_preserves_stats_for_empty_batch(
+        self,
+        make_async_processor: AsyncProcessorProbeFactory,
+    ) -> None:
+        """Leave accumulated counters and results unchanged for an empty batch."""
+        async_processor, _ = make_async_processor()
+        previous = make_processing_result("B1", "1")
+        stats = AsyncProcessingStats(
+            total_records=1,
+            processed_records=1,
+            results=[previous],
+        )
+        batch = make_batch_processing_result(1, [])
+
+        await async_processor.add_batch_results_in_order(stats, batch, batch_num=1)
+
+        assert stats.total_records == 1
+        assert stats.processed_records == 1
+        assert stats.failed_records == 0
+        assert stats.results == [previous]
+        assert stats.results[0] is previous
+        assert async_processor.batch_result_queue == {}
+
+    @pytest.mark.asyncio
     async def test_flush_queued_batch_results_async_preserves_order(
         self,
         make_async_processor: AsyncProcessorProbeFactory,
@@ -1808,6 +1863,42 @@ class TestIndividualAsyncProcessing:
             for task in child_tasks:
                 task.cancel()
             await asyncio.gather(parent, *child_tasks, return_exceptions=True)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("record_count", "expected_chunks"),
+        [(0, 0), (2, 1), (3, 2)],
+        ids=["empty", "exact-chunk", "partial-final-chunk"],
+    )
+    async def test_process_records_individual_async_handles_chunk_boundaries(
+        self,
+        make_async_processor: AsyncProcessorProbeFactory,
+        sample_records: list[Record],
+        monkeypatch: pytest.MonkeyPatch,
+        mocker: MockerFixture,
+        record_count: int,
+        expected_chunks: int,
+    ) -> None:
+        """Only process populated chunks and preserve the order of their results."""
+        records = sample_records[:record_count]
+        async_processor, context = make_async_processor(
+            chunk_size=2,
+            max_concurrent_individual=2,
+        )
+        stats = AsyncProcessingStats()
+        patch_async_records(monkeypatch, async_processor, records)
+        chunk = mocker.spy(async_processor, "_process_task_chunk")
+
+        await async_processor.process_records_individual_async(stats)
+
+        assert chunk.await_count == expected_chunks
+        assert context.processor.async_record_calls == records
+        assert stats.total_records == record_count
+        assert stats.processed_records == record_count
+        assert stats.failed_records == 0
+        assert [result.brevid for result in stats.results] == [
+            record["Brevid"] for record in records
+        ]
 
     @pytest.mark.asyncio
     async def test_process_task_chunk_converts_exceptions_and_preserves_order(
