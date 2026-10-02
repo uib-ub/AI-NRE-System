@@ -833,6 +833,51 @@ class TestStreamingBatchProcessing:
         assert [result.brevid for result in stats.results] == ["B1"]
 
     @pytest.mark.asyncio
+    async def test_collect_completed_batch_results_async_reraises_first_of_multiple_failures(
+        self,
+        make_async_processor: AsyncProcessorProbeFactory,
+        sample_records: list[Record],
+    ) -> None:
+        """Record an earlier success and raise the lowest-numbered batch failure."""
+        async_processor, _ = make_async_processor()
+        stats = AsyncProcessingStats(total_records=3)
+        first_failure = RuntimeError("batch 2 failed")
+        later_failure = ValueError("batch 3 faile")
+        success = _batch_result_for_records(1, sample_records[:1])
+
+        async def _succeed() -> BatchProcessingResult:
+            return success
+
+        async def _fail(error: Exception) -> BatchProcessingResult:
+            raise error
+
+        first_task = asyncio.create_task(_succeed())
+        second_task = asyncio.create_task(_fail(first_failure))
+        third_task = asyncio.create_task(_fail(later_failure))
+        tasks = [first_task, second_task, third_task]
+        completed: dict[int, BatchProcessingResult] = {}
+        batch_tasks = {3: third_task, 2: second_task, 1: first_task}
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True), timeout=2.0
+            )
+            with pytest.raises(RuntimeError, match="batch 2 failed") as exc_info:
+                await async_processor.collect_completed_batch_results_async(
+                    stats, batch_tasks, completed, next_batch_num_to_add=1
+                )
+            assert exc_info.value is first_failure
+            assert batch_tasks == {}
+            assert completed == {}
+            assert stats.processed_records == 1
+            assert stats.failed_records == 0
+            assert stats.results == success.results
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    @pytest.mark.asyncio
     async def test_process_records_streaming_async_cancels_in_flight_tasks(
         self,
         make_async_processor: AsyncProcessorProbeFactory,
