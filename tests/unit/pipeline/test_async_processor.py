@@ -1556,6 +1556,57 @@ class TestIncrementalBatchWriting:
         assert context.writer.metadata_calls == []
         assert thread_calls == []
 
+    @pytest.mark.asyncio
+    async def test_write_batch_results_incremental_async_propagates_parent_cancellation(
+        self,
+        make_async_processor: AsyncProcessorProbeFactory,
+        mocker: MockerFixture,
+    ) -> None:
+        """Propagate parent cancellation after the TaskGroup child cleans up."""
+        async_processor, _ = make_async_processor(incremental_mode=True)
+        results: list[ProcessingResult] = [make_processing_result("B1", "1")]
+        batch_result = make_batch_processing_result(1, results)
+        # Two signals and a list to save the child task.
+        # An event is a signal that another coroutine can wait for.
+        started = asyncio.Event()
+        cleaned_up = asyncio.Event()
+        child_tasks: list[asyncio.Task[Any]] = []
+
+        async def _blocked_write(
+            _function: Callable[..., object], *_args: object
+        ) -> None:
+            task = asyncio.current_task()
+            assert task is not None
+            child_tasks.append(task)
+            started.set()
+            try:
+                await asyncio.Future[None]()
+            finally:
+                cleaned_up.set()
+
+        mocker.patch.object(
+            async_processor_module.asyncio, "to_thread", new=_blocked_write
+        )
+        parent = asyncio.create_task(
+            async_processor.write_batch_results_incremental_async(
+                batch_result, batch_num=1
+            )
+        )
+        try:
+            await asyncio.wait_for(started.wait(), timeout=2.0)
+            parent.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(parent, timeout=2.0)
+            assert parent.cancelled()
+            assert cleaned_up.is_set()
+            assert len(child_tasks) == 1
+            assert child_tasks[0].cancelled()
+        finally:
+            parent.cancel()
+            for task in child_tasks:
+                task.cancel()
+            await asyncio.gather(parent, *child_tasks, return_exceptions=True)
+
 
 class TestIndividualAsyncProcessing:
     """Tests for individual-record async workflows."""
@@ -1654,6 +1705,64 @@ class TestIndividualAsyncProcessing:
             await async_processor.process_records_individual_async(stats)
 
         assert exc.value.__cause__ is failure
+
+    @pytest.mark.asyncio
+    async def test_process_records_individual_async_cancels_active_chunk(
+        self,
+        make_async_processor: AsyncProcessorProbeFactory,
+        sample_records: list[Record],
+        monkeypatch: pytest.MonkeyPatch,
+        mocker: MockerFixture,
+    ) -> None:
+        """Cancel and drain both record tasks before returning cancellation."""
+        records = sample_records[:2]
+        async_processor, context = make_async_processor(
+            chunk_size=2,
+            max_concurrent_individual=2,
+        )
+        stats = AsyncProcessingStats()
+        started = asyncio.Event()
+        cleaned_up: set[str] = set()
+        child_tasks: list[asyncio.Task[Any]] = []
+
+        async def _process_record(record: Record) -> ProcessingResult:
+            task = asyncio.current_task()
+            assert task is not None
+            child_tasks.append(task)
+            if len(child_tasks) == len(records):
+                started.set()
+            try:
+                await asyncio.Future[None]()
+            finally:
+                cleaned_up.add(record["Brevid"])
+            raise AssertionError("The record task should have been cancelled")
+
+        patch_async_records(monkeypatch, async_processor, records)
+        mocker.patch.object(
+            context.processor,
+            "process_record_async",
+            new=_process_record,
+        )
+        parent = asyncio.create_task(
+            async_processor.process_records_individual_async(stats)
+        )
+        try:
+            await asyncio.wait_for(started.wait(), timeout=2.0)
+            parent.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(parent, timeout=2.0)
+            assert cleaned_up == {"B1", "B2"}
+            assert len(child_tasks) == 2
+            assert all(task.cancelled() for task in child_tasks)
+            assert stats.total_records == 2
+            assert stats.processed_records == 0
+            assert stats.failed_records == 0
+            assert stats.results == []
+        finally:
+            parent.cancel()
+            for task in child_tasks:
+                task.cancel()
+            await asyncio.gather(parent, *child_tasks, return_exceptions=True)
 
     @pytest.mark.asyncio
     async def test_process_task_chunk_converts_exceptions_and_preserves_order(
