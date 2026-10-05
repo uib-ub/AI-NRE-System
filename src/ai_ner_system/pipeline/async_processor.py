@@ -783,6 +783,11 @@ class AsyncProcessor:
             raise ApplicationError(
                 f"Individual async streaming processing failed: {e}",
             ) from e
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _process_task_chunk(
         self,
