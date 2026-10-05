@@ -772,7 +772,7 @@ class TestStreamingBatchProcessing:
             return _batch_result_for_records(batch_num, batch_records)
 
         patch_async_records(monkeypatch, async_processor, sample_records[:4])
-        # replaces the CSV-streaming method with an in-memory async generator
+        # Control batch completion order for the backpressure scenario.
         mocker.patch.object(
             async_processor,
             "_process_batch_with_order_async",
@@ -801,6 +801,7 @@ class TestStreamingBatchProcessing:
             4. discover that batch 2 cannot be appended because batch 1 is missing;
             5. wait for batch 1 instead of reading record 3.
             """
+            # Give the collector a chance to handle batch 2 before checking backpressure.
             await asyncio.sleep(0)
             assert not batch_three_started.is_set()
             assert started_batches == [1, 2]
@@ -1808,12 +1809,9 @@ class TestIndividualAsyncProcessing:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Test unexpected individual-processing failures are wrapped."""
-        async_processor, context = make_async_processor(chunk_size=2)
+        async_processor, _ = make_async_processor(chunk_size=2)
         stats = AsyncProcessingStats()
         failure = RuntimeError("chunk bookkeeping broke")
-
-        async def _process_record(record: Record) -> Any:
-            return make_processing_result(record["Brevid"], record["Bindnr"])
 
         async def _raise_after_draining(
             tasks: list[asyncio.Task[Any]],
@@ -1824,8 +1822,6 @@ class TestIndividualAsyncProcessing:
             raise failure
 
         patch_async_records(monkeypatch, async_processor, sample_records[:2])
-
-        monkeypatch.setattr(context.processor, "process_record_async", _process_record)
 
         monkeypatch.setattr(
             async_processor,
@@ -2095,7 +2091,7 @@ class TestIndividualAsyncProcessing:
         active = 0
         max_active = 0
 
-        async def _process_record(record: Record) -> Any:
+        async def _process_record(record: Record) -> ProcessingResult:
             nonlocal active, max_active
             active += 1
             max_active = max(max_active, active)
