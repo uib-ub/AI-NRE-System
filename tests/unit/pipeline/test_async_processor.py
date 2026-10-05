@@ -1940,13 +1940,15 @@ class TestIndividualAsyncProcessing:
         mocker: MockerFixture,
         interruption: str,
     ) -> None:
-        """Drain a started record task before propagating input failure or cancellation."""
+        """Await child cleanup before propagating input failure or cancellation."""
         async_processor, context = make_async_processor(
             chunk_size=3, max_concurrent_individual=1
         )
         stats = AsyncProcessingStats()
         child_started = asyncio.Event()
         reading = asyncio.Event()
+        cleanup_started = asyncio.Event()
+        release_cleanup = asyncio.Event()
         child_cleaned_up = asyncio.Event()
         child_tasks: list[asyncio.Task[Any]] = []
         failure = RuntimeError("reader failed after the first record")
@@ -1959,6 +1961,8 @@ class TestIndividualAsyncProcessing:
             try:
                 await asyncio.Future[None]()
             finally:
+                cleanup_started.set()
+                await release_cleanup.wait()
                 child_cleaned_up.set()
             raise AssertionError("The record task should have been cancelled")
 
@@ -1987,17 +1991,106 @@ class TestIndividualAsyncProcessing:
             await asyncio.wait_for(reading.wait(), timeout=2.0)
             if interruption == "parent-cancel":
                 parent.cancel()
-                with pytest.raises(asyncio.CancelledError):
-                    await asyncio.wait_for(parent, timeout=2.0)
-            else:
+            await asyncio.wait_for(cleanup_started.wait(), timeout=2.0)
+            assert not parent.done()
+            release_cleanup.set()
+
+            if interruption == "reader-error":
                 with pytest.raises(ApplicationError) as exc_info:
                     await asyncio.wait_for(parent, timeout=2.0)
                 assert exc_info.value.__cause__ is failure
+            else:
+                with pytest.raises(asyncio.CancelledError):
+                    await asyncio.wait_for(parent, timeout=2.0)
             assert len(child_tasks) == 1
-            assert child_tasks[0].done()
             assert child_tasks[0].cancelled()
             assert child_cleaned_up.is_set()
             assert stats.total_records == 1
+            assert stats.processed_records == 0
+            assert stats.failed_records == 0
+            assert stats.results == []
+        finally:
+            release_cleanup.set()
+            parent.cancel()
+            for task in child_tasks:
+                task.cancel()
+            await asyncio.gather(parent, *child_tasks, return_exceptions=True)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("interruption", ["reader-error", "parent-cancel"])
+    async def test_process_records_individual_async_cancels_running_and_waiting_tasks_during_reading(
+        self,
+        make_async_processor: AsyncProcessorProbeFactory,
+        sample_records: list[Record],
+        mocker: MockerFixture,
+        interruption: str,
+    ) -> None:
+        """Drain running and semaphore-waiting children before propagating interruption."""
+        records = sample_records[:2]
+        async_processor, context = make_async_processor(
+            chunk_size=3,
+            max_concurrent_individual=1,
+        )
+        stats = AsyncProcessingStats()
+        child_started = asyncio.Event()
+        reading = asyncio.Event()
+        interrupt_reading = asyncio.Event()
+        child_cleaned_up = asyncio.Event()
+        started_records: list[str] = []
+        failure = RuntimeError("reader failed after two records")
+
+        async def _process_record(record: Record) -> ProcessingResult:
+            started_records.append(record["Brevid"])
+            child_started.set()
+            try:
+                await asyncio.Future[None]()
+            finally:
+                child_cleaned_up.set()
+            raise AssertionError("The running record task should be cancelled")
+
+        async def _stream() -> AsyncIterator[Record]:
+            for record in records:
+                yield record
+            await child_started.wait()
+            reading.set()
+            await interrupt_reading.wait()
+            if interruption == "reader-error":
+                raise failure
+            await asyncio.Future[None]()
+
+        mocker.patch.object(
+            context.processor, "process_record_async", new=_process_record
+        )
+        mocker.patch.object(async_processor, "_async_stream_csv_records", new=_stream)
+        task_spy = mocker.spy(async_processor_module.asyncio, "create_task")
+        child_tasks = cast(
+            "list[asyncio.Task[ProcessingResult]]", task_spy.spy_return_list
+        )
+        # Bypass the spied function so the parent is not recorded as a child.
+        parent = asyncio.get_running_loop().create_task(
+            async_processor.process_records_individual_async(stats)
+        )
+        try:
+            await asyncio.wait_for(reading.wait(), timeout=2.0)
+            assert len(child_tasks) == 2
+            assert all(not task.done() for task in child_tasks)
+            assert started_records == ["B1"]
+
+            if interruption == "reader-error":
+                interrupt_reading.set()
+                with pytest.raises(ApplicationError) as exc_info:
+                    await asyncio.wait_for(parent, timeout=2.0)
+                assert exc_info.value.__cause__ is failure
+            else:
+                parent.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await asyncio.wait_for(parent, timeout=2.0)
+
+            assert all(task.done() for task in child_tasks)
+            assert all(task.cancelled() for task in child_tasks)
+            assert child_cleaned_up.is_set()
+            assert started_records == ["B1"]
+            assert stats.total_records == 2
             assert stats.processed_records == 0
             assert stats.failed_records == 0
             assert stats.results == []
