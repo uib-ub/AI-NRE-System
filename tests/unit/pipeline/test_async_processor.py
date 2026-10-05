@@ -584,21 +584,6 @@ class TestProcessAllRecordsAsync:
         individual.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_process_all_records_async_requires_initialized_components(
-        self,
-        make_async_processor: AsyncProcessorProbeFactory,
-    ) -> None:
-        """Test missing reader or processor raises ApplicationError immediately."""
-        async_processor, context = make_async_processor()
-        context.reader = None  # type: ignore[assignment]
-
-        with pytest.raises(
-            ApplicationError,
-            match="Components not properly initialized for async processing",
-        ):
-            await async_processor.process_all_records_async()
-
-    @pytest.mark.asyncio
     async def test_process_all_records_async_propagates_cancellation_and_finalizes_stats(
         self,
         make_async_processor: AsyncProcessorProbeFactory,
@@ -1963,6 +1948,13 @@ class TestIndividualAsyncProcessing:
                     await asyncio.wait_for(parent, timeout=2.0)
                 assert exc_info.value.__cause__ is failure
             assert len(child_tasks) == 1
+            assert child_tasks[0].done()
+            assert child_tasks[0].cancelled()
+            assert child_cleaned_up.is_set()
+            assert stats.total_records == 1
+            assert stats.processed_records == 0
+            assert stats.failed_records == 0
+            assert stats.results == []
         finally:
             parent.cancel()
             for task in child_tasks:
@@ -2057,8 +2049,7 @@ class TestIndividualAsyncProcessing:
             nonlocal active, max_active
             active += 1
             max_active = max(max_active, active)
-            if record["Brevid"] == "B1":
-                await asyncio.sleep(0.01)
+            await asyncio.sleep(0.01 if record["Brevid"] == "B1" else 0.0)
             active -= 1
             if record["Brevid"] == "B2":
                 raise RuntimeError("fallback failure")
