@@ -735,8 +735,9 @@ class TestStreamingBatchProcessing:
         make_async_processor: AsyncProcessorProbeFactory,
         sample_records: list[Record],
         monkeypatch: pytest.MonkeyPatch,
+        mocker: MockerFixture,
     ) -> None:
-        """Test out-of-order completions are backpressured until ordering catches up."""
+        """Keep completed later batches within the outstanding-work limit."""
         async_processor, _ = make_async_processor(
             batch_size=1,
             max_concurrent_batches=2,
@@ -749,6 +750,7 @@ class TestStreamingBatchProcessing:
         # detect whether the processor starts batch 3 too early
         batch_three_started = asyncio.Event()
         started_batches: list[int] = []
+        child_tasks: list[asyncio.Task[Any]] = []
 
         # the controlled batch processor
         async def _process_batch(
@@ -756,6 +758,9 @@ class TestStreamingBatchProcessing:
             batch_num: int,
             *_args: Any,
         ) -> BatchProcessingResult:
+            task = asyncio.current_task()
+            assert task is not None
+            child_tasks.append(task)
             started_batches.append(batch_num)
 
             if batch_num == 1:
@@ -767,15 +772,14 @@ class TestStreamingBatchProcessing:
             return _batch_result_for_records(batch_num, batch_records)
 
         patch_async_records(monkeypatch, async_processor, sample_records[:4])
-
         # replaces the CSV-streaming method with an in-memory async generator
-        monkeypatch.setattr(
+        mocker.patch.object(
             async_processor,
             "_process_batch_with_order_async",
-            _process_batch,
+            new=_process_batch,
         )
 
-        processing_task = asyncio.create_task(
+        parent = asyncio.create_task(
             async_processor.process_records_streaming_async(
                 stats,
                 progress_callback=None,
@@ -784,30 +788,44 @@ class TestStreamingBatchProcessing:
             ),
         )
 
-        # waits until batch 2 announces that it finished.
-        await asyncio.wait_for(batch_two_finished.wait(), timeout=1.0)
-        """
-        sleep(0) does not introduce a meaningful time delay.
-        It yields control to the event loop for one scheduling cycle.
-        That gives the streaming task an opportunity to:
-        1. notice that batch 2 completed;
-        2. remove batch 2 from batch_tasks;
-        3. put its result in completed_batch_results;
-        4. discover that batch 2 cannot be appended because batch 1 is missing;
-        5. wait for batch 1 instead of reading record 3.
-        """
-        await asyncio.sleep(0)
+        try:
+            # waits until batch 2 announces that it finished.
+            await asyncio.wait_for(batch_two_finished.wait(), timeout=2.0)
+            """
+            sleep(0) does not introduce a meaningful time delay.
+            It yields control to the event loop for one scheduling cycle.
+            That gives the streaming task an opportunity to:
+            1. notice that batch 2 completed;
+            2. remove batch 2 from batch_tasks;
+            3. put its result in completed_batch_results;
+            4. discover that batch 2 cannot be appended because batch 1 is missing;
+            5. wait for batch 1 instead of reading record 3.
+            """
+            await asyncio.sleep(0)
+            assert not batch_three_started.is_set()
+            assert started_batches == [1, 2]
 
-        assert not batch_three_started.is_set()
-        assert started_batches == [1, 2]
-
-        # release batch 1
-        release_batch_one.set()
-        await asyncio.wait_for(processing_task, timeout=1.0)
-        # batch 3 was eventually allowed to start
-        assert batch_three_started.is_set()
-        assert started_batches == [1, 2, 3, 4]
-        assert [result.brevid for result in stats.results] == ["B1", "B2", "B3", "B4"]
+            # release batch 1
+            release_batch_one.set()
+            await asyncio.wait_for(parent, timeout=2.0)
+            # batch 3 was eventually allowed to start
+            assert batch_three_started.is_set()
+            assert started_batches == [1, 2, 3, 4]
+            assert [result.brevid for result in stats.results] == [
+                "B1",
+                "B2",
+                "B3",
+                "B4",
+            ]
+            assert stats.total_records == 4
+            assert stats.processed_records == 4
+            assert stats.failed_records == 0
+            assert all(task.done() for task in child_tasks)
+        finally:
+            parent.cancel()
+            for task in child_tasks:
+                task.cancel()
+            await asyncio.gather(parent, *child_tasks, return_exceptions=True)
 
     @pytest.mark.asyncio
     async def test_collect_completed_batch_results_async_flushes_ready_prefix_before_later_failure(
@@ -899,8 +917,9 @@ class TestStreamingBatchProcessing:
         make_async_processor: AsyncProcessorProbeFactory,
         sample_records: list[Record],
         monkeypatch: pytest.MonkeyPatch,
+        mocker: MockerFixture,
     ) -> None:
-        """Test streaming cancellation cancels and drains in-flight batch tasks."""
+        """Cancel and drain both batch tasks before propagating cancellation."""
         async_processor, _ = make_async_processor(
             batch_size=1,
             max_concurrent_batches=2,
@@ -914,12 +933,16 @@ class TestStreamingBatchProcessing:
             1: asyncio.Event(),
             2: asyncio.Event(),
         }
+        child_tasks: dict[int, asyncio.Task[Any]] = {}
 
         async def _process_batch(
             _batch_records: list[Record],
             batch_num: int,
             *_args: Any,
         ) -> BatchProcessingResult:
+            task = asyncio.current_task()
+            assert task is not None
+            child_tasks[batch_num] = task
             started[batch_num].set()  # start the batch
             try:
                 # test wait until both child coroutines are definitely running
@@ -939,14 +962,13 @@ class TestStreamingBatchProcessing:
             pytest.fail("Batch task should have been cancelled")
 
         patch_async_records(monkeypatch, async_processor, sample_records[:2])
-
-        monkeypatch.setattr(
+        mocker.patch.object(
             async_processor,
             "_process_batch_with_order_async",
-            _process_batch,
+            new=_process_batch,
         )
         # create background task for streaming processing
-        streaming_task = asyncio.create_task(
+        parent = asyncio.create_task(
             async_processor.process_records_streaming_async(
                 stats,
                 progress_callback=None,
@@ -955,16 +977,29 @@ class TestStreamingBatchProcessing:
             ),
         )
 
-        # Waiting until both batches start
-        await asyncio.gather(*(event.wait() for event in started.values()))
-        streaming_task.cancel()
+        try:
+            # Waiting until both batches start
+            await asyncio.wait_for(
+                asyncio.gather(*(event.wait() for event in started.values())),
+                timeout=2.0,
+            )
 
-        with pytest.raises(asyncio.CancelledError):
-            await streaming_task
+            parent.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(parent, timeout=2.0)
 
-        assert stats.total_records == 2
-        assert cancelled[1].is_set()
-        assert cancelled[2].is_set()
+            assert set(child_tasks) == {1, 2}
+            assert all(event.is_set() for event in cancelled.values())
+            assert all(task.cancelled() for task in child_tasks.values())
+            assert stats.total_records == 2
+            assert stats.processed_records == 0
+            assert stats.failed_records == 0
+            assert stats.results == []
+        finally:
+            parent.cancel()
+            for task in child_tasks.values():
+                task.cancel()
+            await asyncio.gather(parent, *child_tasks.values(), return_exceptions=True)
 
     @pytest.mark.asyncio
     async def test_process_records_streaming_async_wraps_failures_and_cleans_up_tasks(
@@ -972,8 +1007,9 @@ class TestStreamingBatchProcessing:
         make_async_processor: AsyncProcessorProbeFactory,
         sample_records: list[Record],
         monkeypatch: pytest.MonkeyPatch,
+        mocker: MockerFixture,
     ) -> None:
-        """Test streaming failure cancel pending tasks and raise ApplicationError."""
+        """Preserve a batch failure and drain its still-running sibling."""
         async_processor, _ = make_async_processor(
             batch_size=1,
             max_concurrent_batches=2,
@@ -981,6 +1017,7 @@ class TestStreamingBatchProcessing:
         stats = AsyncProcessingStats()
         second_batch_started = asyncio.Event()
         second_batch_cancelled = asyncio.Event()
+        child_tasks: dict[int, asyncio.Task[Any]] = {}
         failure = RuntimeError("batch 1 exploded")
 
         async def _process_batch(
@@ -988,10 +1025,12 @@ class TestStreamingBatchProcessing:
             batch_num: int,
             *_args: Any,
         ) -> BatchProcessingResult:
+            task = asyncio.current_task()
+            assert task is not None
+            child_tasks[batch_num] = task
             if batch_num == 1:
                 await second_batch_started.wait()
                 raise failure
-
             second_batch_started.set()
             try:
                 await asyncio.Future[None]()
@@ -1002,25 +1041,42 @@ class TestStreamingBatchProcessing:
 
         patch_async_records(monkeypatch, async_processor, sample_records[:2])
 
-        monkeypatch.setattr(
+        mocker.patch.object(
             async_processor,
             "_process_batch_with_order_async",
-            _process_batch,
+            new=_process_batch,
         )
-
-        with pytest.raises(
-            ApplicationError,
-            match="Async streaming processing failed",
-        ) as exc:
-            await async_processor.process_records_streaming_async(
+        parent = asyncio.create_task(
+            async_processor.process_records_streaming_async(
                 stats,
                 progress_callback=None,
                 max_wait_time=12.0,
                 poll_interval=1.0,
             )
+        )
 
-        assert exc.value.__cause__ is failure
-        assert second_batch_cancelled.is_set()
+        try:
+            with pytest.raises(
+                ApplicationError,
+                match="Async streaming processing failed",
+            ) as exc_info:
+                await asyncio.wait_for(parent, timeout=2.0)
+
+            assert exc_info.value.__cause__ is failure
+            assert set(child_tasks) == {1, 2}
+            assert child_tasks[1].done()
+            assert not child_tasks[1].cancelled()
+            assert child_tasks[2].cancelled()
+            assert second_batch_cancelled.is_set()
+            assert stats.total_records == 2
+            assert stats.processed_records == 0
+            assert stats.failed_records == 0
+            assert stats.results == []
+        finally:
+            parent.cancel()
+            for task in child_tasks.values():
+                task.cancel()
+            await asyncio.gather(parent, *child_tasks.values(), return_exceptions=True)
 
     @pytest.mark.asyncio
     async def test_async_stream_csv_records_yields_all_records(
@@ -1080,40 +1136,27 @@ class TestStreamingBatchProcessing:
         self,
         make_async_processor: AsyncProcessorProbeFactory,
         sample_records: list[Record],
-        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Test batch failures are converted into fallback batch results."""
-        async_processor, _ = make_async_processor(
-            async_batch_results={("B1", "B2"): RuntimeError("batch failed")},
+        """Convert real fallback results into an ordered batch result."""
+        records = sample_records[:2]  # two records to form a single batch
+        successful_result = make_processing_result("B1", "1")
+        failed_result = make_processing_result(
+            "B2",
+            "1",
+            success=False,
+            annotated_text="",
+            error_message="failed individual",
         )
-        fallback_results: list[ProcessingResult] = [
-            make_processing_result("B1", "1"),
-            make_processing_result(
-                "B2",
-                "1",
-                success=False,
-                annotated_text="",
-                error_message="failed individual",
-            ),
-        ]
-
-        async def _fallback(
-            batch_records: list[Record],
-            stats: AsyncProcessingStats,
-        ) -> None:
-            assert batch_records == sample_records[:2]
-            stats.results.extend(fallback_results)
-            stats.processed_records = 1
-            stats.failed_records = 1
-
-        monkeypatch.setattr(
-            async_processor,
-            "_fallback_to_individual_async_streaming",
-            _fallback,
+        async_processor, context = make_async_processor(
+            async_batch_results={("B1", "B2"): RuntimeError("batch failed")},
+            async_record_results={
+                "B1": successful_result,
+                "B2": failed_result,
+            },
         )
 
         result = await async_processor.process_batch_with_order_async(
-            sample_records[:2],
+            records,
             batch_num=7,
             progress_callback=None,
             max_wait_time=10.0,
@@ -1121,16 +1164,23 @@ class TestStreamingBatchProcessing:
         )
 
         log.debug("Result %s", result)
-        log.debug("Fallback results: %s", fallback_results)
         log.debug("Batch result: %s", result.results)
         log.debug("Batch ID: %s", result.batch_id)
         log.debug("Successful count: %d", result.successful_count)
         log.debug("Failed count: %d", result.failed_count)
 
+        assert len(context.processor.async_batch_calls) == 1
+        batch_call = context.processor.async_batch_calls[0]
+        assert batch_call.records == records
+        assert batch_call.batch_num == 7
+        assert context.processor.async_record_calls == records
         assert result.batch_id == "batch_7"
-        assert result.results == fallback_results
+        assert result.results == [successful_result, failed_result]
+        assert result.results[0] is successful_result
+        assert result.results[1] is failed_result
         assert result.successful_count == 1
         assert result.failed_count == 1
+        assert result.total_processing_time == 0.0
 
     @pytest.mark.asyncio
     async def test_process_batch_with_order_async_propagates_cancellation(
