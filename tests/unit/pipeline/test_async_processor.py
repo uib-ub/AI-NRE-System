@@ -2103,6 +2103,53 @@ class TestAsyncProcessorHelpers:
         assert "Batch 3/6 (ID: batch_123): in_progress" in caplog.text
         assert "Error in user progress callback: callback failed" in caplog.text
 
+    @pytest.mark.parametrize(
+        "total_batches", [None, 6], ids=["unknown-total", "known-total"]
+    )
+    @pytest.mark.parametrize(
+        "with_user_callback", [False, True], ids=["no-callback", "with-callback"]
+    )
+    def test_create_batch_progress_callback_handles_optional_inputs(
+        self,
+        make_async_processor: AsyncProcessorProbeFactory,
+        caplog: pytest.LogCaptureFixture,
+        mocker: MockerFixture,
+        total_batches: int | None,
+        with_user_callback: bool,
+    ) -> None:
+        """Default absent counts to zero and forward progress when a callback exists."""
+        async_processor, _ = make_async_processor()
+
+        user_callback = mocker.Mock()
+
+        callback = async_processor.create_batch_progress_callback(
+            batch_num=3,
+            total_batches=total_batches,
+            user_callback=user_callback if with_user_callback else None,
+        )
+
+        progress = BatchProgress(
+            batch_num=3,
+            batch_id="batch_123",
+            status=BatchStatus.IN_PROGRESS,
+            elapsed_time=9.5,
+            request_counts={},
+            created_at="2026-01-01T00:00:00Z",
+            expires_at="2026-01-02T00:00:00Z",
+        )
+
+        with caplog.at_level(logging.DEBUG):
+            callback(progress)
+
+        batch_label = "Batch 3" if total_batches is None else "Batch 3/6"
+        assert f"{batch_label} (ID: batch_123): in_progress" in caplog.text
+        assert "Processing: 0, Succeeded: 0, Errored: 0" in caplog.text
+        assert "Error in user progress callback" not in caplog.text
+        if with_user_callback:
+            user_callback.assert_called_once_with(progress)
+        else:
+            user_callback.assert_not_called()
+
     def test_create_failed_result_formats_record_id_and_error_message(
         self,
         make_async_processor: AsyncProcessorProbeFactory,
