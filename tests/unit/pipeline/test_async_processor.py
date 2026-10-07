@@ -1940,15 +1940,13 @@ class TestIndividualAsyncProcessing:
         mocker: MockerFixture,
         interruption: str,
     ) -> None:
-        """Await child cleanup before propagating input failure or cancellation."""
+        """Drain a started record task before propagating input failure or cancellation."""
         async_processor, context = make_async_processor(
             chunk_size=3, max_concurrent_individual=1
         )
         stats = AsyncProcessingStats()
         child_started = asyncio.Event()
         reading = asyncio.Event()
-        cleanup_started = asyncio.Event()
-        release_cleanup = asyncio.Event()
         child_cleaned_up = asyncio.Event()
         child_tasks: list[asyncio.Task[Any]] = []
         failure = RuntimeError("reader failed after the first record")
@@ -1961,8 +1959,6 @@ class TestIndividualAsyncProcessing:
             try:
                 await asyncio.Future[None]()
             finally:
-                cleanup_started.set()
-                await release_cleanup.wait()
                 child_cleaned_up.set()
             raise AssertionError("The record task should have been cancelled")
 
@@ -1991,18 +1987,14 @@ class TestIndividualAsyncProcessing:
             await asyncio.wait_for(reading.wait(), timeout=2.0)
             if interruption == "parent-cancel":
                 parent.cancel()
-            await asyncio.wait_for(cleanup_started.wait(), timeout=2.0)
-            assert not parent.done()
-            release_cleanup.set()
-
-            if interruption == "reader-error":
+                with pytest.raises(asyncio.CancelledError):
+                    await asyncio.wait_for(parent, timeout=2.0)
+            else:
                 with pytest.raises(ApplicationError) as exc_info:
                     await asyncio.wait_for(parent, timeout=2.0)
                 assert exc_info.value.__cause__ is failure
-            else:
-                with pytest.raises(asyncio.CancelledError):
-                    await asyncio.wait_for(parent, timeout=2.0)
             assert len(child_tasks) == 1
+            assert child_tasks[0].done()
             assert child_tasks[0].cancelled()
             assert child_cleaned_up.is_set()
             assert stats.total_records == 1
@@ -2010,7 +2002,6 @@ class TestIndividualAsyncProcessing:
             assert stats.failed_records == 0
             assert stats.results == []
         finally:
-            release_cleanup.set()
             parent.cancel()
             for task in child_tasks:
                 task.cancel()
