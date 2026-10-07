@@ -806,54 +806,45 @@ class AsyncProcessor:
         # return_exceptions=True ensures all tasks complete even if some fail
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # If any child was cancelled, propagate cancellation before entering try block
+        # Propagate child cancellation before updating this chunk's statistics.
         if any(isinstance(r, asyncio.CancelledError) for r in results):
             raise asyncio.CancelledError
 
-        try:
-            # Process results in the same order as input
-            for i, result in enumerate(results):
-                # Get original record by index and extract brevid and bindnr
-                brevid = chunk_records[i].get("Brevid", "unknown")
-                bindnr = chunk_records[i].get("Bindnr", "unknown")
+        # Process results in the same order as input
+        for i, result in enumerate(results):
+            # Get original record by index and extract brevid and bindnr
+            brevid = chunk_records[i].get("Brevid", "unknown")
+            bindnr = chunk_records[i].get("Bindnr", "unknown")
 
-                # Any other exception => convert to failed ProcessingResult
-                if isinstance(result, Exception):
-                    # Handle failed task
-                    stats.failed_records += 1
-                    # Create a synthetic failed ProcessingResult for consistency
-                    failed_result = self._create_failed_result(brevid, result, bindnr)
-                    stats.results.append(failed_result)
-                    logging.error(
-                        "Task failed for Brevid %s with exception: %s",
-                        brevid,
-                        result,
-                    )
-                    continue
+            # Any other exception => convert to failed ProcessingResult
+            if isinstance(result, Exception):
+                # Handle failed task
+                stats.failed_records += 1
+                # Create a synthetic failed ProcessingResult for consistency
+                failed_result = self._create_failed_result(brevid, result, bindnr)
+                stats.results.append(failed_result)
+                logging.error(
+                    "Task failed for Brevid %s with exception: %s",
+                    brevid,
+                    result,
+                )
+                continue
 
-                # Handle successful task
-                result = cast("ProcessingResult", result)
-                stats.results.append(result)
-                if result.success:
-                    stats.processed_records += 1
-                else:
-                    stats.failed_records += 1
-                    logging.warning(
-                        "Record %s and Brevid %s failed: %s",
-                        result.record_id,
-                        result.brevid,
-                        result.error_message,
-                    )
+            # Handle successful task
+            result = cast("ProcessingResult", result)
+            stats.results.append(result)
+            if result.success:
+                stats.processed_records += 1
+            else:
+                stats.failed_records += 1
+                logging.warning(
+                    "Record %s and Brevid %s failed: %s",
+                    result.record_id,
+                    result.brevid,
+                    result.error_message,
+                )
 
-            logging.info("Processed chunk: %d tasks completed", len(results))
-        except asyncio.CancelledError:
-            logging.debug("Processing of task chunk cancelled")
-            raise
-        except Exception:
-            logging.exception("Error processing task chunk")
-            # Update stats for failed chunk
-            stats.failed_records += len(tasks)
-            raise
+        logging.info("Processed chunk: %d tasks completed", len(results))
 
     async def _fallback_to_individual_async_streaming(
         self,
