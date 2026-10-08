@@ -17,6 +17,7 @@ from ai_ner_system.pipeline.stats import (
     AsyncProcessingStats,
     FailedBatchInfo,
 )
+from ai_ner_system.processing import ValidationError
 
 from .conftest import (
     AsyncBatchOutcome,
@@ -1836,6 +1837,30 @@ class TestIndividualAsyncProcessing:
             await async_processor.process_records_individual_async(stats)
 
         assert exc.value.__cause__ is failure
+
+    @pytest.mark.asyncio
+    async def test_process_records_individual_async_counts_conversion_failure_once(
+        self,
+        make_async_processor: AsyncProcessorProbeFactory,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Preserve the conversion error without counting its failed record twice."""
+        record: Record = {"Bindnr": "1", "Brevid": "", "Tekst": "test text"}
+        async_processor, context = make_async_processor(chunk_size=2)
+        stats = AsyncProcessingStats()
+        patch_async_records(monkeypatch, async_processor, [record])
+
+        with pytest.raises(ApplicationError) as exc_info:
+            await async_processor.process_records_individual_async(stats)
+
+        log.debug("Exception: %s", exc_info.value)
+
+        assert isinstance(exc_info.value.__cause__, ValidationError)
+        assert context.processor.async_record_calls == [record]
+        assert stats.total_records == 1
+        assert stats.processed_records == 0
+        assert stats.failed_records == 1
+        assert stats.results == []
 
     @pytest.mark.asyncio
     async def test_process_records_individual_async_cancels_active_chunk(
