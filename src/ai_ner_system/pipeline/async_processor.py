@@ -19,7 +19,7 @@ from ai_ner_system.processing.processor import RecordProcessor
 
 from .stats import ApplicationError, AsyncProcessingStats, FailedBatchInfo
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from argparse import Namespace
     from collections.abc import AsyncIterator, Callable
 
@@ -351,6 +351,7 @@ class AsyncProcessor:
         except asyncio.CancelledError:
             # Cancel & drain all children, then propagate
             for task in batch_tasks.values():
+                logging.debug("Cancelling batch task %s", task.get_name())
                 task.cancel("streaming cancelled by user")
             await asyncio.gather(*batch_tasks.values(), return_exceptions=True)
             logging.debug("Async streaming processing cancelled")
@@ -562,7 +563,7 @@ class AsyncProcessor:
             # Tries to flush only the next expected batch
             await self._flush_queued_batch_results_async(stats)
         else:
-            # Standard mode: accumulate all results in memory
+            # Standard mode: accumulate all completed results in memory
             # Add results in batch order (they're already in record order within batch)
             if batch_result.results:
                 stats.results.extend(batch_result.results)
@@ -782,6 +783,11 @@ class AsyncProcessor:
             raise ApplicationError(
                 f"Individual async streaming processing failed: {e}",
             ) from e
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _process_task_chunk(
         self,
@@ -800,54 +806,45 @@ class AsyncProcessor:
         # return_exceptions=True ensures all tasks complete even if some fail
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # If any child was cancelled, propagate cancellation before entering try block
+        # Propagate child cancellation before updating this chunk's statistics.
         if any(isinstance(r, asyncio.CancelledError) for r in results):
             raise asyncio.CancelledError
 
-        try:
-            # Process results in the same order as input
-            for i, result in enumerate(results):
-                # Get original record by index and extract brevid and bindnr
-                brevid = chunk_records[i].get("Brevid", "unknown")
-                bindnr = chunk_records[i].get("Bindnr", "unknown")
+        # Process results in the same order as input
+        for i, result in enumerate(results):
+            # Get original record by index and extract brevid and bindnr
+            brevid = chunk_records[i].get("Brevid", "unknown")
+            bindnr = chunk_records[i].get("Bindnr", "unknown")
 
-                # Any other exception => convert to failed ProcessingResult
-                if isinstance(result, Exception):
-                    # Handle failed task
-                    stats.failed_records += 1
-                    # Create a synthetic failed ProcessingResult for consistency
-                    failed_result = self._create_failed_result(brevid, result, bindnr)
-                    stats.results.append(failed_result)
-                    logging.error(
-                        "Task failed for Brevid %s with exception: %s",
-                        brevid,
-                        result,
-                    )
-                    continue
+            # Any other exception => convert to failed ProcessingResult
+            if isinstance(result, Exception):
+                # Handle failed task
+                stats.failed_records += 1
+                # Create a synthetic failed ProcessingResult for consistency
+                failed_result = self._create_failed_result(brevid, result, bindnr)
+                stats.results.append(failed_result)
+                logging.error(
+                    "Task failed for Brevid %s with exception: %s",
+                    brevid,
+                    result,
+                )
+                continue
 
-                # Handle successful task
-                result = cast("ProcessingResult", result)
-                stats.results.append(result)
-                if result.success:
-                    stats.processed_records += 1
-                else:
-                    stats.failed_records += 1
-                    logging.warning(
-                        "Record %s and Brevid %s failed: %s",
-                        result.record_id,
-                        result.brevid,
-                        result.error_message,
-                    )
+            # Handle successful task
+            result = cast("ProcessingResult", result)
+            stats.results.append(result)
+            if result.success:
+                stats.processed_records += 1
+            else:
+                stats.failed_records += 1
+                logging.warning(
+                    "Record %s and Brevid %s failed: %s",
+                    result.record_id,
+                    result.brevid,
+                    result.error_message,
+                )
 
-            logging.info("Processed chunk: %d tasks completed", len(results))
-        except asyncio.CancelledError:
-            logging.debug("Processing of task chunk cancelled")
-            raise
-        except Exception:
-            logging.exception("Error processing task chunk")
-            # Update stats for failed chunk
-            stats.failed_records += len(tasks)
-            raise
+        logging.info("Processed chunk: %d tasks completed", len(results))
 
     async def _fallback_to_individual_async_streaming(
         self,
