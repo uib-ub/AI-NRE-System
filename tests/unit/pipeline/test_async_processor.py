@@ -1972,6 +1972,8 @@ class TestIndividualAsyncProcessing:
         stats = AsyncProcessingStats()
         child_started = asyncio.Event()
         reading = asyncio.Event()
+        cleanup_started = asyncio.Event()
+        release_cleanup = asyncio.Event()
         child_cleaned_up = asyncio.Event()
         child_tasks: list[asyncio.Task[Any]] = []
         failure = RuntimeError("reader failed after the first record")
@@ -1984,6 +1986,8 @@ class TestIndividualAsyncProcessing:
             try:
                 await asyncio.Future[None]()
             finally:
+                cleanup_started.set()
+                await release_cleanup.wait()
                 child_cleaned_up.set()
             raise AssertionError("The record task should have been cancelled")
 
@@ -2012,6 +2016,13 @@ class TestIndividualAsyncProcessing:
             await asyncio.wait_for(reading.wait(), timeout=2.0)
             if interruption == "parent-cancel":
                 parent.cancel()
+
+            await asyncio.wait_for(cleanup_started.wait(), timeout=2.0)
+            assert not parent.done()
+            assert not child_cleaned_up.is_set()
+            release_cleanup.set()
+
+            if interruption == "parent-cancel":
                 with pytest.raises(asyncio.CancelledError):
                     await asyncio.wait_for(parent, timeout=2.0)
             else:
@@ -2027,6 +2038,7 @@ class TestIndividualAsyncProcessing:
             assert stats.failed_records == 0
             assert stats.results == []
         finally:
+            release_cleanup.set()
             parent.cancel()
             for task in child_tasks:
                 task.cancel()
@@ -2160,32 +2172,55 @@ class TestIndividualAsyncProcessing:
         assert "unhandled failure" in str(stats.results[1].error_message)
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "cancelled_index", [0, 1], ids=["first-child", "last-child"]
+    )
     async def test_process_task_chunk_propagates_cancellation(
         self,
         make_async_processor: AsyncProcessorProbeFactory,
         sample_records: list[Record],
+        cancelled_index: int,
     ) -> None:
-        """Test any cancelled child task propagates cancellation."""
+        """Propagate any child cancellation without changing accumulated stats."""
         async_processor, _ = make_async_processor()
-        stats = AsyncProcessingStats()
+        previous_result = make_processing_result("previous", "0")
+        stats = AsyncProcessingStats(
+            total_records=3,
+            processed_records=1,
+            results=[previous_result],
+        )
 
-        async def _cancel() -> Any:
+        async def _cancel() -> ProcessingResult:
             raise asyncio.CancelledError
 
-        async def _success() -> Any:
-            return make_processing_result("B2", "1")
+        async def _success(record: Record) -> ProcessingResult:
+            return make_processing_result(record["Brevid"], record["Bindnr"])
 
         tasks = [
-            asyncio.create_task(_cancel()),
-            asyncio.create_task(_success()),
+            asyncio.create_task(
+                _cancel() if index == cancelled_index else _success(record)
+            )
+            for index, record in enumerate(sample_records[:2])
         ]
 
-        with pytest.raises(asyncio.CancelledError):
-            await async_processor.process_task_chunk(
-                tasks,
-                sample_records[:2],
-                stats,
-            )
+        try:
+            with pytest.raises(asyncio.CancelledError):
+                await async_processor.process_task_chunk(
+                    tasks,
+                    sample_records[:2],
+                    stats,
+                )
+
+            assert stats.total_records == 3
+            assert stats.processed_records == 1
+            assert stats.failed_records == 0
+            assert stats.results == [previous_result]
+            assert stats.results[0] is previous_result
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     @pytest.mark.asyncio
     async def test_fallback_to_individual_async_streaming_preserves_order_and_limits_concurrency(
