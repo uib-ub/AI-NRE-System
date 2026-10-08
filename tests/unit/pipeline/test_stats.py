@@ -53,7 +53,6 @@ class TestApplicationError:
         cause = ValueError("Underlying cause")
         with pytest.raises(ApplicationError) as exc_info:
             raise ApplicationError("wrapper") from cause
-        log.debug("Caught ApplicationError: %s", exc_info.value)
         log.debug("Original cause: %s", exc_info.value.__cause__)
         assert exc_info.value.__cause__ is cause
         assert str(exc_info.value) == "wrapper"
