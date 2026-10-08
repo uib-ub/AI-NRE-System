@@ -195,7 +195,7 @@ class ProcessingResult:
     brevid: str
     annotated_text: str = ""
     # Creates NEW EntityRecord list for each instance
-    entities: list[EntityRecord] = field(default_factory=lambda: [])
+    entities: list[EntityRecord] = field(default_factory=list[EntityRecord])
     processing_time: float = 0.0
     success: bool = True
     error_message: str | None = None

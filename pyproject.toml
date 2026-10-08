@@ -106,6 +106,8 @@ ci = [
 [tool.pyright]
 typeCheckingMode = "strict"
 pythonVersion = "3.11"
+venvPath = "."
+venv = ".venv"
 include = ["src", "tests"]
 exclude = [".git", ".venv", "venv", "build", "dist", ".mypy_cache", ".pytest_cache", "**/__pycache__"]
 useLibraryCodeForTypes = true

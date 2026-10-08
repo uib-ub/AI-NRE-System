@@ -13,6 +13,9 @@
       }
   },
 
+  // Python interpreter — pin to the project venv so Pylance always resolves packages
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+
   // Pylance for IDE smarts + type checking
   "python.languageServer": "Pylance",
   // typeCheckingMode is configured in pyproject.toml

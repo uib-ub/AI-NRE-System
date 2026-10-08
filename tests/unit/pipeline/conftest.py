@@ -20,7 +20,6 @@ if TYPE_CHECKING:
 
     from ai_ner_system.llm import BatchProgress
 
-
 Record: TypeAlias = dict[str, str]
 ProcessorResult: TypeAlias = tuple[list[str], list[str]]
 ProcessorOutcome: TypeAlias = ProcessorResult | Exception
@@ -28,52 +27,12 @@ AsyncRecordOutcome: TypeAlias = ProcessingResult | Exception
 AsyncBatchOutcome: TypeAlias = BatchProcessingResult | Exception
 
 
-def _record_results_factory() -> dict[str, ProcessorOutcome]:
-    """Create an empty per-record outcome mapping with concrete types."""
-    return {}
-
-
-def _batch_results_factory() -> dict[tuple[str, ...], ProcessorOutcome]:
-    """Create an empty per-batch outcome mapping with concrete types."""
-    return {}
-
-
-def _record_calls_factory() -> list[Record]:
-    """Create an empty record call history list with concrete types."""
-    return []
-
-
-def _batch_calls_factory() -> list[list[Record]]:
-    """Create an empty batch call history list with concrete types."""
-    return []
-
-
-def _async_record_results_factory() -> dict[str, AsyncRecordOutcome]:
-    """Create an empty async per-record outcome mapping with concrete types."""
-    return {}
-
-
-def _async_batch_results_factory() -> dict[tuple[str, ...], AsyncBatchOutcome]:
-    """Create an empty async per-batch outcome mapping with concrete types."""
-    return {}
-
-
-def _writer_calls_factory() -> list[WriterCall]:
-    """Create an empty writer call history list with concrete types."""
-    return []
-
-
-def _async_batch_calls_factory() -> list[FakeAsyncBatchCall]:
-    """Create an empty async batch call history list with concrete types."""
-    return []
-
-
-def make_record(brevid: str, bindnr: str) -> Record:
+def make_record(bindnr: str, brevid: str) -> Record:
     """Create a deterministic fake CSV record for pipeline tests."""
     return {
         "Bindnr": bindnr,
         "Brevid": brevid,
-        "Tekst": f"Text for {brevid}",
+        "Tekst": f"Fake text for Bindnr {bindnr} and Brevid {brevid}",
     }
 
 
@@ -100,11 +59,11 @@ def make_processing_result(
     brevid: str,
     bindnr: str,
     *,
-    success: bool = True,
     annotated_text: str | None = None,
     entities: list[EntityRecord] | None = None,
-    error_message: str | None = None,
     processing_time: float = 0.25,
+    success: bool = True,
+    error_message: str | None = None,
 ) -> ProcessingResult:
     """Create a deterministic async ProcessingResult for tests."""
     return ProcessingResult(
@@ -139,10 +98,43 @@ def make_batch_processing_result(
 
 
 @dataclass
-class FakeReader:
-    """Minimal CSV reader double for SyncProcessor tests.
+class WriterCall:
+    """Snapshot of one output-writer invocation made through ``FakeWriter``.
 
-    Yields the configured records in order and a fixed file path.
+    ``FakeWriter`` stores these records so tests can verify the output path,
+    header, and rows passed by ``AsyncProcessor`` without performing filesystem
+    I/O. This class only represents an observed call; it is not itself a mock or
+    fake dependency.
+    """
+
+    file_path: str
+    header: str
+    rows: list[str]
+
+
+@dataclass
+class AsyncBatchCall:
+    """Snapshot of one asynchronous batch-processor invocation.
+
+    ``FakeProcessor`` stores these records so tests can verify that
+    ``AsyncProcessor`` forwards the records, batch number, progress callback,
+    wait time, and polling interval to ``process_batch_async``. This class only
+    represents an observed call; it is not itself a fake processor.
+    """
+
+    records: list[Record]
+    batch_num: int
+    progress_callback: Callable[[BatchProgress], None] | None
+    max_wait_time: float | None = None
+    poll_interval: float | None = None
+
+
+@dataclass
+class FakeReader:
+    """Minimal CSV reader double shared by sync and async pipeline tests.
+
+    It provides the subset of ``CSVReader`` behavior required by the pipeline
+    processors: a file path and an ordered record stream.
 
     Example usage:
         reader = FakeReader(records=[
@@ -165,8 +157,8 @@ class FakeReader:
 class FakeWriter:
     """Writer double that records incremental output calls."""
 
-    text_calls: list[WriterCall] = field(default_factory=_writer_calls_factory)
-    metadata_calls: list[WriterCall] = field(default_factory=_writer_calls_factory)
+    text_calls: list[WriterCall] = field(default_factory=list[WriterCall])
+    metadata_calls: list[WriterCall] = field(default_factory=list[WriterCall])
     text_error: Exception | None = None
     metadata_error: Exception | None = None
 
@@ -191,7 +183,7 @@ class FakeWriter:
         self,
         file_path: str,
         header: str,
-        metadata: list[str],
+        metadata_lines: list[str],
     ) -> None:
         """Record appended metadata output or raise a configured failure."""
         if self.metadata_error is not None:
@@ -200,18 +192,9 @@ class FakeWriter:
             WriterCall(
                 file_path=file_path,
                 header=header,
-                rows=list(metadata),
+                rows=list(metadata_lines),
             ),
         )
-
-
-@dataclass
-class WriterCall:
-    """Captured output-writer invocation."""
-
-    file_path: str
-    header: str
-    rows: list[str]
 
 
 @dataclass
@@ -221,19 +204,8 @@ class FakeLLMClient:
     supports_async_batch_value: bool = True
 
     def supports_async_batch(self) -> bool:
-        """Return whether async batch processing is supported."""
+        """Return whether the client supports async batch processing."""
         return self.supports_async_batch_value
-
-
-@dataclass
-class FakeAsyncBatchCall:
-    """Captured async batch processor invocation."""
-
-    records: list[Record]
-    batch_num: int
-    progress_callback: Callable[[BatchProgress], None] | None
-    max_wait_time: float | None
-    poll_interval: float | None
 
 
 @dataclass
@@ -241,22 +213,22 @@ class FakeProcessor:
     """Configurable processing double for record and batch workflows."""
 
     record_results: dict[str, ProcessorOutcome] = field(
-        default_factory=_record_results_factory,
+        default_factory=dict[str, ProcessorOutcome],
     )
     batch_results: dict[tuple[str, ...], ProcessorOutcome] = field(
-        default_factory=_batch_results_factory,
+        default_factory=dict[tuple[str, ...], ProcessorOutcome],
     )
     async_record_results: dict[str, AsyncRecordOutcome] = field(
-        default_factory=_async_record_results_factory,
+        default_factory=dict[str, AsyncRecordOutcome],
     )
     async_batch_results: dict[tuple[str, ...], AsyncBatchOutcome] = field(
-        default_factory=_async_batch_results_factory,
+        default_factory=dict[tuple[str, ...], AsyncBatchOutcome],
     )
-    record_calls: list[Record] = field(default_factory=_record_calls_factory)
-    batch_calls: list[list[Record]] = field(default_factory=_batch_calls_factory)
-    async_record_calls: list[Record] = field(default_factory=_record_calls_factory)
-    async_batch_calls: list[FakeAsyncBatchCall] = field(
-        default_factory=_async_batch_calls_factory,
+    record_calls: list[Record] = field(default_factory=list[Record])
+    batch_calls: list[list[Record]] = field(default_factory=list[list[Record]])
+    async_record_calls: list[Record] = field(default_factory=list[Record])
+    async_batch_calls: list[AsyncBatchCall] = field(
+        default_factory=list[AsyncBatchCall],
     )
 
     def process_record(self, record: Record) -> ProcessorResult:
@@ -309,7 +281,7 @@ class FakeProcessor:
     ) -> BatchProcessingResult:
         """Return or raise the configured async per-batch outcome."""
         self.async_batch_calls.append(
-            FakeAsyncBatchCall(
+            AsyncBatchCall(
                 records=list(records),
                 batch_num=batch_num,
                 progress_callback=progress_callback,
@@ -352,10 +324,15 @@ class FakeProcessor:
 
 @dataclass
 class FakeMainProcessor:
-    """Protocol-shaped main processor double for SyncProcessor tests."""
+    """Processor-context double shared by sync and async pipeline tests.
 
-    ANNOTATED_HEADER: ClassVar[str] = "Annotated Text"
-    METADATA_HEADER: ClassVar[str] = "Metadata"
+    It composes the fake dependencies and configuration attributes required by
+    ``ProcessorContext`` so tests can construct either pipeline processor
+    without initializing the real application.
+    """
+
+    ANNOTATED_HEADER: ClassVar[str] = "test-annotated-header"
+    METADATA_HEADER: ClassVar[str] = "test-metadata-header"
 
     args: Namespace
     reader: FakeReader
@@ -372,8 +349,8 @@ class FakeMainProcessor:
 def sample_records() -> list[Record]:
     """Provide a small deterministic record set for pipeline tests."""
     return [
-        make_record("B1", "1"),
-        make_record("B2", "1"),
-        make_record("B3", "2"),
-        make_record("B4", "2"),
+        make_record(bindnr="1", brevid="B1"),
+        make_record(bindnr="1", brevid="B2"),
+        make_record(bindnr="2", brevid="B3"),
+        make_record(bindnr="2", brevid="B4"),
     ]
