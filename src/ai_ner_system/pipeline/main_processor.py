@@ -25,7 +25,7 @@ from .async_processor import AsyncProcessor
 from .stats import ApplicationError, AsyncProcessingStats
 from .sync_processor import SyncProcessor
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     import argparse
     from collections.abc import Callable
 
@@ -472,7 +472,7 @@ class MedievalTextProcessor:
             progress_callback: Optional callback for batch progress updates.
                 Called with BatchProgress objects during processing.
             timeout_seconds: Optional overall timeout in seconds for the entire processing.
-                Defaults to DEFAULT_ASYNC_TIMEOUT (24 hours). Set to None for no timeout.
+                Defaults to DEFAULT_ASYNC_TIMEOUT (24 hours) when None.
             max_batch_wait_time: Maximum time in seconds to wait for individual batch completion.
                 Passed to AsyncProcessor. Uses AsyncProcessor defaults if not specified.
             poll_interval: Time in seconds between batch progress checks.
