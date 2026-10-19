@@ -49,19 +49,19 @@ jobs:
       - name: Run Ruff linter
         run: |
           echo "::group::Ruff Check"
-          uv run --no-syncruff check src/ tests/ --output-format=github
+          uv run --no-sync ruff check src/ tests/ --output-format=github
           echo "::endgroup::"
 
       - name: Run Ruff formatter check
         run: |
           echo "::group::Ruff Format Check"
-          uv run --no-syncruff format --check src/ tests/
+          uv run --no-sync ruff format --check src/ tests/
           echo "::endgroup::"
 
       - name: Run MyPy type checker
         run: |
           echo "::group::MyPy Type Checking"
-          uv run --no-syncmypy src/ --show-error-codes --pretty
+          uv run --no-sync mypy src/ --show-error-codes --pretty
           echo "::endgroup::"
 
   # Job 2: Unit Testing with Coverage
@@ -100,7 +100,7 @@ jobs:
       - name: Run tests with coverage
         run: |
           echo "::group::Running Unit Tests with Coverage"
-          uv run --no-syncpytest tests/unit/ \
+          uv run --no-sync pytest tests/unit/ \
             -rav \
             --cov=src/ai_ner_system \
             --cov-report=html:htmlcov \
