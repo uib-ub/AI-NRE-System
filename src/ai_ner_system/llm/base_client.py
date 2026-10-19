@@ -339,7 +339,7 @@ class Client(ABC):
             if progress_callback is not None:
                 try:
                     progress_callback(progress)
-                except Exception as e:  # noqa: BLE001 — isolate user callback failures
+                except Exception as e:  # isolate user callback failures
                     # Catch all exceptions from user-provided callback to prevent
                     # callback errors from breaking batch processing
                     logging.debug(

@@ -180,6 +180,7 @@ unfixable = []
     "S105",    # Allow hardcoded dummy secrets/tokens in tests
     "SLF001",  # Permit access to private members in tests
     "FBT001",  # Allow boolean positional args in tests (e.g., parametrizations)
+    "PLR0917", # Allow many positional args in tests (pytest fixtures are positional)
 ]
 
 # Example files don't need full documentation
