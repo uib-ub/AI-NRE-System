@@ -120,16 +120,13 @@ Abstract client interface and concrete implementations.
 ### Install Dependencies
 
 ```bash
-# Default local development environment
+# Default local development environment (project + dev group)
 uv sync
 
-# With selected development dependency groups
-uv sync --group lint --group test
+# Only selected dependency groups (as CI does)
+uv sync --no-default-groups --group lint --group test
 
-# With documentation dependencies
-uv sync --group docs
-
-# All dependency groups (lint, test, security, docs, profiling, dev)
+# All dependency groups (lint, test, security, dev)
 uv sync --all-groups
 ```
 
@@ -138,9 +135,7 @@ Development dependency groups:
 - **lint** — ruff, mypy, codespell, vulture, validate-pyproject
 - **test** — pytest, pytest-cov, pytest-asyncio, pytest-mock, allure-pytest
 - **security** — bandit, safety
-- **docs** — sphinx, sphinx-rtd-theme, myst-parser
-- **profiling** — memory-profiler, py-spy, line-profiler
-- **dev** — lint, test, docs, IPython, Jupyter, pre-commit, build, twine
+- **dev** — lint, test, pre-commit
 
 ### Updating Dependencies After Security Alerts
 
@@ -171,7 +166,7 @@ rg -n "anthropic|cryptography" pyproject.toml uv.lock src tests
 uv lock --upgrade-package anthropic --upgrade-package cryptography
 
 # 4. Sync the environment if needed
-uv sync --all-extras
+uv sync --all-groups
 
 # 5. Run targeted verification
 uv run pytest tests/unit/llm/test_claude_client.py \

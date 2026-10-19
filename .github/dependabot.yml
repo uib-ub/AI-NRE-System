@@ -1,0 +1,39 @@
+version: 2
+updates:
+  # Python dependencies (pyproject.toml + uv.lock)
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Oslo"
+    cooldown:
+      default-days: 7 # skip releases younger than a week
+    groups:
+      python-minor-patch: # one PR for all minor/patch bumps
+        patterns: ["*"]
+        # ruff is 0.x, so its rule/format changes ship as "minor" bumps;
+        # keep it out of the group so a lint break doesn't block the rest
+        exclude-patterns: ["ruff"]
+        update-types: ["minor", "patch"]
+      # major bumps (and ruff) fall through and get one PR each
+
+  # Actions used in .github/workflows/*.yml
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  # Hook revs in .pre-commit-config.yaml
+  - package-ecosystem: "pre-commit"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    groups:
+      pre-commit-hooks:
+        patterns: ["*"]
