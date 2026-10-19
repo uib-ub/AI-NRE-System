@@ -134,7 +134,7 @@ Development dependency groups:
 
 - **lint** — ruff, mypy, codespell, vulture, validate-pyproject
 - **test** — pytest, pytest-cov, pytest-asyncio, pytest-mock, allure-pytest
-- **security** — bandit, safety
+- **security** — bandit
 - **dev** — lint, test, pre-commit
 
 ### Updating Dependencies After Security Alerts
@@ -243,7 +243,7 @@ GitHub Actions workflows in `.github/workflows/`:
   1. **Code Quality** (Python 3.11): Ruff linter, Ruff format checker, and MyPy type checking.
   2. **Unit Tests** (Python 3.11 / 3.12 / 3.13 matrix): Runs pytest with coverage reporting (minimum 10% threshold) and uploads results to Codecov.
 
-- **`security.yml`** — Runs weekly (Monday 9:00 UTC) and on pushes affecting `src/`, `pyproject.toml`, or `uv.lock`. Runs Bandit security scanning (fails on high-severity issues) and Safety vulnerability checks. Reports are uploaded as artifacts with 30-day retention.
+- **`security.yml`** — Runs weekly (Monday 9:00 UTC) and on pushes affecting `src/`, `pyproject.toml`, or `uv.lock`. Runs Bandit security scanning (fails on high-severity issues). Dependency vulnerabilities are reported by Dependabot alerts. Reports are uploaded as artifacts with 30-day retention.
 
 - **`codeql.yml`** — Runs weekly (Monday 9:00 UTC), on push/PR to `main`/`master` affecting `src/` or `pyproject.toml`, and on manual dispatch. Performs GitHub CodeQL static analysis for Python using the `security-and-quality` query suite to detect vulnerabilities and code quality issues.
 

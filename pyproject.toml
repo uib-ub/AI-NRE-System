@@ -338,7 +338,6 @@ test = [
 ]
 security = [
     "bandit>=1.7.0",
-    "safety>=3.0.0",
 ]
 dev = [
     {include-group = "lint"},

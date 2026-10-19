@@ -28,7 +28,7 @@ concurrency:
 
 jobs:
   security:
-    name: Bandit and Safety
+    name: Bandit
     runs-on: ubuntu-latest
     env:
       UV_PYTHON: "3.11"  # Overrides .python-version for uv sync / uv run
@@ -71,13 +71,6 @@ jobs:
             -o reports/bandit.json \
             -ll \
             || true
-          echo "::endgroup::"
-
-      - name: Run Safety (JSON report)
-        continue-on-error: true
-        run: |
-          echo "::group::Safety Vulnerability Check"
-          uv run --no-sync safety scan --disable-optional-telemetry --output json > reports/safety.json || true
           echo "::endgroup::"
 
       - name: Upload raw reports as workflow artifacts

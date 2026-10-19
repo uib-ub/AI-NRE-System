@@ -28,7 +28,7 @@ repository.
 ```bash
 bash scripts/utils/test-security.sh
 ```
-Runs Bandit and Safety checks to verify security scanning configuration before CI/CD.
+Runs Bandit checks to verify security scanning configuration before CI/CD.
 
 ## Making Scripts Executable
 
