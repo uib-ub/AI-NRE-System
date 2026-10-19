@@ -958,7 +958,7 @@ class AsyncProcessor:
             if user_callback:
                 try:
                     user_callback(progress)
-                except Exception as e:  # noqa: BLE001 - user callback is untrusted code
+                except Exception as e:  # user callback is untrusted code
                     # Robustness - batch processing continues even if user callbacks fail
                     logging.warning(
                         "Error in user progress callback: %s",
