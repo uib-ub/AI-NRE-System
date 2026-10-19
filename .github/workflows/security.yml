@@ -28,8 +28,10 @@ concurrency:
 
 jobs:
   security:
-    name: Bandit and Safety
+    name: Bandit
     runs-on: ubuntu-latest
+    env:
+      UV_PYTHON: "3.11"  # Overrides .python-version for uv sync / uv run
 
     permissions:
       contents: read
@@ -52,9 +54,10 @@ jobs:
         with:
           python-version: "3.11"
 
+      # Install exactly what uv.lock pins (fails if the lockfile is out of date)
       - name: Install project and security tools
         run: |
-          uv pip install --system -e ".[security]"
+          uv sync --locked --no-default-groups --group security
 
       - name: Create report directory
         run: |
@@ -63,18 +66,11 @@ jobs:
       - name: Run Bandit (JSON report)
         run: |
           echo "::group::Bandit Security Scan"
-          uv run bandit -r src/ \
+          uv run --no-sync bandit -r src/ \
             -f json \
             -o reports/bandit.json \
             -ll \
             || true
-          echo "::endgroup::"
-
-      - name: Run Safety (JSON report)
-        continue-on-error: true
-        run: |
-          echo "::group::Safety Vulnerability Check"
-          uv run safety scan --disable-optional-telemetry --output json > reports/safety.json || true
           echo "::endgroup::"
 
       - name: Upload raw reports as workflow artifacts

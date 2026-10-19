@@ -29,29 +29,10 @@ else
 fi
 
 echo ""
-
-# Test Safety
-echo "2️⃣  Testing Safety..."
-uv run safety check \
-    --save-json safety-report.json \
-    --output json \
-    || true  # Don't fail on vulnerabilities found
-
-if [ -f safety-report.json ]; then
-    echo "✅ Safety report created: safety-report.json"
-    SIZE=$(wc -c < safety-report.json)
-    echo "   File size: $SIZE bytes"
-else
-    echo "❌ Safety report not found"
-    exit 1
-fi
-
-echo ""
 echo "🎉 All security scanning commands work correctly!"
 echo ""
 echo "📊 Summary:"
 echo "   - bandit-report.json: $(wc -c < bandit-report.json) bytes"
-echo "   - safety-report.json: $(wc -c < safety-report.json) bytes"
 echo ""
 echo "💡 Next steps:"
 echo "   1. Review the reports for any critical issues"

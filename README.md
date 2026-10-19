@@ -120,16 +120,13 @@ Abstract client interface and concrete implementations.
 ### Install Dependencies
 
 ```bash
-# Default local development environment
+# Default local development environment (project + dev group)
 uv sync
 
-# With selected development dependency groups
-uv sync --group lint --group test
+# Only selected dependency groups (as CI does)
+uv sync --no-default-groups --group lint --group test
 
-# With documentation dependencies
-uv sync --group docs
-
-# All dependency groups (lint, test, security, docs, profiling, dev)
+# All dependency groups (lint, test, security, dev)
 uv sync --all-groups
 ```
 
@@ -137,10 +134,8 @@ Development dependency groups:
 
 - **lint** — ruff, mypy, codespell, vulture, validate-pyproject
 - **test** — pytest, pytest-cov, pytest-asyncio, pytest-mock, allure-pytest
-- **security** — bandit, safety
-- **docs** — sphinx, sphinx-rtd-theme, myst-parser
-- **profiling** — memory-profiler, py-spy, line-profiler
-- **dev** — lint, test, docs, IPython, Jupyter, pre-commit, build, twine
+- **security** — bandit
+- **dev** — lint, test, pre-commit
 
 ### Updating Dependencies After Security Alerts
 
@@ -171,7 +166,7 @@ rg -n "anthropic|cryptography" pyproject.toml uv.lock src tests
 uv lock --upgrade-package anthropic --upgrade-package cryptography
 
 # 4. Sync the environment if needed
-uv sync --all-extras
+uv sync --all-groups
 
 # 5. Run targeted verification
 uv run pytest tests/unit/llm/test_claude_client.py \
@@ -248,7 +243,7 @@ GitHub Actions workflows in `.github/workflows/`:
   1. **Code Quality** (Python 3.11): Ruff linter, Ruff format checker, and MyPy type checking.
   2. **Unit Tests** (Python 3.11 / 3.12 / 3.13 matrix): Runs pytest with coverage reporting (minimum 10% threshold) and uploads results to Codecov.
 
-- **`security.yml`** — Runs weekly (Monday 9:00 UTC) and on pushes affecting `src/`, `pyproject.toml`, or `uv.lock`. Runs Bandit security scanning (fails on high-severity issues) and Safety vulnerability checks. Reports are uploaded as artifacts with 30-day retention.
+- **`security.yml`** — Runs weekly (Monday 9:00 UTC) and on pushes affecting `src/`, `pyproject.toml`, or `uv.lock`. Runs Bandit security scanning (fails on high-severity issues). Dependency vulnerabilities are reported by Dependabot alerts. Reports are uploaded as artifacts with 30-day retention.
 
 - **`codeql.yml`** — Runs weekly (Monday 9:00 UTC), on push/PR to `main`/`master` affecting `src/` or `pyproject.toml`, and on manual dispatch. Performs GitHub CodeQL static analysis for Python using the `security-and-quality` query suite to detect vulnerabilities and code quality issues.
 
