@@ -40,7 +40,7 @@ def setup_test_logging() -> None:
     )
     # Reduce noise from external libraries
     logging.getLogger("anthropic").setLevel(logging.WARNING)
-    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpx2").setLevel(logging.WARNING)
 
 
 _ENV_KEYS_TO_CLEAR: tuple[str, ...] = (

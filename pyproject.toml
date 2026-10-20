@@ -336,6 +336,8 @@ test = [
     "pytest-mock>=3.12.0",
     # Allure reporting
     "allure-pytest>=2.13.0",
+    # HTTP request/response types for faking Anthropic API errors
+    "httpx2>=2.14.0",
 ]
 security = [
     "bandit>=1.7.0",
