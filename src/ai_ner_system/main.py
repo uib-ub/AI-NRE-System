@@ -65,7 +65,7 @@ def setup_logging(level: str = "INFO") -> None:
     logging.info("Logging configured (level=%s)", level)
 
     # Set specific loggers to appropriate levels
-    for logger_name in ["anthropic", "httpx", "requests"]:
+    for logger_name in ["anthropic", "httpx2", "requests"]:
         logging.getLogger(logger_name).setLevel(logging.WARNING)
 
 

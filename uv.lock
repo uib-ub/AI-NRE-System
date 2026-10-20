@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -22,6 +22,7 @@ dependencies = [
 dev = [
     { name = "allure-pytest" },
     { name = "codespell" },
+    { name = "httpx2" },
     { name = "mypy" },
     { name = "pre-commit" },
     { name = "pytest" },
@@ -48,6 +49,7 @@ security = [
 ]
 test = [
     { name = "allure-pytest" },
+    { name = "httpx2" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
@@ -67,6 +69,7 @@ requires-dist = [
 dev = [
     { name = "allure-pytest", specifier = ">=2.13.0" },
     { name = "codespell", specifier = ">=2.2.0" },
+    { name = "httpx2", specifier = ">=2.14.0" },
     { name = "mypy", specifier = ">=1.8.0" },
     { name = "pre-commit", specifier = ">=3.0.0" },
     { name = "pytest", specifier = ">=9.0.3" },
@@ -91,6 +94,7 @@ lint = [
 security = [{ name = "bandit", specifier = ">=1.7.0" }]
 test = [
     { name = "allure-pytest", specifier = ">=2.13.0" },
+    { name = "httpx2", specifier = ">=2.14.0" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-asyncio", specifier = ">=0.23.0" },
     { name = "pytest-cov", specifier = ">=5.0.0" },

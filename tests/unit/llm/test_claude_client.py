@@ -16,7 +16,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
 import anthropic
-import httpx
+import httpx2
 import pytest
 
 if TYPE_CHECKING:
@@ -41,15 +41,15 @@ TEST_MODEL = "claude-sonnet-4-20240307"
 TEST_BATCH_ID = "msgbatch_013Zva2CMHLNnXjNJJKqJ2EF"
 
 
-def httpx_request() -> httpx.Request:
-    """Helper to create a dummy httpx.Request for testing."""
-    return httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+def httpx_request() -> httpx2.Request:
+    """Helper to create a dummy httpx2.Request for testing."""
+    return httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
 
 
-def httpx_response(status_code: int) -> httpx.Response:
-    """Helper to create a dummy httpx.Response for testing."""
-    req = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
-    return httpx.Response(status_code=status_code, request=req)
+def httpx_response(status_code: int) -> httpx2.Response:
+    """Helper to create a dummy httpx2.Response for testing."""
+    req = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
+    return httpx2.Response(status_code=status_code, request=req)
 
 
 # =============================================================================
