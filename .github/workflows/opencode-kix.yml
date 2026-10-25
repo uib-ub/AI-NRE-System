@@ -1,0 +1,63 @@
+# opencode (OpenCode 2.1.3) with UiB KIX GLM-5.3, read-only.
+# - Manual run (Actions tab or `gh workflow run`) with a prompt: the answer goes to the run summary.
+# - Pull request review: add the label `kix-review`; the review is posted as a PR comment.
+name: opencode (UiB KIX)
+
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: "Request for GLM-5.3 (read-only)"
+        required: true
+        default: "Connection test only. Run pwd exactly once using the shell tool. Report only the resulting directory."
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: opencode-kix-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  kix:
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'kix-review'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install OpenCode 2.1.3
+        run: npm install --global @opencode/cli@2.1.3
+
+      - name: Run opencode with KIX GLM-5.3
+        env:
+          KIX_API_KEY: ${{ secrets.KIX_API_KEY }}
+          MODE: ${{ github.event_name == 'pull_request' && 'review' || 'prompt' }}
+          PROMPT: ${{ inputs.prompt }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          RESULT_DIR: ${{ runner.temp }}/opencode-kix
+        run: bash .github/opencode-kix/run.sh
+
+      - name: Comment on the pull request
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          ANSWER: ${{ runner.temp }}/opencode-kix/answer.md
+        run: gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file "$ANSWER"
+
+      - name: Keep the output for 7 days
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: opencode-kix-${{ github.run_id }}
+          path: ${{ runner.temp }}/opencode-kix/
+          retention-days: 7
+          if-no-files-found: ignore

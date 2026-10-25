@@ -1,0 +1,182 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "kix/uib/glm-5.3",
+  "share": "disabled",
+  "update": "disable",
+  "providers": {
+    "kix": {
+      "name": "UiB KIX",
+      "env": [
+        "KIX_API_KEY"
+      ],
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": {
+        "baseURL": "https://models.api.uib.no/v1"
+      },
+      "models": {
+        "uib/glm-5.3": {
+          "name": "GLM-5.3 (UiB KIX)",
+          "capabilities": {
+            "tools": true,
+            "input": [
+              "text"
+            ],
+            "output": [
+              "text"
+            ],
+            "reasoning": {
+              "supported": true,
+              "effort": [
+                "low",
+                "high",
+                "max"
+              ]
+            }
+          },
+          "compatibility": {
+            "reasoningField": "reasoning_content"
+          },
+          "settings": {
+            "reasoningEffort": "max"
+          },
+          "limit": {
+            "context": 200000,
+            "output": 32000
+          }
+        }
+      }
+    }
+  },
+  "permissions": [
+    {
+      "action": "edit",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "shell",
+      "resource": "*",
+      "effect": "ask"
+    },
+    {
+      "action": "shell",
+      "resource": "pwd",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "git status *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "git diff *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "git log *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "git show *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "*>*",
+      "effect": "ask"
+    },
+    {
+      "action": "shell",
+      "resource": "git *--output*",
+      "effect": "ask"
+    },
+    {
+      "action": "shell",
+      "resource": "git *--no-index*",
+      "effect": "ask"
+    },
+    {
+      "action": "external_directory",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "execute",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "subagent",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "skill",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "question",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "webfetch",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "websearch",
+      "resource": "*",
+      "effect": "deny"
+    }
+  ],
+  "policies": [
+    {
+      "action": "provider.use",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "provider.use",
+      "resource": "kix",
+      "effect": "allow"
+    },
+    {
+      "action": "tool.use",
+      "resource": "shell:security *",
+      "effect": "deny"
+    },
+    {
+      "action": "tool.use",
+      "resource": "shell:/usr/bin/security *",
+      "effect": "deny"
+    },
+    {
+      "action": "tool.use",
+      "resource": "shell:*find-generic-password*",
+      "effect": "deny"
+    },
+    {
+      "action": "tool.use",
+      "resource": "shell:*KIX_API_KEY*",
+      "effect": "deny"
+    },
+    {
+      "action": "tool.use",
+      "resource": "shell:*GITHUB_TOKEN*",
+      "effect": "deny"
+    },
+    {
+      "action": "tool.use",
+      "resource": "shell:*GH_TOKEN*",
+      "effect": "deny"
+    }
+  ],
+  "plugins": [
+    "./kix-key-guard"
+  ]
+}
