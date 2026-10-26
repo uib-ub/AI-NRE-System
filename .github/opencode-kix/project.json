@@ -1,0 +1,63 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    ".github/opencode-kix/checks.md"
+  ],
+  "permissions": [
+    {
+      "action": "shell",
+      "resource": "uv run --no-sync pytest tests/unit*",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "uv run --no-sync ruff check *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "uv run --no-sync ruff format --check *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "uv run --no-sync mypy *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "uv lock --check",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "uv run --no-sync pytest *--pastebin*",
+      "effect": "deny"
+    },
+    {
+      "action": "shell",
+      "resource": "uv run --no-sync pytest *--basetemp*",
+      "effect": "deny"
+    },
+    {
+      "action": "shell",
+      "resource": "uv run --no-sync ruff *--fix*",
+      "effect": "deny"
+    },
+    {
+      "action": "shell",
+      "resource": "uv run --no-sync ruff *--add-noqa*",
+      "effect": "deny"
+    },
+    {
+      "action": "shell",
+      "resource": "uv run --no-sync mypy *--ins*",
+      "effect": "deny"
+    },
+    {
+      "action": "shell",
+      "resource": "*>*",
+      "effect": "ask"
+    }
+  ]
+}

@@ -1,15 +1,40 @@
 # opencode (OpenCode 2.1.3) with UiB KIX GLM-5.3, read-only.
-# - Manual run (Actions tab or `gh workflow run`) with a prompt: the answer goes to the run summary.
+# - Manual run (Actions tab or `gh workflow run`): a task or your own request; the answer goes to the run summary.
 # - Pull request review: add the label `kix-review`; the review is posted as a PR comment.
+# General: nothing in this file is specific to one repository. A repository's own
+# settings live next to run.sh: project.json, prepare.sh and instruction files.
 name: opencode (UiB KIX)
 
 on:
   workflow_dispatch:
     inputs:
+      task:
+        description: "Task: custom uses the request below; the others use the prompt files in .github/opencode-kix/tasks/"
+        type: choice
+        options:
+          [
+            custom,
+            explain,
+            review,
+            test-gaps,
+            release-notes,
+            security,
+            onboarding,
+          ]
+        default: custom
+      target:
+        description: "Target for the task (optional): a path, module or Git ref"
+        required: false
+        default: ""
       prompt:
-        description: "Request for GLM-5.3 (read-only)"
-        required: true
+        description: "Request for GLM-5.3 (read-only), for the custom task"
+        required: false
         default: "Connection test only. Run pwd exactly once using the shell tool. Report only the resulting directory."
+      effort:
+        description: "Reasoning effort"
+        type: choice
+        options: [max, high, low]
+        default: max
   pull_request:
     types: [labeled]
 
@@ -36,11 +61,19 @@ jobs:
       - name: Install OpenCode 2.1.3
         run: npm install --global @opencode/cli@2.1.3
 
+      # Runs only if the repository has its own prepare.sh. No secrets in this step.
+      - name: Prepare the project
+        if: hashFiles('.github/opencode-kix/prepare.sh') != ''
+        run: bash .github/opencode-kix/prepare.sh
+
       - name: Run opencode with KIX GLM-5.3
         env:
           KIX_API_KEY: ${{ secrets.KIX_API_KEY }}
           MODE: ${{ github.event_name == 'pull_request' && 'review' || 'prompt' }}
+          TASK: ${{ inputs.task }}
+          TARGET: ${{ inputs.target }}
           PROMPT: ${{ inputs.prompt }}
+          EFFORT: ${{ inputs.effort || 'max' }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           RESULT_DIR: ${{ runner.temp }}/opencode-kix
         run: bash .github/opencode-kix/run.sh
