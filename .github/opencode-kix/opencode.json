@@ -186,7 +186,7 @@
   ],
   "agents": {
     "build": {
-      "steps": 20
+      "steps": 50
     }
   }
 }
