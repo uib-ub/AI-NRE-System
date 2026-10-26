@@ -85,6 +85,11 @@
     },
     {
       "action": "shell",
+      "resource": "git describe *",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
       "resource": "*>*",
       "effect": "ask"
     },
@@ -178,5 +183,10 @@
   ],
   "plugins": [
     "./kix-key-guard"
-  ]
+  ],
+  "agents": {
+    "build": {
+      "steps": 20
+    }
+  }
 }
