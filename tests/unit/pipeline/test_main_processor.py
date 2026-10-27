@@ -15,12 +15,16 @@ if TYPE_CHECKING:
 
     from pytest_mock import MockerFixture, MockType
 
+# Tests should not accidentally load .env configuration
 pytestmark = pytest.mark.usefixtures("no_dotenv")
 
 
 @dataclass
 class MainProcessorDependencies:
-    """Mocked constructor boundaries and their configured return values."""
+    """Mocked constructor boundaries and their configured return values.
+
+    "factory" means something called to obtain another object.
+    """
 
     client_factory: MockType
     prompt_factory: MockType
@@ -36,7 +40,11 @@ class MainProcessorDependencies:
 
 
 class MainProcessorFactory(Protocol):
-    """Keyword-only factory for constructing the real main processor."""
+    """Keyword-only factory for constructing the real main processor.
+
+    This protocol describes the interface of the factory returned later.
+    __call__ describes calling an object like a function.
+    """
 
     def __call__(
         self,
