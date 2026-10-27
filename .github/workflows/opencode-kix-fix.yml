@@ -1,0 +1,172 @@
+# opencode (OpenCode 2.1.3) with UiB KIX GLM-5.3: proposes a fix as a draft pull request, for review.
+# - Manual run (Actions tab or `gh workflow run`) with a request.
+# - An issue labelled `kix-fix`: the issue and its comments are the request.
+# The first job has the KIX key: GLM edits files there, but cannot run what it writes.
+# The second job never has the KIX key: it turns the edits into a branch and a draft pull request.
+# For an issue, a third job without the KIX key says on the issue why, if no pull request came of it.
+# General: nothing in this file is specific to one repository.
+name: opencode (UiB KIX) fix
+
+on:
+  workflow_dispatch:
+    inputs:
+      request:
+        description: "What to fix or change. GLM edits files; the result is a draft pull request for review"
+        required: true
+      target:
+        description: "Target (optional): a path, module or function"
+        required: false
+        default: ""
+      effort:
+        description: "Reasoning effort"
+        type: choice
+        options:
+          - max
+          - high
+          - low
+        default: max
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: opencode-kix-fix-${{ github.event.issue.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  edit:
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'kix-fix'
+    runs-on: ubuntu-latest
+    # The repository variable KIX_TIMEOUT_MINUTES changes this limit.
+    timeout-minutes: ${{ fromJSON(vars.KIX_TIMEOUT_MINUTES || '30') }}
+    permissions:
+      contents: read
+      issues: read
+    outputs:
+      changed: ${{ steps.patch.outputs.changed }}
+    steps:
+      - name: Check out the default branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install OpenCode 2.1.3
+        run: npm install --global @opencode/cli@2.1.3
+
+      - name: Read the issue
+        if: github.event_name == 'issues'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.issue.number }}
+          RESULT_DIR: ${{ runner.temp }}/opencode-kix
+        run: bash .github/opencode-kix/comment.sh thread
+
+      # fix.json allows file edits, except in .github/ and .git/, and no commands
+      # but pwd and read-only Git: nothing GLM writes runs while the key is here.
+      - name: Run opencode with KIX GLM-5.3 (file edits allowed)
+        env:
+          KIX_API_KEY: ${{ secrets.KIX_API_KEY }}
+          MODE: prompt
+          TASK: fix
+          REQUEST: "${{ github.event_name == 'issues' && format('Fix issue #{0}, which the attached thread.md describes with its comments.', github.event.issue.number) || inputs.request }}"
+          TARGET: ${{ inputs.target }}
+          PREAMBLE: "${{ github.event_name == 'issues' && format('This request comes from @{0}, who added the label kix-fix to issue #{1}.', github.actor, github.event.issue.number) || format('This request comes from @{0}, in a manual run.', github.actor) }}"
+          CONTEXT_FILES: ${{ github.event_name == 'issues' && format('{0}/opencode-kix/thread.md', runner.temp) || '' }}
+          EXTRA_CONFIG: fix.json
+          # Fixes from an issue have no effort choice: the repository variable KIX_EFFORT sets it.
+          EFFORT: ${{ inputs.effort || vars.KIX_EFFORT || 'max' }}
+          RESULT_DIR: ${{ runner.temp }}/opencode-kix
+        run: bash .github/opencode-kix/run.sh
+
+      - name: Turn the edits into a patch
+        id: patch
+        env:
+          RESULT_DIR: ${{ runner.temp }}/opencode-kix
+        run: bash .github/opencode-kix/fix.sh patch
+
+      - name: Keep the output for 7 days
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: opencode-kix-${{ github.run_id }}
+          path: ${{ runner.temp }}/opencode-kix/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  pull-request:
+    needs: edit
+    if: needs.edit.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Check out the default branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Get the patch
+        uses: actions/download-artifact@v8
+        with:
+          name: opencode-kix-${{ github.run_id }}
+          path: ${{ runner.temp }}/opencode-kix
+
+      - name: Open a draft pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE: ${{ github.ref_name }}
+          # A new branch for each attempt: in a re-run, the branch of the earlier attempt may
+          # already exist, and the push never overwrites a branch.
+          BRANCH: kix-fix/${{ github.run_id }}-${{ github.run_attempt }}
+          TITLE: "${{ github.event_name == 'issues' && format('Fix #{0}: {1}', github.event.issue.number, github.event.issue.title) || format('kix fix: {0}', inputs.request) }}"
+          REQUESTER: ${{ github.actor }}
+          NUMBER: ${{ github.event.issue.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RESULT_DIR: ${{ runner.temp }}/opencode-kix
+        run: bash .github/opencode-kix/fix.sh open
+
+  # A fix from an issue that did not end in a pull request: the run failed or was
+  # cancelled, or GLM changed nothing. Say so on the issue, so the person who added
+  # the label gets an answer either way.
+  report:
+    needs: [edit, pull-request]
+    if: always() && github.event_name == 'issues' && github.event.label.name == 'kix-fix' && needs.pull-request.result != 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Check out the default branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      # GLM's answer, if the first job got that far.
+      - name: Get the output
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: opencode-kix-${{ github.run_id }}
+          path: ${{ runner.temp }}/opencode-kix
+
+      - name: Say so on the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.issue.number }}
+          REQUESTER: ${{ github.actor }}
+          EDIT_RESULT: ${{ needs.edit.result }}
+          CHANGED: ${{ needs.edit.outputs.changed }}
+          PR_RESULT: ${{ needs.pull-request.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RESULT_DIR: ${{ runner.temp }}/opencode-kix
+        run: bash .github/opencode-kix/fix.sh report
