@@ -6,10 +6,14 @@
 #   fix.sh open    second job, which never has the KIX key: apply fix.patch, push it
 #                  as a new branch, and open a draft pull request, or, where GitHub
 #                  Actions may not open pull requests, give a link to open one
+#   fix.sh report  third job, also without the KIX key, for a fix from an issue that
+#                  did not end in a pull request: say why on the issue
 #
 # Environment: RESULT_DIR; for patch also GITHUB_OUTPUT; for open also GH_TOKEN,
 # GITHUB_REPOSITORY, BASE (the default branch), BRANCH, TITLE, REQUESTER, RUN_URL,
-# and NUMBER (the issue, for fixes started from an issue).
+# and NUMBER (the issue, for fixes started from an issue); for report also
+# GH_TOKEN, GITHUB_REPOSITORY, NUMBER, REQUESTER, RUN_URL, and the results of the
+# other jobs: EDIT_RESULT, CHANGED and PR_RESULT.
 set -euo pipefail
 
 out=${RESULT_DIR:?RESULT_DIR is not set}
@@ -111,8 +115,32 @@ open_pr() {
   fi
 }
 
+# Why no pull request came of a fix from an issue, as a comment on the issue, with
+# GLM's answer if it changed nothing.
+report() {
+  : "${GH_TOKEN:?}" "${NUMBER:?}"
+  local repo=${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is not set} why
+  case "${EDIT_RESULT:-}:${CHANGED:-}:${PR_RESULT:-}" in
+    success:false:*) why="GLM changed no files" ;;
+    success:true:failure) why="making the pull request failed" ;;
+    *cancelled*) why="the run was cancelled or ran out of time" ;;
+    *) why="the run failed before there was a change to propose" ;;
+  esac
+  mkdir -p "$out"
+  {
+    printf '@%s, no pull request came of this: %s. Run: %s\n' "${REQUESTER:-?}" "$why" "${RUN_URL:-?}"
+    if [ "${CHANGED:-}" = false ] && [ -s "$out/answer.md" ]; then
+      printf '\n%s\n\n' "GLM's answer:"
+      cat "$out/answer.md"
+    fi
+  } > "$out/report.md"
+  gh api "repos/$repo/issues/$NUMBER/comments" -F "body=@$out/report.md" > /dev/null
+  echo "opencode-kix: told issue #$NUMBER: $why"
+}
+
 case "${1:-}" in
   patch) patch ;;
   open) open_pr ;;
-  *) fail "usage: fix.sh patch|open" ;;
+  report) report ;;
+  *) fail "usage: fix.sh patch|open|report" ;;
 esac

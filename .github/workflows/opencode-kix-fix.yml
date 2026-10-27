@@ -3,6 +3,7 @@
 # - An issue labelled `kix-fix`: the issue and its comments are the request.
 # The first job has the KIX key: GLM edits files there, but cannot run what it writes.
 # The second job never has the KIX key: it turns the edits into a branch and a draft pull request.
+# For an issue, a third job without the KIX key says on the issue why, if no pull request came of it.
 # General: nothing in this file is specific to one repository.
 name: opencode (UiB KIX) fix
 
@@ -131,3 +132,41 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RESULT_DIR: ${{ runner.temp }}/opencode-kix
         run: bash .github/opencode-kix/fix.sh open
+
+  # A fix from an issue that did not end in a pull request: the run failed or was
+  # cancelled, or GLM changed nothing. Say so on the issue, so the person who added
+  # the label gets an answer either way.
+  report:
+    needs: [edit, pull-request]
+    if: always() && github.event_name == 'issues' && github.event.label.name == 'kix-fix' && needs.pull-request.result != 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Check out the default branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      # GLM's answer, if the first job got that far.
+      - name: Get the output
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: opencode-kix-${{ github.run_id }}
+          path: ${{ runner.temp }}/opencode-kix
+
+      - name: Say so on the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.issue.number }}
+          REQUESTER: ${{ github.actor }}
+          EDIT_RESULT: ${{ needs.edit.result }}
+          CHANGED: ${{ needs.edit.outputs.changed }}
+          PR_RESULT: ${{ needs.pull-request.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RESULT_DIR: ${{ runner.temp }}/opencode-kix
+        run: bash .github/opencode-kix/fix.sh report
