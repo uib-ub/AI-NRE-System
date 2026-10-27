@@ -17,7 +17,10 @@
 #   EFFORT         reasoning effort: max (default), high or low
 #   BASE_REF       the pull request's base branch, for MODE=review
 #   RESULT_DIR     where request.md, answer.md, events.jsonl and usage.json are written
+#                  (and continue.md, if the session was continued)
 #   KIX_MODEL      optional: model and effort in one, for example kix/uib/glm-5.3#high
+#   KIX_CONTINUE_PAUSE  optional: seconds to wait before continuing a session whose
+#                  replies KIX kept breaking off (default 60; the offline tests use 0)
 #   OPENCODE_BIN   optional, default opencode
 #
 # Files next to this script. General, the same in every repository:
@@ -40,6 +43,7 @@ mode=${MODE:-prompt}
 task=${TASK:-custom}
 target=${TARGET:-}
 effort=${EFFORT:-max}
+pause=${KIX_CONTINUE_PAUSE:-60}
 out=${RESULT_DIR:?RESULT_DIR is not set}
 mkdir -p "$out"
 
@@ -53,6 +57,9 @@ case "$effort" in
   *) fail "EFFORT must be max, high or low, not '$effort'" ;;
 esac
 model=${KIX_MODEL:-"kix/uib/glm-5.3#$effort"}
+case "$pause" in
+  '' | *[!0-9]*) fail "KIX_CONTINUE_PAUSE must be a number of seconds, not '$pause'" ;;
+esac
 
 [ -n "${KIX_API_KEY:-}" ] ||
   fail "KIX_API_KEY is empty: add the repository secret. Pull requests from forks get no secrets."
@@ -152,53 +159,120 @@ access=$(jq -rs '[.[].permissions[]? | select(.action == "edit" and .resource ==
 
 # 3. Run opencode: private server, Build agent (the CI config gives it no edit
 #    tools unless fix.json is added), JSON events. Requests that would need
-#    approval are rejected. The request goes in on standard input, which opencode
+#    approval are rejected. Messages go in on standard input, which opencode
 #    passes on unchanged (a message argument with spaces gets wrapped in quotes).
-# What went wrong, for the log: the last error, and how many model replies
-# started and finished.
+run_opencode() { # options for opencode run; the message on standard input
+  OPENCODE_CONFIG="$config" OPENCODE_DISABLE_CLAUDE_CODE=1 \
+    "$opencode_bin" run --standalone --agent build --model "$model" --format json "$@" >> "$out/events.jsonl"
+}
+
+# How the last reply ended, from the saved session (read without the key):
+# "stop" for a complete answer, "error TYPE" for an error, "none" for no reply,
+# and "unknown" if there is no saved session to read.
+session_end() {
+  if [ -n "$sid" ] &&
+    env -u KIX_API_KEY "$opencode_bin" session export --standalone "$sid" < /dev/null > "$out/session.json" 2> /dev/null; then
+    jq -r '[.messages[] | select(.type == "assistant")] | last
+      | if . == null then "none" elif .finish == "error" then "error \(.error.type // "unknown")" else .finish // "none" end' "$out/session.json"
+  else
+    rm -f "$out/session.json"
+    echo unknown
+  fi
+}
+
+# What went wrong, for the log.
 failure() {
   local summary
-  summary=$(jq -rs '
-    (map(select(.type == "error") | .error.message // .error.type // "unknown error") | last // "no error message") as $error
-    | "\($error) (\(map(select(.type == "step_start")) | length) model replies started, \(map(select(.type == "step_finish")) | length) finished)"
-  ' "$out/events.jsonl" 2> /dev/null) || summary="no events"
+  if [ -s "$out/session.json" ]; then
+    summary=$(jq -r '[.messages[] | select(.type == "assistant")]
+      | "\(last | .error.message // "no complete answer") (model replies: \(length), broken off or failed: \(map(select(.finish == "error")) | length))"' "$out/session.json")
+  else
+    summary=$(jq -rs 'map(select(.type == "error") | .error.message // .error.type // "unknown error") | last // "no error message"' "$out/events.jsonl" 2> /dev/null) || summary="no events"
+  fi
   case "$summary" in
-    *"ended without finish_reason"*) summary="$summary. KIX ended its replies before they were complete; try again later" ;;
+    *"ended without finish_reason"*) summary="$summary. KIX ended its replies before they were complete, and opencode stopped resuming them; try again later" ;;
   esac
   fail "opencode run failed: $summary. events.jsonl is in the run's artifact"
 }
 
 version=$("$opencode_bin" --version 2> /dev/null | sed -n 1p)
 echo "opencode-kix: $version, model $model, task $task, $access"
-OPENCODE_CONFIG="$config" OPENCODE_DISABLE_CLAUDE_CODE=1 \
-  "$opencode_bin" run --standalone --agent build --model "$model" --title "$title" --format json \
-  ${files[@]+"${files[@]}"} < "$out/request.md" > "$out/events.jsonl" ||
-  failure
+: > "$out/events.jsonl"
+status=0
+run_opencode --title "$title" ${files[@]+"${files[@]}"} < "$out/request.md" || status=$?
+sid=$(jq -rs 'map(select(.sessionID)) | first | .sessionID // empty' "$out/events.jsonl" 2> /dev/null) || sid=""
+end=$(session_end)
 
-errors=$(jq -r 'select(.type == "error") | .error.message // "unknown error"' "$out/events.jsonl")
-[ -z "$errors" ] || fail "opencode reported: $errors"
+# KIX sometimes ends a reply before it is complete: status 200, but no
+# finish_reason. OpenCode then resumes the reply in the same session, up to ten
+# times, and gives up if those break off too. Then continue the session once
+# more, after a pause: the work done so far stays in it.
+continued=""
+if [ "$end" = "error provider.invalid-output" ]; then
+  echo "opencode-kix: KIX kept breaking off replies, and opencode gave up; continuing the session once, in $pause s"
+  sleep "$pause"
+  printf '%s\n' "Your last reply was cut off: KIX ended it before it was complete, again and again, and the run stopped. Carry on with the task where you stopped. Then write your complete final answer, from its beginning." > "$out/continue.md"
+  status=0
+  run_opencode --session "$sid" < "$out/continue.md" || status=$?
+  end=$(session_end)
+  continued=yes
+fi
 
-# 4. The answer is the last text part.
-sid=$(jq -rs 'map(select(.sessionID)) | first | .sessionID // empty' "$out/events.jsonl")
-answer=$(jq -rs '[.[] | select(.type == "text") | .part.text] | last // empty' "$out/events.jsonl")
+# Done if the last reply is a complete answer, whatever opencode's exit status:
+# that is 1 after any broken-off reply, even one that opencode resumed.
+case "$end" in
+  stop | length) ;;
+  unknown) [ "$status" -eq 0 ] || failure ;;
+  *) failure ;;
+esac
+
+# 4. The answer: the text of the replies after the last request (or the
+#    continuation message) and after the last tool call. A reply that opencode
+#    resumed after KIX broke it off comes in pieces, which are joined here.
+if [ -s "$out/session.json" ]; then
+  answer=$(jq -r '.messages as $m
+    | ([$m | to_entries[] | select(.value.type == "user") | .key] | last // -1) as $u
+    | [$m[$u + 1:][] | select(.type == "assistant")] as $a
+    | ([$a | to_entries[] | select(.value.finish == "tool-calls") | .key] | last // -1) as $t
+    | [$a[$t + 1:][] | .content[]? | select(.type == "text") | .text] | join("")' "$out/session.json")
+else
+  answer=$(jq -rs '[.[] | select(.type == "text") | .part.text] | last // empty' "$out/events.jsonl")
+fi
 [ -n "$answer" ] || fail "no answer in the output; see $out/events.jsonl"
 
-# 5. Usage, from the saved session (no model call, no key needed).
+# 5. Usage, from the saved session (no model call, no key needed). Replies that
+#    KIX broke off have no token counts. The step limit applies to the replies
+#    since the last request.
 usage='{}'
-if [ -n "$sid" ] &&
-  env -u KIX_API_KEY "$opencode_bin" session export --standalone "$sid" < /dev/null > "$out/session.json" 2> /dev/null; then
-  usage=$(jq -c '[.messages[] | select(.type == "assistant") | .tokens] | {model_requests: length, input: (map(.input) | add), output: (map(.output) | add), reasoning: (map(.reasoning) | add)}' "$out/session.json")
+if [ -s "$out/session.json" ]; then
+  usage=$(jq -c '.messages as $m
+    | ([$m | to_entries[] | select(.value.type == "user") | .key] | last // -1) as $u
+    | [$m[] | select(.type == "assistant")] as $a
+    | {model_requests: ($a | length), broken_off: ($a | map(select(.finish == "error")) | length),
+       steps: ([$m[$u + 1:][] | select(.type == "assistant" and .finish != "error")] | length),
+       input: ($a | map(.tokens.input // 0) | add), output: ($a | map(.tokens.output // 0) | add),
+       reasoning: ($a | map(.tokens.reasoning // 0) | add)}' "$out/session.json")
 fi
 rm -f "$out/session.json"
 echo "$usage" > "$out/usage.json"
 requests=$(jq -r '.model_requests // "?"' <<< "$usage")
 input=$(jq -r '.input // "?"' <<< "$usage")
+broken=$(jq -r '.broken_off // 0' <<< "$usage")
+steps=$(jq -r '.steps // "?"' <<< "$usage")
 limit=$(jq -rs 'map(.agents.build.steps // empty) | last // empty' "${configs[@]}")
 note=""
-case "$requests:$limit" in
+case "$steps:$limit" in
   *[!0-9:]* | :* | *:) ;;
-  *) [ "$requests" -lt "$limit" ] || note=" The step limit was reached, so the answer may be incomplete." ;;
+  *) [ "$steps" -lt "$limit" ] || note=" The step limit was reached, so the answer may be incomplete." ;;
 esac
+resumed=""
+if [ "$broken" != 0 ]; then
+  resumed=", $broken broken off by KIX and resumed"
+  note="$note Replies broken off by KIX and resumed: $broken (their tokens are not counted)."
+fi
+if [ -n "$continued" ]; then
+  note="$note When opencode gave up resuming them, the run continued the session once."
+fi
 
 # 6. answer.md, and the run summary page.
 {
@@ -209,4 +283,4 @@ esac
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
   cat "$out/answer.md" >> "$GITHUB_STEP_SUMMARY"
 fi
-echo "opencode-kix: answer written to $out/answer.md ($requests model requests, $input input tokens)"
+echo "opencode-kix: answer written to $out/answer.md ($requests model requests, $input input tokens$resumed)"
