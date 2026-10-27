@@ -38,7 +38,8 @@ jobs:
   edit:
     if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'kix-fix'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The repository variable KIX_TIMEOUT_MINUTES changes this limit.
+    timeout-minutes: ${{ fromJSON(vars.KIX_TIMEOUT_MINUTES || '30') }}
     permissions:
       contents: read
       issues: read
@@ -75,7 +76,8 @@ jobs:
           PREAMBLE: "${{ github.event_name == 'issues' && format('This request comes from @{0}, who added the label kix-fix to issue #{1}.', github.actor, github.event.issue.number) || format('This request comes from @{0}, in a manual run.', github.actor) }}"
           CONTEXT_FILES: ${{ github.event_name == 'issues' && format('{0}/opencode-kix/thread.md', runner.temp) || '' }}
           EXTRA_CONFIG: fix.json
-          EFFORT: ${{ inputs.effort || 'max' }}
+          # Fixes from an issue have no effort choice: the repository variable KIX_EFFORT sets it.
+          EFFORT: ${{ inputs.effort || vars.KIX_EFFORT || 'max' }}
           RESULT_DIR: ${{ runner.temp }}/opencode-kix
         run: bash .github/opencode-kix/run.sh
 

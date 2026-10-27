@@ -21,7 +21,8 @@ jobs:
   kix:
     if: startsWith(github.event.comment.body, '/kix') && github.event.comment.user.type != 'Bot'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The repository variable KIX_TIMEOUT_MINUTES changes this limit.
+    timeout-minutes: ${{ fromJSON(vars.KIX_TIMEOUT_MINUTES || '20') }}
     steps:
       # Comment runs always use the default branch, which only people with write access can change.
       - name: Check out the default branch
@@ -73,6 +74,8 @@ jobs:
           CONTEXT_FILES: ${{ steps.request.outputs.context }}
           DIFF_FILE: ${{ steps.request.outputs.diff }}
           BASE_REF: ${{ steps.request.outputs.base }}
+          # Comments have no effort choice: the repository variable KIX_EFFORT sets it.
+          EFFORT: ${{ vars.KIX_EFFORT || 'max' }}
           EXTRA_CONFIG: ${{ steps.request.outputs.web == 'true' && hashFiles('.github/opencode-kix/web.json') != '' && 'web.json' || '' }}
           RESULT_DIR: ${{ runner.temp }}/opencode-kix
         run: bash .github/opencode-kix/run.sh

@@ -52,7 +52,8 @@ jobs:
   kix:
     if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'kix-review'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The repository variable KIX_TIMEOUT_MINUTES changes this limit.
+    timeout-minutes: ${{ fromJSON(vars.KIX_TIMEOUT_MINUTES || '20') }}
     steps:
       - name: Check out the repository
         uses: actions/checkout@v7
@@ -75,7 +76,8 @@ jobs:
           TASK: ${{ inputs.task }}
           TARGET: ${{ inputs.target }}
           PROMPT: ${{ inputs.prompt }}
-          EFFORT: ${{ inputs.effort || 'max' }}
+          # Label reviews have no effort choice: the repository variable KIX_EFFORT sets it.
+          EFFORT: ${{ inputs.effort || vars.KIX_EFFORT || 'max' }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           # Dependency updates from Dependabot may look up packages on the web, if web.json allows it.
           EXTRA_CONFIG: ${{ github.event.pull_request.user.login == 'dependabot[bot]' && hashFiles('.github/opencode-kix/web.json') != '' && 'web.json' || '' }}
