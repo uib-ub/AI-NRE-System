@@ -1,4 +1,4 @@
-"""Unit tests for main_processor wiring, oupout, and application policies."""
+"""Unit tests for main_processor wiring, output, and application policies."""
 
 from __future__ import annotations
 
@@ -58,8 +58,8 @@ def processor_args(tmp_path: Path) -> Namespace:
         output_text=str(tmp_path / "annotations.txt"),
         output_table=str(tmp_path / "metadata.txt"),
         output_stats=str(tmp_path / "stats.json"),
-        prompt_templates=str(tmp_path / "single-template.txt"),
-        batch_templates=str(tmp_path / "batch-template.txt"),
+        prompt_template=str(tmp_path / "single-template.txt"),
+        batch_template=str(tmp_path / "batch-template.txt"),
         use_batch=False,
         batch_size=2,
         async_mode=False,
@@ -69,7 +69,7 @@ def processor_args(tmp_path: Path) -> Namespace:
 
 @pytest.fixture
 def main_dependencies(mocker: MockerFixture) -> MainProcessorDependencies:
-    """Replace external constructors without bypassing main ini tialization."""
+    """Replace external constructors without bypassing main initialization."""
     dependencies = MainProcessorDependencies(
         client_factory=mocker.patch.object(
             main_processor_module, "create_llm_client", autospec=True
