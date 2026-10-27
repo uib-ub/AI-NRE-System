@@ -1,0 +1,99 @@
+# opencode (OpenCode 2.1.3) with UiB KIX GLM-5.3: answers `/kix ...` comments on issues and pull requests, read-only.
+# - Only people with write access to the repository get an answer.
+# - Code from pull requests in forks is never checked out here, so it never runs where the KIX key is.
+# General: nothing in this file is specific to one repository.
+name: opencode (UiB KIX) comments
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: opencode-kix-comment-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  kix:
+    if: startsWith(github.event.comment.body, '/kix') && github.event.comment.user.type != 'Bot'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # Comment runs always use the default branch, which only people with write access can change.
+      - name: Check out the default branch
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check the comment and its author
+        id: request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMENT: ${{ github.event.comment.body }}
+          ASKER: ${{ github.event.comment.user.login }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+          NUMBER: ${{ github.event.issue.number }}
+          IS_PR: ${{ github.event.issue.pull_request && 'true' || 'false' }}
+          RESULT_DIR: ${{ runner.temp }}/opencode-kix
+        run: bash .github/opencode-kix/comment.sh check
+
+      # A pull request from this repository: its head commit, pushed by someone with write access.
+      # A pull request from a fork is never checked out: GLM gets its diff as a file.
+      - name: Check out the pull request
+        if: steps.request.outputs.checkout != ''
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.request.outputs.checkout }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install OpenCode 2.1.3
+        if: steps.request.outputs.answer == 'true'
+        run: npm install --global @opencode/cli@2.1.3
+
+      # Runs only if the repository has its own prepare.sh, and never for a pull request from a fork.
+      - name: Prepare the project
+        if: steps.request.outputs.answer == 'true' && steps.request.outputs.fork != 'true' && hashFiles('.github/opencode-kix/prepare.sh') != ''
+        run: bash .github/opencode-kix/prepare.sh
+
+      - name: Run opencode with KIX GLM-5.3
+        if: steps.request.outputs.answer == 'true'
+        env:
+          KIX_API_KEY: ${{ secrets.KIX_API_KEY }}
+          MODE: ${{ steps.request.outputs.mode }}
+          TASK: ${{ steps.request.outputs.task }}
+          TARGET: ${{ steps.request.outputs.target }}
+          PROMPT: ${{ steps.request.outputs.prompt }}
+          PREAMBLE: ${{ steps.request.outputs.preamble }}
+          CONTEXT_FILES: ${{ steps.request.outputs.context }}
+          DIFF_FILE: ${{ steps.request.outputs.diff }}
+          BASE_REF: ${{ steps.request.outputs.base }}
+          EXTRA_CONFIG: ${{ steps.request.outputs.web == 'true' && hashFiles('.github/opencode-kix/web.json') != '' && 'web.json' || '' }}
+          RESULT_DIR: ${{ runner.temp }}/opencode-kix
+        run: bash .github/opencode-kix/run.sh
+
+      - name: Reply in the comments
+        if: always() && steps.request.outputs.allowed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMENT: ${{ github.event.comment.body }}
+          ASKER: ${{ github.event.comment.user.login }}
+          NUMBER: ${{ github.event.issue.number }}
+          HELP: ${{ steps.request.outputs.help }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RESULT_DIR: ${{ runner.temp }}/opencode-kix
+        run: bash .github/opencode-kix/comment.sh reply
+
+      - name: Keep the output for 7 days
+        if: always() && steps.request.outputs.answer == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: opencode-kix-${{ github.run_id }}
+          path: ${{ runner.temp }}/opencode-kix/
+          retention-days: 7
+          if-no-files-found: ignore

@@ -12,15 +12,14 @@ on:
         description: "Task: custom uses the request below; the others use the prompt files in .github/opencode-kix/tasks/"
         type: choice
         options:
-          [
-            custom,
-            explain,
-            review,
-            test-gaps,
-            release-notes,
-            security,
-            onboarding,
-          ]
+          - custom
+          - explain
+          - review
+          - test-gaps
+          - release-notes
+          - security
+          - onboarding
+          - plan
         default: custom
       target:
         description: "Target for the task (optional): a path, module or Git ref"
@@ -33,7 +32,10 @@ on:
       effort:
         description: "Reasoning effort"
         type: choice
-        options: [max, high, low]
+        options:
+          - max
+          - high
+          - low
         default: max
   pull_request:
     types: [labeled]
@@ -75,6 +77,8 @@ jobs:
           PROMPT: ${{ inputs.prompt }}
           EFFORT: ${{ inputs.effort || 'max' }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
+          # Dependency updates from Dependabot may look up packages on the web, if web.json allows it.
+          EXTRA_CONFIG: ${{ github.event.pull_request.user.login == 'dependabot[bot]' && hashFiles('.github/opencode-kix/web.json') != '' && 'web.json' || '' }}
           RESULT_DIR: ${{ runner.temp }}/opencode-kix
         run: bash .github/opencode-kix/run.sh
 
