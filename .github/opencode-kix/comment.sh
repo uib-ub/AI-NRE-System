@@ -72,8 +72,9 @@ check() {
   local text first
   text=${COMMENT//$'\r'/}
   first=${text%%$'\n'*}
+  # /kix alone, or followed by a space or tab (a line break ends the first line).
   case "$first" in
-    /kix | "/kix "*) ;;
+    /kix | "/kix"[[:space:]]*) ;;
     *)
       echo "opencode-kix: the comment does not start with the /kix command"
       return 0
@@ -114,6 +115,9 @@ check() {
   thread
   local kind=issue where files="$out/thread.md" known=false branch
   # This step runs before any other checkout, so this is the default branch.
+  # actions/checkout checks a branch out as a local branch, not as a detached
+  # HEAD (its log shows `git checkout --progress --force -B master
+  # refs/remotes/origin/master`), so this prints the branch's name.
   branch=$(git rev-parse --abbrev-ref HEAD)
   if [ "$IS_PR" = true ]; then
     kind="pull request"
