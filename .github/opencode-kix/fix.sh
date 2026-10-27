@@ -78,10 +78,13 @@ open_pr() {
   git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
     -c core.hooksPath=/dev/null commit -q -m "$title" \
     -m "Proposed by GLM-5.3 via UiB KIX for @${REQUESTER:-?}. Run: ${RUN_URL:-?}"
+  # The token reaches git through its environment, not its arguments, which any
+  # process on the runner can read; and the log masks it, like the plain token.
   local auth
   auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')
-  git -c http.extraheader="AUTHORIZATION: basic $auth" -c core.hooksPath=/dev/null \
-    push -q origin "HEAD:refs/heads/$BRANCH"
+  echo "::add-mask::$auth"
+  GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.extraheader GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth" \
+    git -c core.hooksPath=/dev/null push -q origin "HEAD:refs/heads/$BRANCH"
   echo "opencode-kix: pushed the branch $BRANCH"
 
   {
@@ -109,9 +112,12 @@ open_pr() {
       cat "$out/pr-body.md"
     } >> "$GITHUB_STEP_SUMMARY"
   fi
+  # The branch, and perhaps the pull request, exist by now: a failed comment must
+  # not fail this job, or the report job would tell the issue that none came of it.
   if [ -n "${NUMBER:-}" ]; then
     printf '@%s, proposed fix: %s\n' "${REQUESTER:-?}" "$message" > "$out/issue-comment.md"
-    gh api "repos/$repo/issues/$NUMBER/comments" -F "body=@$out/issue-comment.md" > /dev/null
+    gh api "repos/$repo/issues/$NUMBER/comments" -F "body=@$out/issue-comment.md" > /dev/null ||
+      echo "opencode-kix: could not comment on issue #$NUMBER; the run's summary page has the result"
   fi
 }
 
@@ -120,10 +126,12 @@ open_pr() {
 report() {
   : "${GH_TOKEN:?}" "${NUMBER:?}"
   local repo=${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is not set} why
+  # CHANGED is set once the patch step ran, even if a later step of the job failed.
   case "${EDIT_RESULT:-}:${CHANGED:-}:${PR_RESULT:-}" in
-    success:false:*) why="GLM changed no files" ;;
+    *:false:*) why="GLM changed no files" ;;
     success:true:failure) why="making the pull request failed" ;;
     *cancelled*) why="the run was cancelled or ran out of time" ;;
+    *:true:*) why="GLM made a change, but the run failed before the pull request" ;;
     *) why="the run failed before there was a change to propose" ;;
   esac
   mkdir -p "$out"
