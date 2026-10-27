@@ -70,9 +70,9 @@ jobs:
           KIX_API_KEY: ${{ secrets.KIX_API_KEY }}
           MODE: prompt
           TASK: fix
-          REQUEST: ${{ github.event_name == 'issues' && format('Fix issue #{0}, which the attached thread.md describes with its comments.', github.event.issue.number) || inputs.request }}
+          REQUEST: "${{ github.event_name == 'issues' && format('Fix issue #{0}, which the attached thread.md describes with its comments.', github.event.issue.number) || inputs.request }}"
           TARGET: ${{ inputs.target }}
-          PREAMBLE: ${{ github.event_name == 'issues' && format('This request comes from @{0}, who added the label kix-fix to issue #{1}.', github.actor, github.event.issue.number) || format('This request comes from @{0}, in a manual run.', github.actor) }}
+          PREAMBLE: "${{ github.event_name == 'issues' && format('This request comes from @{0}, who added the label kix-fix to issue #{1}.', github.actor, github.event.issue.number) || format('This request comes from @{0}, in a manual run.', github.actor) }}"
           CONTEXT_FILES: ${{ github.event_name == 'issues' && format('{0}/opencode-kix/thread.md', runner.temp) || '' }}
           EXTRA_CONFIG: fix.json
           EFFORT: ${{ inputs.effort || 'max' }}
@@ -121,7 +121,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BASE: ${{ github.ref_name }}
           BRANCH: kix-fix/${{ github.run_id }}
-          TITLE: ${{ github.event_name == 'issues' && format('Fix #{0}: {1}', github.event.issue.number, github.event.issue.title) || format('kix fix: {0}', inputs.request) }}
+          TITLE: "${{ github.event_name == 'issues' && format('Fix #{0}: {1}', github.event.issue.number, github.event.issue.title) || format('kix fix: {0}', inputs.request) }}"
           REQUESTER: ${{ github.actor }}
           NUMBER: ${{ github.event.issue.number }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
