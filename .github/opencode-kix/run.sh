@@ -154,12 +154,26 @@ access=$(jq -rs '[.[].permissions[]? | select(.action == "edit" and .resource ==
 #    tools unless fix.json is added), JSON events. Requests that would need
 #    approval are rejected. The request goes in on standard input, which opencode
 #    passes on unchanged (a message argument with spaces gets wrapped in quotes).
+# What went wrong, for the log: the last error, and how many model replies
+# started and finished.
+failure() {
+  local summary
+  summary=$(jq -rs '
+    (map(select(.type == "error") | .error.message // .error.type // "unknown error") | last // "no error message") as $error
+    | "\($error) (\(map(select(.type == "step_start")) | length) model replies started, \(map(select(.type == "step_finish")) | length) finished)"
+  ' "$out/events.jsonl" 2> /dev/null) || summary="no events"
+  case "$summary" in
+    *"ended without finish_reason"*) summary="$summary. KIX ended its replies before they were complete; try again later" ;;
+  esac
+  fail "opencode run failed: $summary. events.jsonl is in the run's artifact"
+}
+
 version=$("$opencode_bin" --version 2> /dev/null | sed -n 1p)
 echo "opencode-kix: $version, model $model, task $task, $access"
 OPENCODE_CONFIG="$config" OPENCODE_DISABLE_CLAUDE_CODE=1 \
   "$opencode_bin" run --standalone --agent build --model "$model" --title "$title" --format json \
   ${files[@]+"${files[@]}"} < "$out/request.md" > "$out/events.jsonl" ||
-  fail "opencode run failed; see $out/events.jsonl"
+  failure
 
 errors=$(jq -r 'select(.type == "error") | .error.message // "unknown error"' "$out/events.jsonl")
 [ -z "$errors" ] || fail "opencode reported: $errors"
