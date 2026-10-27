@@ -24,7 +24,10 @@ jobs:
     # The repository variable KIX_TIMEOUT_MINUTES changes this limit.
     timeout-minutes: ${{ fromJSON(vars.KIX_TIMEOUT_MINUTES || '20') }}
     steps:
-      # Comment runs always use the default branch, which only people with write access can change.
+      # This workflow file always comes from the default branch. For a pull request from this
+      # repository, a second checkout switches to its head commit, and the steps after it run
+      # the scripts and settings in .github/opencode-kix/ from there. Only people with write
+      # access can push to either. A pull request from a fork is never checked out.
       - name: Check out the default branch
         uses: actions/checkout@v7
         with:

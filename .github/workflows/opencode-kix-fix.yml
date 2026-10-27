@@ -122,7 +122,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BASE: ${{ github.ref_name }}
-          BRANCH: kix-fix/${{ github.run_id }}
+          # A new branch for each attempt: in a re-run, the branch of the earlier attempt may
+          # already exist, and the push never overwrites a branch.
+          BRANCH: kix-fix/${{ github.run_id }}-${{ github.run_attempt }}
           TITLE: "${{ github.event_name == 'issues' && format('Fix #{0}: {1}', github.event.issue.number, github.event.issue.title) || format('kix fix: {0}', inputs.request) }}"
           REQUESTER: ${{ github.actor }}
           NUMBER: ${{ github.event.issue.number }}

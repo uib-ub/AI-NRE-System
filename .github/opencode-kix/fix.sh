@@ -21,11 +21,17 @@ fail() {
   exit 1
 }
 
-# Fixes may not change the CI setup. Reads one path per line.
+# Fixes may not change the CI setup. Reads the paths of `git diff --name-only -z`,
+# which ends each path with a NUL byte. Without -z, Git puts unusual paths, such
+# as ones with non-ASCII letters, in quotes, so they would not start with .github/.
 check_paths() {
-  local bad
-  bad=$(grep -E '^\.github/' || true)
-  [ -z "$bad" ] || fail "the edits change files under .github/, which fixes may not change: $(printf '%s ' $bad)"
+  local path bad=""
+  while IFS= read -r -d '' path; do
+    case "$path" in
+      .github/*) bad="$bad $path" ;;
+    esac
+  done
+  [ -z "$bad" ] || fail "the edits change files under .github/, which fixes may not change:$bad"
 }
 
 check_size() { # files, bytes
@@ -35,7 +41,7 @@ check_size() { # files, bytes
 
 patch() {
   git add -A
-  git diff --cached --name-only --no-renames | check_paths
+  git diff --cached --name-only --no-renames -z | check_paths
   git diff --cached --binary --no-renames > "$out/fix.patch"
   if [ ! -s "$out/fix.patch" ]; then
     echo "changed=false" >> "${GITHUB_OUTPUT:?GITHUB_OUTPUT is not set}"
@@ -54,9 +60,15 @@ open_pr() {
   title=${title:0:72}
   [ -s "$out/fix.patch" ] || fail "no fix.patch from the first job"
 
-  # This job can push, so it checks the patch again before using it.
-  git apply --numstat "$out/fix.patch" | cut -f3 | check_paths
-  check_size "$(git apply --numstat "$out/fix.patch" | wc -l | tr -d ' ')" "$(wc -c < "$out/fix.patch" | tr -d ' ')"
+  # This job can push, so it checks the patch again before using it: it applies the
+  # patch to a separate index, which changes no file, and checks every path that
+  # differs from HEAD there. A rename counts as both of its paths.
+  local index="$out/check.index"
+  GIT_INDEX_FILE=$index git read-tree HEAD
+  GIT_INDEX_FILE=$index git apply --cached "$out/fix.patch"
+  GIT_INDEX_FILE=$index git diff --cached --name-only --no-renames -z | check_paths
+  check_size "$(GIT_INDEX_FILE=$index git diff --cached --name-only --no-renames | wc -l | tr -d ' ')" "$(wc -c < "$out/fix.patch" | tr -d ' ')"
+  rm -f "$index"
   git switch -q -c "$BRANCH"
   git apply --index "$out/fix.patch"
   git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
