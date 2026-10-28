@@ -78,10 +78,15 @@ open_pr() {
   git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
     -c core.hooksPath=/dev/null commit -q -m "$title" \
     -m "Proposed by GLM-5.3 via UiB KIX for @${REQUESTER:-?}. Run: ${RUN_URL:-?}"
+  # The token reaches git through its environment instead of its arguments.
+  # Arguments are visible to every user on the machine, in ps and in error
+  # messages; the environment only to processes of the same user, which on a
+  # GitHub-hosted runner are this job's own. The log masks the encoded token.
   local auth
   auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')
-  git -c http.extraheader="AUTHORIZATION: basic $auth" -c core.hooksPath=/dev/null \
-    push -q origin "HEAD:refs/heads/$BRANCH"
+  echo "::add-mask::$auth"
+  GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.extraheader GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth" \
+    git -c core.hooksPath=/dev/null push -q origin "HEAD:refs/heads/$BRANCH"
   echo "opencode-kix: pushed the branch $BRANCH"
 
   {
@@ -109,9 +114,16 @@ open_pr() {
       cat "$out/pr-body.md"
     } >> "$GITHUB_STEP_SUMMARY"
   fi
+  # The branch, and perhaps the pull request, exist by now: a failed comment must
+  # not fail this job, or the report job would tell the issue that none came of it.
+  # The comment is the issue's only notice, so it is tried once more after a pause.
   if [ -n "${NUMBER:-}" ]; then
     printf '@%s, proposed fix: %s\n' "${REQUESTER:-?}" "$message" > "$out/issue-comment.md"
-    gh api "repos/$repo/issues/$NUMBER/comments" -F "body=@$out/issue-comment.md" > /dev/null
+    if ! gh api "repos/$repo/issues/$NUMBER/comments" -F "body=@$out/issue-comment.md" > /dev/null; then
+      sleep 5
+      gh api "repos/$repo/issues/$NUMBER/comments" -F "body=@$out/issue-comment.md" > /dev/null ||
+        echo "opencode-kix: could not comment on issue #$NUMBER; the run's summary page has the result"
+    fi
   fi
 }
 
@@ -120,9 +132,12 @@ open_pr() {
 report() {
   : "${GH_TOKEN:?}" "${NUMBER:?}"
   local repo=${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is not set} why
+  # CHANGED is set once the patch step ran, even if a later step of the job failed.
   case "${EDIT_RESULT:-}:${CHANGED:-}:${PR_RESULT:-}" in
-    success:false:*) why="GLM changed no files" ;;
+    *:false:*) why="GLM changed no files" ;;
     success:true:failure) why="making the pull request failed" ;;
+    cancelled:true:* | *:true:cancelled) why="GLM made a change, but the run was cancelled or ran out of time before the pull request" ;;
+    *:true:*) why="GLM made a change, but the run failed before the pull request" ;;
     *cancelled*) why="the run was cancelled or ran out of time" ;;
     *) why="the run failed before there was a change to propose" ;;
   esac
