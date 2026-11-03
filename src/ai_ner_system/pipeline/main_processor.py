@@ -25,7 +25,7 @@ from .async_processor import AsyncProcessor
 from .stats import ApplicationError, AsyncProcessingStats
 from .sync_processor import SyncProcessor
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     import argparse
     from collections.abc import Callable
 
@@ -295,55 +295,64 @@ class MedievalTextProcessor:
         ]
 
         try:
-            # Use TaskGroup for better async task management
-            # It automatically waits for all tasks to complete when exiting the context manager
-            async with asyncio.TaskGroup() as tg:
-                # write output files asynchronously using OutputWriter methods
-                tg.create_task(
-                    asyncio.to_thread(
-                        self.writer.write_text_output,
-                        self.output_text_file,
-                        self.ANNOTATED_HEADER,
-                        annotated_records,
-                    ),
-                )
-                tg.create_task(
-                    asyncio.to_thread(
-                        self.writer.write_metadata_output,
-                        self.output_table_file,
-                        self.METADATA_HEADER,
-                        metadata_records,
-                    ),
-                )
-                # Write processing statistics, ASYNC method, no asyncio.to_thread needed
-                tg.create_task(self._write_stats_async(stats))
-        except* asyncio.CancelledError:
+            try:
+                # Use TaskGroup for better async task management
+                # It automatically waits for all tasks to complete when exiting the context manager
+                async with asyncio.TaskGroup() as tg:
+                    # write output files asynchronously using OutputWriter methods if records exist
+                    if annotated_records:
+                        tg.create_task(
+                            asyncio.to_thread(
+                                self.writer.write_text_output,
+                                self.output_text_file,
+                                self.ANNOTATED_HEADER,
+                                annotated_records,
+                            ),
+                        )
+                    if metadata_records:
+                        tg.create_task(
+                            asyncio.to_thread(
+                                self.writer.write_metadata_output,
+                                self.output_table_file,
+                                self.METADATA_HEADER,
+                                metadata_records,
+                            ),
+                        )
+                    # Write processing statistics, ASYNC method, no asyncio.to_thread needed
+                    tg.create_task(self._write_stats_async(stats))
+            except* (OutputError, OSError, UnicodeEncodeError) as eg:
+                # Handle expected exception types specifically
+                details = "; ".join(f"{type(e).__name__}: {e}" for e in eg.exceptions)
+                msg = "Failed to write async output"
+                logging.exception("%s: %s", msg, details)
+                raise ApplicationError(msg) from eg
+            except* Exception as eg:
+                # Handle unexpected exceptions
+                details = "; ".join(f"{type(e).__name__}: {e}" for e in eg.exceptions)
+                msg = "Unexpected errors writing async output"
+                logging.exception("%s: %s", msg, details)
+                raise ApplicationError(msg) from eg
+        except asyncio.CancelledError:
             # Propagate cooperative cancellation
             logging.info("write_output_async cancelled")
             raise
-        except* (OutputError, OSError, UnicodeEncodeError) as eg:
-            # Handle expected exception types specifically
-            details = "; ".join(f"{type(e).__name__}: {e}" for e in eg.exceptions)
-            msg = "Failed to write async output"
-            logging.exception("%s: %s", msg, details)
-            raise ApplicationError(msg) from eg
-        except* Exception as eg:
-            # Handle unexpected exceptions
-            details = "; ".join(f"{type(e).__name__}: {e}" for e in eg.exceptions)
-            msg = "Unexpected errors writing async output"
-            logging.exception("%s: %s", msg, details)
-            raise ApplicationError(msg) from eg
 
-        logging.info(
-            "Text output written to: %s (%d records)",
-            self.output_text_file,
-            len(annotated_records),
-        )
-        logging.info(
-            "Metadata output written to: %s (%d records)",
-            self.output_table_file,
-            len(metadata_records),
-        )
+        if annotated_records:
+            logging.info(
+                "Text output written to: %s (%d records)",
+                self.output_text_file,
+                len(annotated_records),
+            )
+        else:
+            logging.warning("No annotated text output to write")
+        if metadata_records:
+            logging.info(
+                "Metadata output written to: %s (%d records)",
+                self.output_table_file,
+                len(metadata_records),
+            )
+        else:
+            logging.warning("No metadata output to write")
 
     async def _write_stats_async(self, stats: AsyncProcessingStats) -> None:
         """Write processing statistics to file.
@@ -472,7 +481,7 @@ class MedievalTextProcessor:
             progress_callback: Optional callback for batch progress updates.
                 Called with BatchProgress objects during processing.
             timeout_seconds: Optional overall timeout in seconds for the entire processing.
-                Defaults to DEFAULT_ASYNC_TIMEOUT (24 hours). Set to None for no timeout.
+                Defaults to DEFAULT_ASYNC_TIMEOUT (24 hours) when None.
             max_batch_wait_time: Maximum time in seconds to wait for individual batch completion.
                 Passed to AsyncProcessor. Uses AsyncProcessor defaults if not specified.
             poll_interval: Time in seconds between batch progress checks.
