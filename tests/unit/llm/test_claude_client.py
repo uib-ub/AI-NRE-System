@@ -103,7 +103,6 @@ class TestClaudeClientInit:
         assert client.api_key == TEST_API_KEY
         assert client.model == TEST_MODEL
         assert client.max_tokens == ClaudeClient.MAX_ALLOWED_TOKENS
-        assert client.temperature == ClaudeClient.DEFAULT_TEMPERATURE
 
         # Verify clients were initialized
         mock_anthropic_clients["sync_client"].assert_called_once_with(
@@ -116,22 +115,29 @@ class TestClaudeClientInit:
         )
 
     @pytest.mark.usefixtures("mock_anthropic_clients")
-    def test_init_with_custom_max_tokens_and_temperature(
+    def test_init_with_custom_max_tokens(
         self,
     ) -> None:
-        """Test initialization with custom max_tokens and temperature."""
+        """Test initialization with custom max_tokens."""
         custom_max_tokens = 8000
-        custom_temperature = 0.7
 
         client = ClaudeClient(
             api_key=TEST_API_KEY,
             model=TEST_MODEL,
             max_tokens=custom_max_tokens,
-            temperature=custom_temperature,
         )
 
         assert client.max_tokens == custom_max_tokens
-        assert client.temperature == custom_temperature
+
+    @pytest.mark.usefixtures("mock_anthropic_clients")
+    def test_init_rejects_sampling_parameters(self) -> None:
+        """Sampling parameters are no longer part of the constructor."""
+        with pytest.raises(TypeError, match="temperature"):
+            ClaudeClient(
+                api_key=TEST_API_KEY,
+                model=TEST_MODEL,
+                temperature=0.0,  # type: ignore[call-arg]
+            )
 
     @pytest.mark.parametrize(
         ("api_key", "model", "match_pattern"),
@@ -158,30 +164,20 @@ class TestClaudeClientInit:
 
         log.debug("ValueError raised as expected: %s", exc_info.value)
 
-    @pytest.mark.parametrize(
-        ("max_tokens", "temperature", "match_pattern"),
-        [
-            (0, 0.5, r"(?i)max_tokens must be between"),
-            (-1, 0.5, r"(?i)max_tokens must be between"),
-            (300000, 0.5, r"(?i)max_tokens must be between"),
-            (1000, -0.1, r"(?i)temperature must be between"),
-            (1000, 1.5, r"(?i)temperature must be between"),
-        ],
-    )
+    @pytest.mark.parametrize("max_tokens", [0, -1, 300000])
     @pytest.mark.usefixtures("mock_anthropic_clients")
-    def test_init_raises_for_invalid_max_tokens_or_temperature(
+    def test_init_raises_for_invalid_max_tokens(
         self,
         max_tokens: int,
-        temperature: float,
-        match_pattern: str,
     ) -> None:
-        """Test initialization raises ValueError for invalid max_tokens or temperature."""
-        with pytest.raises(ValueError, match=match_pattern) as exc_info:
+        """Test initialization raises ValueError for invalid max_tokens."""
+        with pytest.raises(
+            ValueError, match=r"(?i)max_tokens must be between"
+        ) as exc_info:
             ClaudeClient(
                 api_key=TEST_API_KEY,
                 model=TEST_MODEL,
                 max_tokens=max_tokens,
-                temperature=temperature,
             )
 
         log.debug("ValueError raised as expected: %s", exc_info.value)
@@ -272,30 +268,26 @@ class TestClaudeClientHelpers:
         assert payload["model"] == TEST_MODEL
         assert payload["messages"] == [{"role": "user", "content": "Test prompt"}]
         assert payload["max_tokens"] == ClaudeClient.MAX_ALLOWED_TOKENS
-        assert payload["temperature"] == ClaudeClient.DEFAULT_TEMPERATURE
-        assert payload["top_p"] == 1.0
-        assert payload["top_k"] == 1
         assert payload["stream"] is False
         assert "system" in payload
+        # Sampling parameters must never be sent (SDK 1.x / current models).
+        assert not {"temperature", "top_p", "top_k"} & payload.keys()
 
     def test_message_payload_with_overrides(
         self,
         claude_client: ClaudeClient,
     ) -> None:
-        """Test _message_payload accepts max_tokens and temperature overrides."""
+        """Test _message_payload accepts a max_tokens override."""
         custom_max_tokens = 5000
-        custom_temperature = 0.3
 
         payload = claude_client._message_payload(  # pyright: ignore[reportPrivateUsage]
             "Test prompt",
             max_tokens=custom_max_tokens,
-            temperature=custom_temperature,
         )
 
         log.debug("Message payload with overrides: %s", payload)
 
         assert payload["max_tokens"] == custom_max_tokens
-        assert payload["temperature"] == custom_temperature
 
     def test_handle_auth_error(
         self,

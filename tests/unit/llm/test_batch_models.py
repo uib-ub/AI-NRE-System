@@ -81,14 +81,13 @@ class TestBatchRequest:
         assert request.custom_id == "req-001"
         assert request.prompt == "Test prompt"
         assert request.max_tokens == 20000  # default
-        assert request.temperature == 0.0  # default
 
     @pytest.mark.parametrize(
-        ("custom_id", "prompt", "max_tokens", "temperature"),
+        ("custom_id", "prompt", "max_tokens"),
         [
-            ("req-001", "Simple prompt", 1000, 0.5),
-            ("req-002", "Another prompt", 50000, 1.0),
-            ("batch-123-record-456", "Long prompt " * 100, 100, 0.0),
+            ("req-001", "Simple prompt", 1000),
+            ("req-002", "Another prompt", 50000),
+            ("batch-123-record-456", "Long prompt " * 100, 100),
         ],
     )
     def test_creation_with_all_params(
@@ -96,7 +95,6 @@ class TestBatchRequest:
         custom_id: str,
         prompt: str,
         max_tokens: int,
-        temperature: float,
     ) -> None:
         """Test creating BatchRequest with all parameters.
 
@@ -104,13 +102,11 @@ class TestBatchRequest:
             custom_id: Unique identifier for the request.
             prompt: The input prompt text.
             max_tokens: Maximum tokens in response.
-            temperature: Temperature for generation.
         """
         request = BatchRequest(
             custom_id=custom_id,
             prompt=prompt,
             max_tokens=max_tokens,
-            temperature=temperature,
         )
 
         log.debug("Created BatchRequest with params: %s", request)
@@ -118,7 +114,6 @@ class TestBatchRequest:
         assert request.custom_id == custom_id
         assert request.prompt == prompt
         assert request.max_tokens == max_tokens
-        assert request.temperature == temperature
 
     @pytest.mark.parametrize(
         ("custom_id", "prompt", "match_pattern"),
