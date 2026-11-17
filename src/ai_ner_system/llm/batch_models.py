@@ -37,13 +37,11 @@ class BatchRequest:
         custom_id: Unique identifier for this request within the batch.
         prompt: The input prompt text to process.
         max_tokens: Maximum number of tokens in the response.
-        temperature: Controls randomness (0.0 = deterministic, 1.0 = creative).
     """
 
     custom_id: str
     prompt: str
     max_tokens: int = 20000
-    temperature: float = 0.0
 
     def __post_init__(self) -> None:
         """Validate request parameters after initialization."""

@@ -87,7 +87,6 @@ class TestInit:
         assert RecordProcessor.DEFAULT_MAX_WAIT_TIME == 86400.0  # 24 hours
         assert RecordProcessor.DEFAULT_POLL_INTERVAL == 30.0  # 30 seconds
         assert RecordProcessor.DEFAULT_MAX_TOKENS == 20000
-        assert RecordProcessor.DEFAULT_TEMPERATURE == 0.0
         assert RecordProcessor.MIN_CUSTOM_ID_PARTS == 2  # Minimum parts for custom ID
 
 
@@ -665,7 +664,6 @@ class TestPrepareBatchRequests:
         assert requests[0].prompt == GENERATED_PROMPT
         assert requests[0].custom_id == f"record_0_{BINDNR}_{BREVID}"
         assert requests[0].max_tokens == RecordProcessor.DEFAULT_MAX_TOKENS
-        assert requests[0].temperature == RecordProcessor.DEFAULT_TEMPERATURE
 
     def test_skips_invalid(
         self,

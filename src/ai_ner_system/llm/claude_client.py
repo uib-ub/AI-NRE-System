@@ -46,11 +46,15 @@ class ClaudeClient(LLMBaseClient):
 
     This client supports both synchronous and asynchronous operations, with
     comprehensive batch processing capabilities using the Claude Batches API.
+
+    Sampling parameters (``temperature``, ``top_p``, ``top_k``) are deliberately
+    not sent. The Anthropic Python SDK 1.x removed them from its request
+    methods, current Claude models reject non-default values, and API version
+    ``2026-10-21`` rejects them on every model.
     """
 
     # Reasonable bounds for the constructor validation
     MAX_ALLOWED_TOKENS: ClassVar[int] = 20000
-    DEFAULT_TEMPERATURE: ClassVar[float] = 0.0
 
     def __init__(
         self,
@@ -58,7 +62,6 @@ class ClaudeClient(LLMBaseClient):
         model: str,
         *,
         max_tokens: int | None = None,
-        temperature: float | None = None,
     ) -> None:
         """Initialize a Claude client.
 
@@ -66,7 +69,6 @@ class ClaudeClient(LLMBaseClient):
             api_key: Anthropic API key.
             model: Claude model to use.
             max_tokens: Maximum tokens in response (defaults to MAX_ALLOWED_TOKENS)
-            temperature: Response randomness (0.0-1.0, defaults to DEFAULT_TEMPERATURE)
 
         Raises:
             ValueError: If required parameters are missing or invalid.
@@ -84,11 +86,6 @@ class ClaudeClient(LLMBaseClient):
         if not (1 <= max_tokens <= self.MAX_ALLOWED_TOKENS):
             msg = f"max_tokens must be between 1 and {self.MAX_ALLOWED_TOKENS}"
             raise ValueError(msg)
-        if temperature is None:
-            temperature = self.DEFAULT_TEMPERATURE
-        if not (0.0 <= temperature <= 1.0):
-            msg = "temperature must be between 0.0 and 1.0"
-            raise ValueError(msg)
 
         # Initialize base class
         super().__init__(model)
@@ -96,7 +93,6 @@ class ClaudeClient(LLMBaseClient):
         # Set instance attributes
         self.api_key = api_key
         self.max_tokens = max_tokens
-        self.temperature = temperature
 
         try:
             # Initialize Synchronous client
@@ -120,10 +116,9 @@ class ClaudeClient(LLMBaseClient):
             )
         else:
             logging.info(
-                "Claude Client initialized with model=%s, max_tokens=%d, temperature=%.2f",
+                "Claude Client initialized with model=%s, max_tokens=%d",
                 model,
                 max_tokens,
-                temperature,
             )
 
     @staticmethod
@@ -166,14 +161,14 @@ class ClaudeClient(LLMBaseClient):
         prompt: str,
         *,
         max_tokens: int | None = None,
-        temperature: float | None = None,
     ) -> dict[str, Any]:
         """Build a non-streaming Messages.create params object.
+
+        No sampling parameters are included; see the class docstring.
 
         Args:
             prompt: The input prompt to send to the Claude model.
             max_tokens: Optional override for the maximum response tokens.
-            temperature: Optional override for the sampling temperature.
 
         Returns:
           A JSON-serializable dictionary matching the Messages API schema.
@@ -183,9 +178,6 @@ class ClaudeClient(LLMBaseClient):
             "system": self._system_message(),
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": max_tokens if max_tokens is not None else self.max_tokens,
-            "temperature": temperature if temperature is not None else self.temperature,
-            "top_k": 1,
-            "top_p": 1.0,
             "stream": False,
         }
 
@@ -381,7 +373,6 @@ class ClaudeClient(LLMBaseClient):
             payload = self._message_payload(
                 request.prompt,
                 max_tokens=request.max_tokens,
-                temperature=request.temperature,
             )
             message_params = MessageCreateParamsNonStreaming(**payload)  # type: ignore[typeddict-item]
 

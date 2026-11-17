@@ -44,7 +44,6 @@ class RecordProcessor:
     DEFAULT_MAX_WAIT_TIME: ClassVar[float] = 86400.0  # 24 hours
     DEFAULT_POLL_INTERVAL: ClassVar[float] = 30.0  # 30 seconds
     DEFAULT_MAX_TOKENS: ClassVar[int] = 20000
-    DEFAULT_TEMPERATURE: ClassVar[float] = 0.0
     MIN_CUSTOM_ID_PARTS: ClassVar[int] = 2  # Minimum parts in custom_id format
 
     def __init__(self, llm_client: Client, prompt_builder: PromptBuilder) -> None:
@@ -437,7 +436,6 @@ class RecordProcessor:
                     custom_id=custom_id,
                     prompt=prompt,
                     max_tokens=self.DEFAULT_MAX_TOKENS,
-                    temperature=self.DEFAULT_TEMPERATURE,
                 )
                 batch_requests.append(batch_request)
 
