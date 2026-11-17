@@ -132,12 +132,11 @@ class TestClaudeClientInit:
     @pytest.mark.usefixtures("mock_anthropic_clients")
     def test_init_rejects_sampling_parameters(self) -> None:
         """Sampling parameters are no longer part of the constructor."""
+        # The removed keyword goes through a variable on purpose: written out as
+        # `temperature=0.0`, mypy and CodeQL report the call itself as an error.
+        removed_arguments: dict[str, Any] = {"temperature": 0.0}
         with pytest.raises(TypeError, match="temperature"):
-            ClaudeClient(
-                api_key=TEST_API_KEY,
-                model=TEST_MODEL,
-                temperature=0.0,  # type: ignore[call-arg]
-            )
+            ClaudeClient(api_key=TEST_API_KEY, model=TEST_MODEL, **removed_arguments)
 
     @pytest.mark.parametrize(
         ("api_key", "model", "match_pattern"),
